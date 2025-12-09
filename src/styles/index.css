@@ -1,0 +1,319 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  --radius: 0.75rem;
+  --radius-sm: 0.5rem;
+  --radius-lg: 1rem;
+
+  /* Custom Animations */
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+
+  @keyframes accordion-down {
+    from {
+      height: 0
+    }
+
+    to {
+      height: var(--radix-accordion-content-height)
+    }
+  }
+
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height)
+    }
+
+    to {
+      height: 0
+    }
+  }
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+}
+
+:root {
+  /* Light Mode */
+  --background: oklch(99% 0 0);
+  --foreground: oklch(15% 0 0);
+  --card: oklch(100% 0 0);
+  --card-foreground: oklch(15% 0 0);
+  --popover: oklch(100% 0 0);
+  --popover-foreground: oklch(15% 0 0);
+  --primary: oklch(62% 0.22 50);
+  --primary-foreground: oklch(100% 0 0);
+  --secondary: oklch(96% 0.005 0);
+  --secondary-foreground: oklch(15% 0 0);
+  --muted: oklch(96% 0.005 0);
+  --muted-foreground: oklch(45% 0.01 0);
+  --accent: oklch(55% 0.18 50);
+  --accent-foreground: oklch(15% 0 0);
+  --destructive: oklch(65% 0.2 25);
+  --destructive-foreground: oklch(98% 0 0);
+  --border: oklch(92% 0.005 0);
+  --input: oklch(92% 0.005 0);
+  --ring: oklch(62% 0.22 50);
+
+  --radius: 0.75rem;
+}
+
+[data-theme="dark"] {
+  /* Dark Mode */
+  --background: oklch(18% 0.01 0);
+  --foreground: oklch(95% 0 0);
+  --card: oklch(22% 0.01 0);
+  --card-foreground: oklch(95% 0 0);
+  --popover: oklch(22% 0.01 0);
+  --popover-foreground: oklch(95% 0 0);
+  --primary: oklch(68% 0.22 50);
+  --primary-foreground: oklch(100% 0 0);
+  --secondary: oklch(30% 0.01 0);
+  --secondary-foreground: oklch(98% 0 0);
+  --muted: oklch(25% 0.01 0);
+  --muted-foreground: oklch(65% 0.01 0);
+  --accent: oklch(60% 0.2 50);
+  --accent-foreground: oklch(98% 0 0);
+  --destructive: oklch(40% 0.2 25);
+  --destructive-foreground: oklch(98% 0 0);
+  --border: oklch(30% 0.01 0);
+  --input: oklch(30% 0.01 0);
+  --ring: oklch(68% 0.22 50);
+}
+
+/* Accent Color Palettes */
+[data-accent="orange"] {
+  --primary: oklch(62% 0.22 50);
+  --accent: oklch(55% 0.18 50);
+  --ring: oklch(62% 0.22 50);
+}
+
+[data-theme="dark"][data-accent="orange"] {
+  --primary: oklch(68% 0.22 50);
+  --accent: oklch(60% 0.2 50);
+  --ring: oklch(68% 0.22 50);
+}
+
+[data-accent="blue"] {
+  --primary: oklch(62% 0.22 240);
+  --accent: oklch(55% 0.18 240);
+  --ring: oklch(62% 0.22 240);
+}
+
+[data-theme="dark"][data-accent="blue"] {
+  --primary: oklch(68% 0.22 240);
+  --accent: oklch(60% 0.2 240);
+  --ring: oklch(68% 0.22 240);
+}
+
+[data-accent="green"] {
+  --primary: oklch(62% 0.22 140);
+  --accent: oklch(55% 0.18 140);
+  --ring: oklch(62% 0.22 140);
+}
+
+[data-theme="dark"][data-accent="green"] {
+  --primary: oklch(68% 0.22 140);
+  --accent: oklch(60% 0.2 140);
+  --ring: oklch(68% 0.22 140);
+}
+
+[data-accent="purple"] {
+  --primary: oklch(62% 0.22 280);
+  --accent: oklch(55% 0.18 280);
+  --ring: oklch(62% 0.22 280);
+}
+
+[data-theme="dark"][data-accent="purple"] {
+  --primary: oklch(68% 0.22 280);
+  --accent: oklch(60% 0.2 280);
+  --ring: oklch(68% 0.22 280);
+}
+
+[data-accent="red"] {
+  --primary: oklch(62% 0.22 25);
+  --accent: oklch(55% 0.18 25);
+  --ring: oklch(62% 0.22 25);
+}
+
+[data-theme="dark"][data-accent="red"] {
+  --primary: oklch(68% 0.22 25);
+  --accent: oklch(60% 0.2 25);
+  --ring: oklch(68% 0.22 25);
+}
+
+/* UI Density */
+[data-density="compact"] {
+  /* Tighter: smaller radii, thinner handles, tighter spacing */
+  --radius: 0.5rem;
+  --radius-sm: 0.4rem;
+  --radius-lg: 0.8rem;
+  --spacing-unit: 0.35rem;
+  --panel-handle-width: 2px;
+  --panel-handle-active-width: 3px;
+  
+  /* Density-specific spacing variables */
+  --density-gap: 0.25rem;
+  --density-padding-sm: 0.375rem;
+  --density-padding-md: 0.5rem;
+  --density-padding-lg: 0.75rem;
+  --density-gap-sm: 0.125rem;
+  --density-gap-md: 0.5rem;
+  --density-gap-lg: 0.75rem;
+}
+
+[data-density="comfortable"] {
+  /* Balanced: medium radii, medium handles, balanced spacing */
+  --radius: 0.75rem;
+  --radius-sm: 0.5rem;
+  --radius-lg: 1rem;
+  --spacing-unit: 0.5rem;
+  --panel-handle-width: 4px;
+  --panel-handle-active-width: 6px;
+  
+  /* Density-specific spacing variables */
+  --density-gap: 0.5rem;
+  --density-padding-sm: 0.5rem;
+  --density-padding-md: 0.75rem;
+  --density-padding-lg: 1rem;
+  --density-gap-sm: 0.25rem;
+  --density-gap-md: 0.75rem;
+  --density-gap-lg: 1rem;
+}
+
+[data-density="spacious"] {
+  /* Roomier: larger radii, thicker handles, looser spacing */
+  --radius: 1rem;
+  --radius-sm: 0.75rem;
+  --radius-lg: 1.5rem;
+  --spacing-unit: 0.75rem;
+  --panel-handle-width: 6px;
+  --panel-handle-active-width: 8px;
+  
+  /* Density-specific spacing variables */
+  --density-gap: 0.75rem;
+  --density-padding-sm: 0.75rem;
+  --density-padding-md: 1rem;
+  --density-padding-lg: 1.5rem;
+  --density-gap-sm: 0.5rem;
+  --density-gap-md: 1rem;
+  --density-gap-lg: 1.5rem;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Enable drag region for Tauri custom titlebar (required for Windows touch/pen input) */
+  *[data-tauri-drag-region] {
+    -webkit-app-region: drag;
+    app-region: drag;
+  }
+
+  /* Ensure buttons in titlebar are clickable and not draggable */
+  *[data-tauri-drag-region] button,
+  button {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+    pointer-events: auto;
+  }
+
+  /* Resizable panel handle respects density variables */
+  .panel-resize-handle {
+    width: var(--panel-handle-width, 3px);
+    transition: all 0.15s ease;
+  }
+
+  .panel-resize-handle:active {
+    width: var(--panel-handle-active-width, 5px);
+  }
+
+  /* Custom scrollbar styling for Explorer and other scrollable areas */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--muted-foreground) transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--muted-foreground);
+    border-radius: 5px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    opacity: 0.3;
+    transition: opacity 0.2s ease, background-color 0.2s ease;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    opacity: 0.5;
+    background: var(--primary);
+    background-clip: padding-box;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:active {
+    opacity: 0.7;
+    background: var(--primary);
+    background-clip: padding-box;
+  }
+
+  /* Dark mode adjustments */
+  [data-theme="dark"] .custom-scrollbar::-webkit-scrollbar-thumb {
+    opacity: 0.4;
+  }
+
+  [data-theme="dark"] .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    opacity: 0.6;
+  }
+
+  [data-theme="dark"] .custom-scrollbar::-webkit-scrollbar-thumb:active {
+    opacity: 0.8;
+  }
+}
