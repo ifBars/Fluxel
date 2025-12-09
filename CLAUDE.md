@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Fluxel is a Tauri v2 desktop application with a React + TypeScript frontend. It's a code editor with visual editing capabilities, featuring a VSCode-like workbench interface with resizable panels, Monaco editor integration, and 3D visual previews using Three.js and React Three Fiber.
+Fluxel is a Tauri v2 desktop application with a React + TypeScript frontend. It's a code editor with visual editing capabilities, featuring a VSCode-like workbench interface with resizable panels, Monaco editor integration.
 
 ## Technology Stack
 
