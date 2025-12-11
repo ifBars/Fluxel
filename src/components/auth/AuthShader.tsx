@@ -1,7 +1,7 @@
 import { useRef, useMemo, useEffect, useState, useCallback, memo } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Mesh, Vector2, Vector3 } from "three";
-import { useSettingsStore, AccentColor } from "@/stores/useSettingsStore";
+import { useSettingsStore, AccentColor, Theme } from "@/stores/useSettingsStore";
 
 // Map accent colors to RGB values based on OKLCH hues in index.css
 const accentColorMap: Record<AccentColor, [number, number, number]> = {
@@ -10,6 +10,11 @@ const accentColorMap: Record<AccentColor, [number, number, number]> = {
     green: [0.16, 0.82, 0.42],      // hue 140
     purple: [0.68, 0.35, 0.92],      // hue 280
     red: [0.92, 0.26, 0.28],      // hue 25
+};
+
+const backgroundColorMap: Record<Theme, [number, number, number]> = {
+    dark: [0.01, 0.01, 0.02],   // near black
+    light: [0.96, 0.97, 0.99],  // soft light neutral
 };
 
 // Pre-define shaders outside component for better performance
@@ -27,6 +32,7 @@ const fragmentShader = `
     uniform vec2 u_mouse;
     uniform vec2 u_resolution;
     uniform vec3 u_accent;
+    uniform vec3 u_background;
     varying vec2 vUv;
 
     #define MAX_STEPS 80
@@ -136,7 +142,7 @@ const fragmentShader = `
         float d = RayMarch(ro, rd, t);
 
         // Background color - dark retro palette
-        vec3 bgColor = vec3(0.01, 0.01, 0.02);
+        vec3 bgColor = u_background;
         vec3 color = bgColor;
 
         if(d < MAX_DIST) {
@@ -195,14 +201,16 @@ const fragmentShader = `
 interface NeonGooMeshProps {
     mouse: Vector2;
     accentColor: AccentColor;
+    theme: Theme;
 }
 
-const NeonGooMesh = memo(({ mouse, accentColor }: NeonGooMeshProps) => {
+const NeonGooMesh = memo(({ mouse, accentColor, theme }: NeonGooMeshProps) => {
     const meshRef = useRef<Mesh>(null);
     const { size } = useThree();
 
     // Get RGB values for current accent
     const colorRGB = accentColorMap[accentColor];
+    const backgroundRGB = backgroundColorMap[theme];
 
     const uniforms = useMemo(
         () => ({
@@ -210,7 +218,9 @@ const NeonGooMesh = memo(({ mouse, accentColor }: NeonGooMeshProps) => {
             u_mouse: { value: new Vector2(0.5, 0.5) },
             u_resolution: { value: new Vector2(size.width, size.height) },
             u_accent: { value: new Vector3(colorRGB[0], colorRGB[1], colorRGB[2]) },
+            u_background: { value: new Vector3(backgroundRGB[0], backgroundRGB[1], backgroundRGB[2]) },
         }),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
         []
     );
 
@@ -219,6 +229,12 @@ const NeonGooMesh = memo(({ mouse, accentColor }: NeonGooMeshProps) => {
         const rgb = accentColorMap[accentColor];
         uniforms.u_accent.value.set(rgb[0], rgb[1], rgb[2]);
     }, [accentColor, uniforms]);
+
+    // Update background color when theme changes
+    useEffect(() => {
+        const rgb = backgroundColorMap[theme];
+        uniforms.u_background.value.set(rgb[0], rgb[1], rgb[2]);
+    }, [theme, uniforms]);
 
     useEffect(() => {
         uniforms.u_resolution.value.set(size.width, size.height);
@@ -249,6 +265,8 @@ export const AuthShader = () => {
     const [isReady, setIsReady] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const accentColor = useSettingsStore((state) => state.accentColor);
+    const theme = useSettingsStore((state) => state.theme);
+    const backgroundColor = theme === "dark" ? "#050506" : "#f4f5f7";
 
     const handleMouseMove = useCallback((e: MouseEvent) => {
         if (containerRef.current) {
@@ -276,10 +294,11 @@ export const AuthShader = () => {
     return (
         <div
             ref={containerRef}
-            className="w-full h-full relative overflow-hidden bg-[#050506]"
+            className="w-full h-full relative overflow-hidden"
+            style={{ backgroundColor }}
         >
             {/* Fallback background - matches shader's background color */}
-            <div className="absolute inset-0 bg-[#050506]" />
+            <div className="absolute inset-0" style={{ backgroundColor }} />
 
             <Canvas
                 style={{
@@ -300,7 +319,7 @@ export const AuthShader = () => {
                 }}
                 dpr={Math.min(window.devicePixelRatio, 2)} // Cap pixel ratio for performance
             >
-                <NeonGooMesh mouse={mouse} accentColor={accentColor} />
+                <NeonGooMesh mouse={mouse} accentColor={accentColor} theme={theme} />
             </Canvas>
         </div>
     );

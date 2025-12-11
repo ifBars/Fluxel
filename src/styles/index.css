@@ -290,8 +290,8 @@
   }
 
   .custom-scrollbar::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: var(--scrollbar-width, 10px);
+    height: var(--scrollbar-width, 10px);
   }
 
   .custom-scrollbar::-webkit-scrollbar-track {
@@ -300,8 +300,8 @@
 
   .custom-scrollbar::-webkit-scrollbar-thumb {
     background: var(--muted-foreground);
-    border-radius: 5px;
-    border: 2px solid transparent;
+    border-radius: var(--scrollbar-thumb-radius, 5px);
+    border: var(--scrollbar-thumb-border-width, 2px) solid transparent;
     background-clip: padding-box;
     opacity: 0.3;
     transition: opacity 0.2s ease, background-color 0.2s ease;

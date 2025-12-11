@@ -1,6 +1,7 @@
 import { useWorkbenchStore } from "../../stores/useWorkbenchStore";
 import FileTree from "./FileTree";
 import SearchPanel from "./SearchPanel";
+import ScrollableArea from "../ui/scrollable-area";
 
 export default function Sidebar() {
     const { activeActivity } = useWorkbenchStore();
@@ -24,15 +25,15 @@ export default function Sidebar() {
 
             <div className="flex-1 overflow-hidden">
                 {activeActivity === 'files' && (
-                    <div className="h-full overflow-auto custom-scrollbar">
+                    <ScrollableArea className="h-full">
                         <FileTree />
-                    </div>
+                    </ScrollableArea>
                 )}
                 {activeActivity === 'search' && <SearchPanel />}
                 {activeActivity === 'git' && (
-                    <div className="h-full overflow-auto custom-scrollbar p-4 text-sm text-muted-foreground">
+                    <ScrollableArea className="h-full p-4 text-sm text-muted-foreground">
                         <p>Git integration coming soon...</p>
-                    </div>
+                    </ScrollableArea>
                 )}
             </div>
         </div>

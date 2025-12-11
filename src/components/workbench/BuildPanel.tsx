@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, Loader2, CheckCircle2, XCircle, Terminal, Copy, Check } from 'lucide-react';
 import { useBuildPanelStore } from '@/stores/useBuildPanelStore';
+import ScrollableArea from '@/components/ui/scrollable-area';
 
 export default function BuildPanel() {
     const {
@@ -33,15 +34,16 @@ export default function BuildPanel() {
     };
 
     const getStatusIcon = () => {
+        const iconSize = 'var(--build-panel-header-icon-size, 1rem)';
         switch (buildStatus) {
             case 'running':
-                return <Loader2 className="w-4 h-4 animate-spin text-primary" />;
+                return <Loader2 style={{ width: iconSize, height: iconSize }} className="animate-spin text-primary" />;
             case 'success':
-                return <CheckCircle2 className="w-4 h-4 text-green-500" />;
+                return <CheckCircle2 style={{ width: iconSize, height: iconSize }} className="text-green-500" />;
             case 'error':
-                return <XCircle className="w-4 h-4 text-red-500" />;
+                return <XCircle style={{ width: iconSize, height: iconSize }} className="text-red-500" />;
             default:
-                return <Terminal className="w-4 h-4 text-muted-foreground" />;
+                return <Terminal style={{ width: iconSize, height: iconSize }} className="text-muted-foreground" />;
         }
     };
 
@@ -72,39 +74,75 @@ export default function BuildPanel() {
     return (
         <div className="flex flex-col h-full bg-card resize-none overflow-hidden">
             {/* Header */}
-            <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30 shrink-0">
-                <div className="flex items-center gap-2">
+            <div 
+                className="flex items-center justify-between border-b border-border bg-muted/30 shrink-0"
+                style={{
+                    height: 'var(--build-panel-header-height, 2.25rem)',
+                    paddingLeft: 'var(--build-panel-header-padding-x, 0.75rem)',
+                    paddingRight: 'var(--build-panel-header-padding-x, 0.75rem)',
+                    paddingTop: 'var(--build-panel-header-padding-y, 0.5rem)',
+                    paddingBottom: 'var(--build-panel-header-padding-y, 0.5rem)',
+                }}
+            >
+                <div 
+                    className="flex items-center"
+                    style={{ gap: 'var(--build-panel-header-gap, 0.5rem)' }}
+                >
                     {getStatusIcon()}
-                    <span className="text-xs font-medium">{getStatusText()}</span>
+                    <span 
+                        className="font-medium"
+                        style={{ fontSize: 'var(--build-panel-header-font-size, 0.75rem)' }}
+                    >
+                        {getStatusText()}
+                    </span>
                 </div>
-                <div className="flex items-center gap-1">
+                <div 
+                    className="flex items-center"
+                    style={{ gap: 'var(--build-panel-header-gap, 0.5rem)' }}
+                >
                     <button
                         onClick={handleCopy}
-                        className="p-1 rounded hover:bg-muted transition-colors mr-1"
+                        className="rounded hover:bg-muted transition-colors mr-1"
+                        style={{ padding: 'var(--build-panel-button-padding, 0.25rem)' }}
                         aria-label="Copy output"
                         title="Copy output"
                     >
                         {isCopied ? (
-                            <Check className="w-4 h-4 text-green-500" />
+                            <Check style={{ 
+                                width: 'var(--build-panel-header-icon-size, 1rem)', 
+                                height: 'var(--build-panel-header-icon-size, 1rem)' 
+                            }} className="text-green-500" />
                         ) : (
-                            <Copy className="w-4 h-4 text-muted-foreground" />
+                            <Copy style={{ 
+                                width: 'var(--build-panel-header-icon-size, 1rem)', 
+                                height: 'var(--build-panel-header-icon-size, 1rem)' 
+                            }} className="text-muted-foreground" />
                         )}
                     </button>
                     <button
                         onClick={closePanel}
-                        className="p-1 rounded hover:bg-muted transition-colors"
+                        className="rounded hover:bg-muted transition-colors"
+                        style={{ padding: 'var(--build-panel-button-padding, 0.25rem)' }}
                         aria-label="Close panel"
                     >
-                        <X className="w-4 h-4 text-muted-foreground" />
+                        <X style={{ 
+                            width: 'var(--build-panel-header-icon-size, 1rem)', 
+                            height: 'var(--build-panel-header-icon-size, 1rem)' 
+                        }} className="text-muted-foreground" />
                     </button>
                 </div>
             </div>
 
             {/* Output Area */}
-            <div
+            <ScrollableArea
                 ref={outputRef}
-                className="flex-1 overflow-auto p-3 font-mono text-xs leading-relaxed select-text"
-                style={{ fontFamily: 'var(--font-mono, monospace)' }}
+                className="flex-1 font-mono select-text"
+                style={{ 
+                    fontFamily: 'var(--font-mono, monospace)',
+                    padding: 'var(--build-panel-output-padding, 0.75rem)',
+                    fontSize: 'var(--build-panel-output-font-size, 0.75rem)',
+                    lineHeight: 'var(--build-panel-output-line-height, 1.625)',
+                }}
             >
                 {buildOutput.length === 0 ? (
                     <div className="text-muted-foreground italic">
@@ -125,7 +163,7 @@ export default function BuildPanel() {
                         </div>
                     ))
                 )}
-            </div>
+            </ScrollableArea>
         </div>
     );
 }

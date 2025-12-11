@@ -28,16 +28,17 @@ function FileTreeNode({ entry, depth }: FileTreeNodeProps) {
     const paddingLeft = 8 + depth * 16; // Base padding + indentation
     const isIgnored = entry.isIgnored;
 
-    const handleClick = async () => {
+    const handleClick = () => {
         if (entry.isDirectory) {
-            // Load children if not already loaded
-            if (!entry.children && !isExpanded) {
-                await loadFolderChildren(entry.path);
-            }
+            const willExpand = !isExpanded;
+            // Expand/collapse immediately; load children lazily without blocking UI.
             toggleFolder(entry.path);
+            if (willExpand && !entry.children) {
+                void loadFolderChildren(entry.path);
+            }
         } else {
             // Open file in editor
-            await openFile(entry.path);
+            void openFile(entry.path);
         }
     };
 
@@ -83,7 +84,7 @@ function FileTreeNode({ entry, depth }: FileTreeNodeProps) {
 
                 {/* Name */}
                 <span
-                    className={`truncate group-hover:text-foreground ${isIgnored ? 'text-muted-foreground/80' : 'text-foreground/90'}`}
+                    className={`flex-1 min-w-0 truncate group-hover:text-foreground ${isIgnored ? 'text-muted-foreground/80' : 'text-foreground/90'}`}
                 >
                     {entry.name}
                 </span>

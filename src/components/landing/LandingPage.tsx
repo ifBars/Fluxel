@@ -6,6 +6,7 @@ import { useProjectStore } from "@/stores/useProjectStore";
 import { useFileSystemStore } from "@/stores/useFileSystemStore";
 import { loadConfigMetadata } from "@/lib/config/loader";
 import SettingsDialog from "@/components/workbench/SettingsDialog";
+import { Button } from "@/components/ui/button";
 import logo from "@/assets/logo.png";
 
 interface LandingPageProps {
@@ -164,20 +165,15 @@ interface ActionButtonProps {
 
 function ActionButton({ icon, label, onClick, disabled }: ActionButtonProps) {
     return (
-        <button
+        <Button
+            variant="surface"
+            size="tile"
             onClick={onClick}
             disabled={disabled}
-            className={`
-                flex flex-col items-start gap-2 p-4 rounded-lg border border-border bg-card
-                transition-all duration-150
-                ${disabled
-                    ? "opacity-50 cursor-not-allowed"
-                    : "hover:bg-muted/50 hover:border-primary/50 cursor-pointer"
-                }
-            `}
+            className="flex-col items-start text-left"
         >
             <span className="text-muted-foreground">{icon}</span>
             <span className="text-sm font-medium text-foreground">{label}</span>
-        </button>
+        </Button>
     );
 }

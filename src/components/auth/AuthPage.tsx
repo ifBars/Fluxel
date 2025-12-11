@@ -71,8 +71,8 @@ export default function AuthPage({ onLogin }: { onLogin: () => void }) {
                                         <button
                                             onClick={() => setTheme("light")}
                                             className={`flex items-center justify-center gap-2 p-2 rounded-lg border transition-all ${theme === "light"
-                                                    ? "border-primary bg-primary/10 text-primary"
-                                                    : "border-border hover:bg-muted/50 text-muted-foreground"
+                                                ? "border-primary bg-primary/10 text-primary"
+                                                : "border-border hover:bg-muted/50 text-muted-foreground"
                                                 }`}
                                         >
                                             <Sun size={14} />
@@ -82,8 +82,8 @@ export default function AuthPage({ onLogin }: { onLogin: () => void }) {
                                         <button
                                             onClick={() => setTheme("dark")}
                                             className={`flex items-center justify-center gap-2 p-2 rounded-lg border transition-all ${theme === "dark"
-                                                    ? "border-primary bg-primary/10 text-primary"
-                                                    : "border-border hover:bg-muted/50 text-muted-foreground"
+                                                ? "border-primary bg-primary/10 text-primary"
+                                                : "border-border hover:bg-muted/50 text-muted-foreground"
                                                 }`}
                                         >
                                             <Moon size={14} />
@@ -134,22 +134,42 @@ export default function AuthPage({ onLogin }: { onLogin: () => void }) {
 
                     <div className="space-y-4 w-full max-w-sm">
                         <Button
-                            variant="outline"
-                            size="lg"
-                            className="w-full justify-start text-base cursor-pointer hover:bg-muted"
+                            variant="surface"
+                            size="tile"
+                            className="w-full justify-start"
                             onClick={onLogin}
                         >
-                            <Github className="mr-3 h-5 w-5" />
-                            Continue with GitHub
+                            <div className="flex items-center gap-3">
+                                <Github className="h-5 w-5 text-muted-foreground" />
+                                <div className="flex flex-col items-start">
+                                    <span className="text-sm font-medium text-foreground">
+                                        Continue with GitHub
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                        Sign in with your GitHub account
+                                    </span>
+                                </div>
+                            </div>
                         </Button>
                         <Button
-                            variant="outline"
-                            size="lg"
-                            className="w-full justify-start text-base cursor-pointer hover:bg-muted"
+                            variant="surface"
+                            size="tile"
+                            className="w-full justify-start"
                             onClick={onLogin}
                         >
-                            <span className="w-5 h-5 flex items-center justify-center mr-3 font-bold text-lg text-blue-500">G</span>
-                            Continue with Google
+                            <div className="flex items-center gap-3">
+                                <span className="w-5 h-5 flex items-center justify-center font-bold text-lg text-blue-500">
+                                    G
+                                </span>
+                                <div className="flex flex-col items-start">
+                                    <span className="text-sm font-medium text-foreground">
+                                        Continue with Google
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                        Use your Google account
+                                    </span>
+                                </div>
+                            </div>
                         </Button>
                     </div>
 

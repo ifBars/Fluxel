@@ -47,6 +47,23 @@ export interface DensityConfig {
     fileTreeItemHeight: string;
     fileTreeFontSize: string;
     fileTreeIconSize: string;
+
+    // Scrollbar styling
+    scrollbarWidth: string;
+    scrollbarThumbRadius: string;
+    scrollbarThumbBorderWidth: string;
+
+    // Build Panel styling
+    buildPanelHeaderHeight: string;
+    buildPanelHeaderPaddingX: string;
+    buildPanelHeaderPaddingY: string;
+    buildPanelHeaderFontSize: string;
+    buildPanelHeaderIconSize: string;
+    buildPanelHeaderGap: string;
+    buildPanelButtonPadding: string;
+    buildPanelOutputPadding: string;
+    buildPanelOutputFontSize: string;
+    buildPanelOutputLineHeight: string;
 }
 
 export const densityConfigs: Record<UIDensity, DensityConfig> = {
@@ -67,7 +84,7 @@ export const densityConfigs: Record<UIDensity, DensityConfig> = {
         densityGapLg: '0.75rem',
         panelHandleWidth: '2px',
         panelHandleActiveWidth: '3px',
-        statusBarHeight: '1.5rem',
+        statusBarHeight: '1.0rem',
         statusBarFontSize: '0.625rem',
         activityBarWidth: '2.5rem',
         activityBarIconSize: '1rem',
@@ -78,6 +95,19 @@ export const densityConfigs: Record<UIDensity, DensityConfig> = {
         fileTreeItemHeight: '1.5rem',
         fileTreeFontSize: '0.75rem',
         fileTreeIconSize: '0.875rem',
+        scrollbarWidth: '8px',
+        scrollbarThumbRadius: '4px',
+        scrollbarThumbBorderWidth: '1.5px',
+        buildPanelHeaderHeight: '2rem',
+        buildPanelHeaderPaddingX: '0.75rem',
+        buildPanelHeaderPaddingY: '0.375rem',
+        buildPanelHeaderFontSize: '0.6875rem',
+        buildPanelHeaderIconSize: '0.875rem',
+        buildPanelHeaderGap: '0.375rem',
+        buildPanelButtonPadding: '0.25rem',
+        buildPanelOutputPadding: '0.625rem',
+        buildPanelOutputFontSize: '0.6875rem',
+        buildPanelOutputLineHeight: '1.5',
     },
     comfortable: {
         sidebarDefaultSize: 17,
@@ -96,7 +126,7 @@ export const densityConfigs: Record<UIDensity, DensityConfig> = {
         densityGapLg: '1rem',
         panelHandleWidth: '2px',
         panelHandleActiveWidth: '4px',
-        statusBarHeight: '1.75rem',
+        statusBarHeight: '1.5rem',
         statusBarFontSize: '0.6875rem',
         activityBarWidth: '3rem',
         activityBarIconSize: '1.25rem',
@@ -107,6 +137,19 @@ export const densityConfigs: Record<UIDensity, DensityConfig> = {
         fileTreeItemHeight: '1.75rem',
         fileTreeFontSize: '0.8125rem',
         fileTreeIconSize: '1rem',
+        scrollbarWidth: '10px',
+        scrollbarThumbRadius: '5px',
+        scrollbarThumbBorderWidth: '2px',
+        buildPanelHeaderHeight: '2.25rem',
+        buildPanelHeaderPaddingX: '0.75rem',
+        buildPanelHeaderPaddingY: '0.5rem',
+        buildPanelHeaderFontSize: '0.75rem',
+        buildPanelHeaderIconSize: '1rem',
+        buildPanelHeaderGap: '0.5rem',
+        buildPanelButtonPadding: '0.25rem',
+        buildPanelOutputPadding: '0.75rem',
+        buildPanelOutputFontSize: '0.75rem',
+        buildPanelOutputLineHeight: '1.625',
     },
     spacious: {
         sidebarDefaultSize: 20,
@@ -125,7 +168,7 @@ export const densityConfigs: Record<UIDensity, DensityConfig> = {
         densityGapLg: '1rem',
         panelHandleWidth: '3px',
         panelHandleActiveWidth: '5px',
-        statusBarHeight: '2rem',
+        statusBarHeight: '1.75rem',
         statusBarFontSize: '0.75rem',
         activityBarWidth: '3.5rem',
         activityBarIconSize: '1.5rem',
@@ -136,6 +179,19 @@ export const densityConfigs: Record<UIDensity, DensityConfig> = {
         fileTreeItemHeight: '2rem',
         fileTreeFontSize: '0.875rem',
         fileTreeIconSize: '1.125rem',
+        scrollbarWidth: '12px',
+        scrollbarThumbRadius: '6px',
+        scrollbarThumbBorderWidth: '2.5px',
+        buildPanelHeaderHeight: '2.5rem',
+        buildPanelHeaderPaddingX: '0.875rem',
+        buildPanelHeaderPaddingY: '0.625rem',
+        buildPanelHeaderFontSize: '0.8125rem',
+        buildPanelHeaderIconSize: '1.125rem',
+        buildPanelHeaderGap: '0.625rem',
+        buildPanelButtonPadding: '0.375rem',
+        buildPanelOutputPadding: '0.875rem',
+        buildPanelOutputFontSize: '0.8125rem',
+        buildPanelOutputLineHeight: '1.75',
     },
 };
 
@@ -164,6 +220,19 @@ const applyDensityConfigToRoot = (root: HTMLElement, config: DensityConfig) => {
     root.style.setProperty('--file-tree-item-height', config.fileTreeItemHeight);
     root.style.setProperty('--file-tree-font-size', config.fileTreeFontSize);
     root.style.setProperty('--file-tree-icon-size', config.fileTreeIconSize);
+    root.style.setProperty('--scrollbar-width', config.scrollbarWidth);
+    root.style.setProperty('--scrollbar-thumb-radius', config.scrollbarThumbRadius);
+    root.style.setProperty('--scrollbar-thumb-border-width', config.scrollbarThumbBorderWidth);
+    root.style.setProperty('--build-panel-header-height', config.buildPanelHeaderHeight);
+    root.style.setProperty('--build-panel-header-padding-x', config.buildPanelHeaderPaddingX);
+    root.style.setProperty('--build-panel-header-padding-y', config.buildPanelHeaderPaddingY);
+    root.style.setProperty('--build-panel-header-font-size', config.buildPanelHeaderFontSize);
+    root.style.setProperty('--build-panel-header-icon-size', config.buildPanelHeaderIconSize);
+    root.style.setProperty('--build-panel-header-gap', config.buildPanelHeaderGap);
+    root.style.setProperty('--build-panel-button-padding', config.buildPanelButtonPadding);
+    root.style.setProperty('--build-panel-output-padding', config.buildPanelOutputPadding);
+    root.style.setProperty('--build-panel-output-font-size', config.buildPanelOutputFontSize);
+    root.style.setProperty('--build-panel-output-line-height', config.buildPanelOutputLineHeight);
 };
 
 export interface SettingsState {

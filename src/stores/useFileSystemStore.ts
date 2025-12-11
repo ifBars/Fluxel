@@ -1,7 +1,15 @@
+import { invoke } from '@tauri-apps/api/core';
 import { create } from 'zustand';
 import { readDir, readTextFile } from '@tauri-apps/plugin-fs';
 import type { FileEntry } from '@/types/fs';
 import { GitignoreManager } from '@/lib/gitignore';
+
+type BackendDirEntry = {
+    name: string;
+    path: string;
+    isDirectory: boolean;
+    isIgnored?: boolean;
+};
 
 interface FileSystemState {
     /** Root file tree entry */
@@ -36,17 +44,45 @@ interface FileSystemState {
  */
 async function readDirectoryEntries(
     path: string,
-    gitignoreManager: GitignoreManager | null
+    workspaceRoot: string | null,
+    gitignoreManager: GitignoreManager | null,
+    parentIsIgnored?: boolean
 ): Promise<FileEntry[]> {
+    try {
+        // Prefer the Rust-side implementation to avoid blocking the UI thread on large folders.
+        // If parent is ignored, skip expensive gitignore checking (all children are ignored anyway)
+        const entries = await invoke<BackendDirEntry[]>('list_directory_entries', {
+            path,
+            workspaceRoot,
+            maxEntries: 10_000,
+            parentIsIgnored: parentIsIgnored ?? false,
+        });
+
+        return entries.map((entry) => ({
+            name: entry.name,
+            path: entry.path.replace(/\\/g, '/'),
+            isDirectory: entry.isDirectory,
+            children: entry.isDirectory ? undefined : undefined,
+            isExpanded: false,
+            isIgnored: entry.isIgnored ?? false,
+        }));
+    } catch (error) {
+        console.warn('Rust directory listing failed, falling back to plugin-fs readDir', error);
+    }
+
+    // Fallback: use plugin-fs directly (slower for very large folders).
     try {
         const entries = await readDir(path);
 
+        // If parent is ignored, all children are ignored - skip expensive gitignore checking
         const fileEntries: FileEntry[] = await Promise.all(
             entries.map(async (entry) => {
                 const entryPath = `${path}/${entry.name}`.replace(/\\/g, '/');
-                const isIgnored = gitignoreManager
-                    ? await gitignoreManager.isIgnored(entryPath, !!entry.isDirectory)
-                    : false;
+                const isIgnored = parentIsIgnored
+                    ? true
+                    : gitignoreManager
+                      ? await gitignoreManager.isIgnored(entryPath, !!entry.isDirectory)
+                      : false;
 
                 return {
                     name: entry.name,
@@ -87,7 +123,7 @@ export const useFileSystemStore = create<FileSystemState>((set, get) => ({
             const name = normalizedPath.split('/').pop() ?? 'root';
 
             const gitignoreManager = new GitignoreManager(normalizedPath);
-            const children = await readDirectoryEntries(normalizedPath, gitignoreManager);
+            const children = await readDirectoryEntries(normalizedPath, normalizedPath, gitignoreManager, false);
 
             const rootEntry: FileEntry = {
                 name,
@@ -105,6 +141,8 @@ export const useFileSystemStore = create<FileSystemState>((set, get) => ({
                 rootPath: normalizedPath,
                 gitignoreManager,
             });
+            // Update ignored flags in the background to keep the first paint responsive.
+            void get().refreshIgnoredStatus();
         } catch (error) {
             set({
                 error: error instanceof Error ? error.message : 'Failed to load directory',
@@ -114,12 +152,30 @@ export const useFileSystemStore = create<FileSystemState>((set, get) => ({
     },
 
     loadFolderChildren: async (path: string) => {
-        const { gitignoreManager } = get();
-        const children = await readDirectoryEntries(path, gitignoreManager);
+        const { gitignoreManager, rootPath, rootEntry } = get();
+        
+        // Check if the parent folder is ignored to optimize gitignore checking
+        let parentIsIgnored = false;
+        if (rootEntry) {
+            const findEntry = (entry: FileEntry): FileEntry | null => {
+                if (entry.path === path) return entry;
+                if (entry.children) {
+                    for (const child of entry.children) {
+                        const found = findEntry(child);
+                        if (found) return found;
+                    }
+                }
+                return null;
+            };
+            const folder = findEntry(rootEntry);
+            parentIsIgnored = folder?.isIgnored ?? false;
+        }
+        
+        const children = await readDirectoryEntries(path, rootPath, gitignoreManager, parentIsIgnored);
 
         // Update the tree with loaded children
-        const { rootEntry } = get();
-        if (rootEntry) {
+        const { rootEntry: currentRoot } = get();
+        if (currentRoot) {
             const updateChildren = (entry: FileEntry): FileEntry => {
                 if (entry.path === path) {
                     return { ...entry, children, isExpanded: true };
@@ -133,7 +189,7 @@ export const useFileSystemStore = create<FileSystemState>((set, get) => ({
                 return entry;
             };
 
-            set({ rootEntry: updateChildren(rootEntry) });
+            set({ rootEntry: updateChildren(currentRoot) });
         }
 
         return children;
@@ -142,31 +198,35 @@ export const useFileSystemStore = create<FileSystemState>((set, get) => ({
     toggleFolder: (path: string) => {
         const { expandedPaths, rootEntry, loadFolderChildren } = get();
         const newExpanded = new Set(expandedPaths);
+        const isExpanding = !newExpanded.has(path);
 
-        if (newExpanded.has(path)) {
-            newExpanded.delete(path);
-        } else {
+        if (isExpanding) {
             newExpanded.add(path);
-            // Load children if not already loaded
-            if (rootEntry) {
-                const findEntry = (entry: FileEntry): FileEntry | null => {
-                    if (entry.path === path) return entry;
-                    if (entry.children) {
-                        for (const child of entry.children) {
-                            const found = findEntry(child);
-                            if (found) return found;
-                        }
-                    }
-                    return null;
-                };
-                const folder = findEntry(rootEntry);
-                if (folder && folder.isDirectory && !folder.children) {
-                    loadFolderChildren(path);
-                }
-            }
+        } else {
+            newExpanded.delete(path);
         }
 
+        // Update UI state immediately so expansion isn't delayed by any async work.
         set({ expandedPaths: newExpanded });
+
+        if (!isExpanding || !rootEntry) return;
+
+        // Load children if not already loaded (fire-and-forget).
+        const findEntry = (entry: FileEntry): FileEntry | null => {
+            if (entry.path === path) return entry;
+            if (entry.children) {
+                for (const child of entry.children) {
+                    const found = findEntry(child);
+                    if (found) return found;
+                }
+            }
+            return null;
+        };
+
+        const folder = findEntry(rootEntry);
+        if (folder && folder.isDirectory && !folder.children) {
+            void loadFolderChildren(path);
+        }
     },
 
     refreshTree: async () => {
