@@ -224,17 +224,14 @@ export function createInlineCompletionProvider(
 
     // Track active requests for cancellation
     let activeAbortController: AbortController | null = null;
-    let requestId = 0;
 
     return {
         provideInlineCompletions: async (
             model: editor.ITextModel,
             position: Position,
-            context: languages.InlineCompletionContext,
+            _context: languages.InlineCompletionContext,
             token: CancellationToken
         ): Promise<languages.InlineCompletions> => {
-            const currentRequestId = ++requestId;
-
             // Cancel any previous in-flight request
             if (activeAbortController) {
                 activeAbortController.abort();
