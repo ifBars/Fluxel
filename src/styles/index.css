@@ -268,6 +268,21 @@
     width: var(--panel-handle-active-width, 5px);
   }
 
+  /* Prevent panels from being draggable - only resize handles should work */
+  [data-panel-group] [data-panel],
+  [data-panel-group-direction] [data-panel] {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+    user-select: none;
+  }
+
+  /* Ensure panel resize handles are properly draggable */
+  [data-panel-resize-handle] {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+    touch-action: none;
+  }
+
   /* Custom scrollbar styling for Explorer and other scrollable areas */
   .custom-scrollbar {
     scrollbar-width: thin;

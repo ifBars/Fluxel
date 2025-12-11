@@ -220,13 +220,7 @@ export function createInlineCompletionProvider(
     _monaco: Monaco,
     config: Partial<InlineCompletionProviderConfig> = {}
 ): languages.InlineCompletionsProvider {
-    console.log("[Autocomplete] createInlineCompletionProvider called", {
-        config,
-        defaultConfig: DEFAULT_PROVIDER_CONFIG,
-    });
-
     const finalConfig = resolveInlineCompletionConfig(config);
-    console.log("[Autocomplete] Final provider config", finalConfig);
 
     // Track active requests for cancellation
     let activeAbortController: AbortController | null = null;
@@ -240,28 +234,9 @@ export function createInlineCompletionProvider(
             token: CancellationToken
         ): Promise<languages.InlineCompletions> => {
             const currentRequestId = ++requestId;
-            console.log("[Autocomplete] provider invoked", {
-                requestId: currentRequestId,
-                uri: model.uri.toString(),
-                language: model.getLanguageId(),
-                position: { line: position.lineNumber, column: position.column },
-                context: {
-                    triggerKind: context.triggerKind,
-                    selectedSuggestionInfo: context.selectedSuggestionInfo,
-                },
-                debounceMs: finalConfig.debounceMs,
-                maxContextLines: finalConfig.maxContextLines,
-                maxContextChars: finalConfig.maxContextChars,
-                maxCompletionLength: finalConfig.maxCompletionLength,
-                tokenCancellationRequested: token.isCancellationRequested,
-            });
 
             // Cancel any previous in-flight request
             if (activeAbortController) {
-                console.log("[Autocomplete] aborting previous request", {
-                    requestId: currentRequestId,
-                    previousRequestAborted: activeAbortController.signal.aborted,
-                });
                 activeAbortController.abort();
             }
             activeAbortController = new AbortController();
@@ -278,43 +253,17 @@ export function createInlineCompletionProvider(
                 streamingSoftLimit + finalConfig.maxCompletionLength
             );
 
-            console.log("[Autocomplete] Created abort controller", {
-                requestId: currentRequestId,
-                signalAborted: abortSignal.aborted,
-                streamingSoftLimit,
-                streamingHardLimit,
-            });
-
             try {
                 let softLimitHit = false;
-                // Debounce to avoid excessive API calls (don't pass abort signal to delay)
-                console.log("[Autocomplete] Starting debounce", {
-                    requestId: currentRequestId,
-                    debounceMs: finalConfig.debounceMs,
-                });
+                // Debounce to avoid excessive API calls
                 await delay(finalConfig.debounceMs);
-                console.log("[Autocomplete] Debounce complete", {
-                    requestId: currentRequestId,
-                });
 
                 // Check if request was cancelled during debounce
                 if (abortSignal.aborted || token.isCancellationRequested) {
-                    console.log("[Autocomplete] cancelled during debounce", {
-                        requestId: currentRequestId,
-                        abortSignalAborted: abortSignal.aborted,
-                        tokenCancellationRequested: token.isCancellationRequested,
-                    });
                     return { items: [] };
                 }
 
                 // Extract context
-                console.log("[Autocomplete] Extracting context", {
-                    requestId: currentRequestId,
-                    position: { line: position.lineNumber, column: position.column },
-                    maxContextLines: finalConfig.maxContextLines,
-                    maxContextChars: finalConfig.maxContextChars,
-                    modelLineCount: model.getLineCount(),
-                });
                 const { prefix, suffix } = extractContext(
                     model,
                     position,
@@ -325,48 +274,24 @@ export function createInlineCompletionProvider(
                 // Drop leading comments/blank lines from suffix so the model anchors
                 // to the next real code instead of mirroring nearby comments.
                 let sanitizedSuffix = stripLeadingComments(suffix);
-                let suffixStartsWithComment = sanitizedSuffix.length === 0 && suffix.length > 0;
 
                 // If suffix is empty after stripping, look ahead for the next code lines
                 // to give the model a forward anchor.
-                let suffixFilledFromLookahead = false;
                 if (!sanitizedSuffix) {
                     const forward = findForwardCodeSuffix(model, position.lineNumber);
                     if (forward) {
                         sanitizedSuffix = forward;
-                        suffixFilledFromLookahead = true;
-                        suffixStartsWithComment = false;
                     }
                 }
 
-                console.log("[Autocomplete] Context extracted", {
-                    requestId: currentRequestId,
-                    prefixLength: prefix.length,
-                    suffixLength: suffix.length,
-                    prefixTail: prefix.slice(-80),
-                    suffixHead: suffix.slice(0, 80),
-                    prefixTrimmedLength: prefix.trim().length,
-                    contextCharBudget: finalConfig.maxContextChars,
-                    contextCharUsage: prefix.length + suffix.length,
-                    suffixStartsWithComment,
-                    sanitizedSuffixLength: sanitizedSuffix.length,
-                    suffixFilledFromLookahead,
-                });
-
                 // Skip if prefix is too short or just whitespace
                 if (prefix.trim().length < 3) {
-                    console.log("[Autocomplete] prefix too short, skipping", {
-                        requestId: currentRequestId,
-                        prefixTrimmedLength: prefix.trim().length,
-                        prefixPreview: prefix.slice(0, 50),
-                    });
                     return { items: [] };
                 }
 
                 // Generate completion
                 let completionText = "";
                 let hasReceivedChunk = false;
-                let chunkCount = 0;
 
                 const languageId = getLanguageId(model);
                 const completionRequest = {
@@ -380,40 +305,14 @@ export function createInlineCompletionProvider(
                     model: finalConfig.model,
                 };
 
-                console.log("[Autocomplete] calling Ollama generate", {
-                    requestId: currentRequestId,
-                    endpoint: finalConfig.endpoint,
-                    model: finalConfig.model,
-                    language: languageId,
-                    maxTokens: finalConfig.maxCompletionLength,
-                    prefixLength: prefix.length,
-                    suffixLength: suffix.length,
-                    abortSignalAborted: abortSignal.aborted,
-                });
-
                 try {
                     for await (const chunk of generateCompletion(
                         completionRequest,
                         completionConfig,
                         abortSignal
                     )) {
-                        chunkCount++;
-                        console.log("[Autocomplete] Received chunk", {
-                            requestId: currentRequestId,
-                            chunkNumber: chunkCount,
-                            chunkLength: chunk.length,
-                            chunkPreview: chunk.slice(0, 50),
-                            totalLength: completionText.length + chunk.length,
-                        });
-
                         // Check cancellation during streaming
                         if (abortSignal.aborted || token.isCancellationRequested) {
-                            console.log("[Autocomplete] Cancelled during streaming", {
-                                requestId: currentRequestId,
-                                chunkCount,
-                                abortSignalAborted: abortSignal.aborted,
-                                tokenCancellationRequested: token.isCancellationRequested,
-                            });
                             break;
                         }
 
@@ -422,123 +321,43 @@ export function createInlineCompletionProvider(
 
                         // Stop early if we have enough text
                         if (completionText.length >= streamingHardLimit) {
-                            console.log("[Autocomplete] Stopping early - enough text", {
-                                requestId: currentRequestId,
-                                completionLength: completionText.length,
-                                hardLimit: streamingHardLimit,
-                            });
                             break;
                         } else if (completionText.length >= streamingSoftLimit) {
                             if (softLimitHit) {
-                                console.log("[Autocomplete] Reached soft streaming limit twice, stopping", {
-                                    requestId: currentRequestId,
-                                    completionLength: completionText.length,
-                                    softLimit: streamingSoftLimit,
-                                });
                                 break;
                             }
                             softLimitHit = true;
-                            console.log("[Autocomplete] Reached soft streaming limit, allowing one more chunk", {
-                                requestId: currentRequestId,
-                                completionLength: completionText.length,
-                                softLimit: streamingSoftLimit,
-                            });
                         }
                     }
-
-                    console.log("[Autocomplete] Streaming complete", {
-                        requestId: currentRequestId,
-                        chunkCount,
-                        hasReceivedChunk,
-                        completionLength: completionText.length,
-                    });
                 } catch (genError) {
                     // Silently handle aborts - they're expected when user types quickly
                     if (genError instanceof DOMException && genError.name === "AbortError") {
-                        console.log("[Autocomplete] Generation aborted (DOMException)", {
-                            requestId: currentRequestId,
-                            chunkCount,
-                        });
                         return { items: [] };
                     }
                     // Also handle Error objects that might wrap AbortError
                     if (genError instanceof Error && genError.message.includes("aborted")) {
-                        console.log("[Autocomplete] Generation aborted (Error)", {
-                            requestId: currentRequestId,
-                            errorMessage: genError.message,
-                            chunkCount,
-                        });
                         return { items: [] };
                     }
-                    console.error("[Autocomplete] Generation error", {
-                        requestId: currentRequestId,
-                        error: genError,
-                        errorName: genError instanceof Error ? genError.name : undefined,
-                        errorMessage: genError instanceof Error ? genError.message : String(genError),
-                        chunkCount,
-                        hasReceivedChunk,
-                    });
+                    console.error("[Autocomplete] Generation error:", genError);
                     throw genError;
                 }
 
-                console.log("[Autocomplete] Raw output received", {
-                    requestId: currentRequestId,
-                    rawText: completionText,
-                    rawLength: completionText.length,
-                    hasReceivedChunk,
-                    chunkCount,
-                    isEmpty: !completionText.trim(),
-                });
-
                 if (!hasReceivedChunk || !completionText.trim()) {
-                    console.warn("[Autocomplete] No completion received from Ollama", {
-                        requestId: currentRequestId,
-                        hasReceivedChunk,
-                        completionTextLength: completionText.length,
-                        completionTextTrimmed: completionText.trim().length,
-                    });
                     return { items: [] };
                 }
 
                 if (abortSignal.aborted || token.isCancellationRequested) {
-                    console.log("[Autocomplete] Cancelled before cleaning completion", {
-                        requestId: currentRequestId,
-                        abortSignalAborted: abortSignal.aborted,
-                        tokenCancellationRequested: token.isCancellationRequested,
-                    });
                     return { items: [] };
                 }
 
                 // Clean and validate completion
-                console.log("[Autocomplete] Cleaning completion", {
-                    requestId: currentRequestId,
-                    rawLength: completionText.length,
-                });
                 const cleanedCompletion = cleanCompletion(completionText);
-                console.log("[Autocomplete] Cleaned output", {
-                    requestId: currentRequestId,
-                    cleanedText: cleanedCompletion,
-                    cleanedLength: cleanedCompletion.length,
-                    rawLength: completionText.length,
-                    wasTruncated: cleanedCompletion.length < completionText.length,
-                });
 
                 if (!cleanedCompletion || !cleanedCompletion.trim()) {
-                    console.warn("[Autocomplete] Completion was empty after cleaning", {
-                        requestId: currentRequestId,
-                        rawLength: completionText.length,
-                        cleanedLength: cleanedCompletion.length,
-                        rawPreview: completionText.slice(0, 100),
-                    });
                     return { items: [] };
                 }
 
                 if (isEchoingSuffix(cleanedCompletion, sanitizedSuffix)) {
-                    console.log("[Autocomplete] Dropping completion that echoes suffix", {
-                        requestId: currentRequestId,
-                        completionPreview: cleanedCompletion.slice(0, 80),
-                        suffixHead: sanitizedSuffix.slice(0, 120),
-                    });
                     return { items: [] };
                 }
 
@@ -555,64 +374,29 @@ export function createInlineCompletionProvider(
 
                 // If Monaco already cancelled this request, silently drop the result
                 if (token.isCancellationRequested || abortSignal.aborted) {
-                    console.log("[Autocomplete] Dropping completion due to cancellation", {
-                        requestId: currentRequestId,
-                        abortSignalAborted: abortSignal.aborted,
-                        tokenCancellationRequested: token.isCancellationRequested,
-                    });
                     return { items: [] };
                 }
 
-                console.log("[Autocomplete] Returning completion item", {
-                    requestId: currentRequestId,
-                    insertTextPreview: cleanedCompletion.slice(0, 80),
-                    insertTextLength: cleanedCompletion.length,
-                    range: item.range,
-                    itemKeys: Object.keys(item),
-                });
                 return { items: [item] };
 
             } catch (error) {
                 // Handle aborts silently
                 if (error instanceof DOMException && error.name === "AbortError") {
-                    console.log("[Autocomplete] Request aborted (outer catch)", {
-                        requestId: currentRequestId,
-                    });
                     return { items: [] };
                 }
 
-                console.error("[Autocomplete] Error in provideInlineCompletions", {
-                    requestId: currentRequestId,
-                    error,
-                    errorName: error instanceof Error ? error.name : undefined,
-                    errorMessage: error instanceof Error ? error.message : String(error),
-                    errorStack: error instanceof Error ? error.stack : undefined,
-                });
+                console.error("[Autocomplete] Error:", error);
                 return { items: [] };
 
             } finally {
-                console.log("[Autocomplete] Cleaning up request", {
-                    requestId: currentRequestId,
-                    isCurrentController: activeAbortController === currentAbortController,
-                });
                 if (activeAbortController === currentAbortController) {
-                    // Clear controller if this request finished (helps spot leaks)
-                    console.log("[Autocomplete] Clearing abort controller", {
-                        requestId: currentRequestId,
-                    });
                     activeAbortController = null;
                 }
             }
         },
 
         disposeInlineCompletions: () => {
-            // Abort any lingering request when Monaco disposes a completion list
-            console.log("[Autocomplete] disposeInlineCompletions called", {
-                hasActiveController: !!activeAbortController,
-                controllerAborted: activeAbortController?.signal.aborted ?? false,
-            });
             if (activeAbortController) {
-                console.log("[Autocomplete] disposeInlineCompletions aborting inflight request");
                 activeAbortController.abort();
                 activeAbortController = null;
             }
@@ -627,53 +411,20 @@ export function registerInlineCompletionProvider(
     monaco: Monaco,
     config: Partial<InlineCompletionProviderConfig> = {}
 ): { dispose: () => void } {
-    console.log("[Autocomplete] registerInlineCompletionProvider called", {
-        config,
-        monacoAvailable: !!monaco,
-        languagesAvailable: !!monaco.languages,
-    });
-
     const resolvedConfig = resolveInlineCompletionConfig(config);
     const provider = createInlineCompletionProvider(monaco, resolvedConfig);
-    console.log("[Autocomplete] Provider created", {
-        providerAvailable: !!provider,
-        hasProvideInlineCompletions: typeof provider.provideInlineCompletions === "function",
-        hasDisposeInlineCompletions: typeof provider.disposeInlineCompletions === "function",
-        resolvedConfig,
-    });
 
     // Register for all known languages so inline suggestions work everywhere
     const allLanguages = monaco.languages.getLanguages();
-    console.log("[Autocomplete] Available languages", {
-        languageCount: allLanguages.length,
-        languages: allLanguages.map((lang: languages.ILanguageExtensionPoint) => ({
-            id: lang.id,
-            aliases: lang.aliases,
-            extensions: lang.extensions,
-        })),
-    });
-
     const languageIds = allLanguages
         .map((lang: languages.ILanguageExtensionPoint) => lang.id)
         .filter(Boolean);
     const selector = languageIds.length ? languageIds : { pattern: "**" };
-    
-    console.log("[Autocomplete] Registering inline provider", {
-        selector,
-        selectorType: Array.isArray(selector) ? "array" : typeof selector,
-        selectorLength: Array.isArray(selector) ? selector.length : undefined,
-    });
 
     const disposable = monaco.languages.registerInlineCompletionsProvider(selector, provider);
-    
-    console.log("[Autocomplete] Provider registered successfully", {
-        disposableAvailable: !!disposable,
-        hasDispose: typeof disposable.dispose === "function",
-    });
 
     return {
         dispose: () => {
-            console.log("[Autocomplete] Disposing inline provider");
             disposable.dispose();
         },
     };

@@ -12,6 +12,41 @@
     "core:window:allow-minimize",
     "core:window:allow-toggle-maximize",
     "core:window:allow-close",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "bun",
+          "cmd": "bun",
+          "args": true
+        },
+        {
+          "name": "npm",
+          "cmd": "npm",
+          "args": true
+        },
+        {
+          "name": "node",
+          "cmd": "node",
+          "args": true
+        },
+        {
+          "name": "git",
+          "cmd": "git",
+          "args": true
+        },
+        {
+          "name": "dotnet",
+          "cmd": "dotnet",
+          "args": true
+        },
+        {
+          "name": "csharp-ls",
+          "cmd": "csharp-ls",
+          "args": true
+        }
+      ]
+    },
     "opener:default",
     "dialog:default",
     "dialog:allow-open",

@@ -3,19 +3,23 @@ import { Panel, PanelGroup, PanelResizeHandle, ImperativePanelHandle } from "rea
 import { useWorkbenchStore } from "../../stores/useWorkbenchStore";
 import { useEditorStore } from "../../stores/useEditorStore";
 import { useSettingsStore, densityConfigs } from "../../stores/useSettingsStore";
+import { useBuildPanelStore } from "../../stores/useBuildPanelStore";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import ActivityBar from "./ActivityBar";
 import Sidebar from "./SideBar";
 import SettingsDialog from "./SettingsDialog";
+import BuildPanel from "./BuildPanel";
 import EditorGroup from "@/components/editor/EditorGroup";
 
 export default function Workbench() {
     const { setSidebarOpen, sidebarDefaultSize, defaultSidebarOpen } = useWorkbenchStore();
     const { getActiveTab, cursorPosition, isDirty } = useEditorStore();
     const { uiDensity, tabSize, wordWrap } = useSettingsStore();
+    const { isOpen: isBuildPanelOpen } = useBuildPanelStore();
     const activeTab = getActiveTab();
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const sidebarPanelRef = useRef<ImperativePanelHandle>(null);
+    const buildPanelRef = useRef<ImperativePanelHandle>(null);
 
     // Get density-specific configuration
     const densityConfig = densityConfigs[uiDensity];
@@ -56,23 +60,61 @@ export default function Workbench() {
                         }}
                     />
 
-                    {/* Editor Area */}
+                    {/* Editor + Build Panel Area (Vertical Split) */}
                     <Panel minSize={30}>
-                        <EditorGroup />
+                        <PanelGroup direction="vertical">
+                            {/* Editor Area */}
+                            <Panel minSize={20}>
+                                <EditorGroup />
+                            </Panel>
+
+                            {/* Build Panel (Collapsible) */}
+                            {isBuildPanelOpen && (
+                                <>
+                                    <PanelResizeHandle
+                                        className="group panel-resize-handle bg-transparent cursor-row-resize z-50 flex items-center justify-center outline-none"
+                                        style={{
+                                            height: '10px',
+                                            minHeight: '10px',
+                                            width: '100%',
+                                            marginTop: '-5px',
+                                            marginBottom: '-5px',
+                                            position: 'relative',
+                                        }}
+                                    >
+                                        <div
+                                            className="w-full bg-border group-hover:bg-primary group-active:bg-primary transition-colors transition-all opacity-60 group-hover:opacity-100"
+                                            style={{
+                                                height: densityConfig.panelHandleWidth,
+                                            }}
+                                        />
+                                    </PanelResizeHandle>
+                                    <Panel
+                                        ref={buildPanelRef}
+                                        defaultSize={25}
+                                        minSize={10}
+                                        maxSize={50}
+                                    >
+                                        <BuildPanel />
+                                    </Panel>
+                                </>
+                            )}
+                        </PanelGroup>
                     </Panel>
                 </PanelGroup>
             </div>
 
             {/* Status Bar */}
-            <div 
-                className="bg-primary text-primary-foreground text-[10px] flex items-center justify-between select-none shrink-0"
+            <div
+                className="bg-primary text-primary-foreground flex items-center justify-between select-none shrink-0"
                 style={{
-                    height: 'calc(1.5rem + var(--density-padding-sm, 0.5rem))',
-                    paddingLeft: 'var(--density-padding-md, 0.75rem)',
-                    paddingRight: 'var(--density-padding-md, 0.75rem)',
+                    height: densityConfig.statusBarHeight,
+                    fontSize: densityConfig.statusBarFontSize,
+                    paddingLeft: densityConfig.densityPaddingMd,
+                    paddingRight: densityConfig.densityPaddingMd,
                 }}
             >
-                <div 
+                <div
                     className="flex items-center"
                     style={{ gap: 'var(--density-gap-md, 0.75rem)' }}
                 >
@@ -84,7 +126,7 @@ export default function Workbench() {
                     )}
                     {!activeTab && <span>Fluxel</span>}
                 </div>
-                <div 
+                <div
                     className="flex items-center"
                     style={{ gap: 'var(--density-gap-md, 0.75rem)' }}
                 >

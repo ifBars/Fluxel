@@ -4,13 +4,13 @@ import {
     X, Moon, Sun, Check, Code, Monitor, Columns,
     Palette, Layout, Keyboard,
     Type, Eye, Indent, WrapText, Save,
-    Maximize2, Sidebar as SidebarIcon, Sparkles, ExternalLink
+    Maximize2, Sidebar as SidebarIcon, Sparkles, ExternalLink, Hammer
 } from "lucide-react";
 import { useSettingsStore, type SettingsState, Theme, AccentColor, UIDensity } from "../../stores/useSettingsStore";
 import { useWorkbenchStore, type WorkbenchState, EditorMode } from "../../stores/useWorkbenchStore";
 import { RECOMMENDED_MODELS } from "../../lib/ollama";
 
-type SettingsSection = 'appearance' | 'editor' | 'autocomplete' | 'workbench' | 'shortcuts';
+type SettingsSection = 'appearance' | 'editor' | 'autocomplete' | 'workbench' | 'build' | 'shortcuts';
 
 const settingsSchema = z.object({
     fontSize: z.number().min(10).max(32),
@@ -102,6 +102,7 @@ export default function SettingsDialog({ isOpen, onClose }: { isOpen: boolean; o
         { id: 'editor', label: 'Editor', icon: <Code size={16} /> },
         { id: 'autocomplete', label: 'Autocomplete', icon: <Sparkles size={16} /> },
         { id: 'workbench', label: 'Workbench', icon: <Layout size={16} /> },
+        { id: 'build', label: 'Build', icon: <Hammer size={16} /> },
         { id: 'shortcuts', label: 'Shortcuts', icon: <Keyboard size={16} /> },
     ];
 
@@ -165,6 +166,7 @@ export default function SettingsDialog({ isOpen, onClose }: { isOpen: boolean; o
                                 onSidebarSizeChange={handleSidebarSizeChange}
                             />
                         )}
+                        {activeSection === 'build' && <BuildSection settings={settings} />}
                         {activeSection === 'shortcuts' && <ShortcutsSection />}
                     </div>
                 </div>
@@ -231,6 +233,43 @@ function AppearanceSection({ settings }: { settings: SettingsState }) {
                             )}
                         </button>
                     ))}
+                </div>
+            </div>
+
+            {/* Icon Pack */}
+            <div className="space-y-3">
+                <label className="text-sm font-medium text-foreground">Icon Pack</label>
+                <div className="grid grid-cols-2 gap-2">
+                    <IconPackOption
+                        value="react-icons"
+                        current={settings.iconPack}
+                        onClick={() => settings.setIconPack("react-icons")}
+                        label="React Icons"
+                    />
+                    <IconPackOption
+                        value="lucide"
+                        current={settings.iconPack}
+                        onClick={() => settings.setIconPack("lucide")}
+                        label="Lucide"
+                    />
+                    <IconPackOption
+                        value="react-file-icon"
+                        current={settings.iconPack}
+                        onClick={() => settings.setIconPack("react-file-icon")}
+                        label="React File Icon"
+                    />
+                    <IconPackOption
+                        value="material"
+                        current={settings.iconPack}
+                        onClick={() => settings.setIconPack("material")}
+                        label="Material"
+                    />
+                    <IconPackOption
+                        value="exuanbo"
+                        current={settings.iconPack}
+                        onClick={() => settings.setIconPack("exuanbo")}
+                        label="Exuanbo (JS)"
+                    />
                 </div>
             </div>
 
@@ -722,7 +761,83 @@ function ShortcutsSection() {
     );
 }
 
-// Helper Components
+// Build Section
+function BuildSection({ settings }: { settings: SettingsState }) {
+    const buildSystems: { value: import("../../stores/useSettingsStore").BuildSystem; label: string; description: string }[] = [
+        { value: 'auto', label: 'Auto-Detect', description: 'Automatically detect project type' },
+        { value: 'dotnet', label: '.NET', description: 'Build with dotnet build' },
+        { value: 'bun', label: 'Bun', description: 'Build with bun run build' },
+        { value: 'npm', label: 'NPM', description: 'Build with npm run build' },
+        { value: 'manual', label: 'Custom', description: 'Use a custom build command' },
+    ];
+
+    return (
+        <div className="space-y-6">
+            <div>
+                <h3 className="text-lg font-semibold mb-1">Build</h3>
+                <p className="text-sm text-muted-foreground">Configure build system and commands</p>
+            </div>
+
+            {/* Build System */}
+            <div className="space-y-3">
+                <label className="text-sm font-medium text-foreground">Build System</label>
+                <div className="space-y-2">
+                    {buildSystems.map((system) => (
+                        <button
+                            key={system.value}
+                            onClick={() => settings.setBuildSystem(system.value)}
+                            className={`w-full flex items-center justify-between p-3 rounded-lg border transition-all text-left ${settings.buildSystem === system.value
+                                    ? "border-primary bg-primary/10 ring-1 ring-primary"
+                                    : "border-border hover:bg-muted/50"
+                                }`}
+                        >
+                            <div className="flex flex-col">
+                                <span className="text-sm font-medium">{system.label}</span>
+                                <span className="text-xs text-muted-foreground">{system.description}</span>
+                            </div>
+                            {settings.buildSystem === system.value && (
+                                <Check size={14} className="text-primary" />
+                            )}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            {/* Custom Build Command */}
+            {settings.buildSystem === 'manual' && (
+                <div className="space-y-3">
+                    <label className="text-sm font-medium text-foreground">Custom Build Command</label>
+                    <input
+                        type="text"
+                        value={settings.customBuildCommand}
+                        onChange={(e) => settings.setCustomBuildCommand(e.target.value)}
+                        placeholder="e.g., make build"
+                        className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary font-mono"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                        Enter the command to run when building your project
+                    </p>
+                </div>
+            )}
+
+            {/* Info Box */}
+            <div className="p-4 rounded-lg border border-border bg-muted/30">
+                <div className="flex items-start gap-3">
+                    <Hammer size={20} className="text-primary shrink-0 mt-0.5" />
+                    <div className="space-y-2">
+                        <p className="text-sm font-medium">Build Configuration</p>
+                        <p className="text-xs text-muted-foreground">
+                            The build system determines how your project is compiled. Auto-detect will
+                            examine your project files to choose the appropriate build tool.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// Shortcuts Section
 function ThemeOption({
     value,
     current,
@@ -806,6 +921,32 @@ function EditorModeOption({
             {icon}
             <span className="text-xs font-medium">{label}</span>
             {isActive && <Check size={12} className="absolute top-1 right-1" />}
+        </button>
+    );
+}
+
+function IconPackOption({
+    value,
+    current,
+    onClick,
+    label,
+}: {
+    value: string;
+    current: string;
+    onClick: () => void;
+    label: string;
+}) {
+    const isActive = value === current;
+    return (
+        <button
+            onClick={onClick}
+            className={`flex items-center justify-between px-3 py-2 rounded-lg border transition-all text-left ${isActive
+                ? "border-primary bg-primary/10 text-primary ring-1 ring-primary"
+                : "border-border hover:bg-muted/50 text-muted-foreground"
+                }`}
+        >
+            <span className="text-sm font-medium">{label}</span>
+            {isActive && <Check size={14} />}
         </button>
     );
 }

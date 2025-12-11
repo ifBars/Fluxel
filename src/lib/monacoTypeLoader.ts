@@ -56,7 +56,7 @@ async function readPackageJson(projectRoot: string): Promise<PackageJson | null>
         const content = await readTextFile(normalizePath(`${projectRoot}/package.json`));
         return JSON.parse(content) as PackageJson;
     } catch (error) {
-        console.warn('Failed to read package.json:', error);
+        // Silent failure is expected for non-Node projects
         return null;
     }
 }
@@ -69,7 +69,7 @@ async function readTsConfig(projectRoot: string): Promise<TsConfig | null> {
         const content = await readTextFile(normalizePath(`${projectRoot}/tsconfig.json`));
         return JSON.parse(content) as TsConfig;
     } catch (error) {
-        console.warn('Failed to read tsconfig.json:', error);
+        // Silent failure is expected for non-TS projects
         return null;
     }
 }
@@ -109,13 +109,13 @@ async function findTypeDefinitions(
     packageName: string
 ): Promise<string[]> {
     const typeFiles: string[] = [];
-    
+
     // Check for package.json types/typings field
     try {
         const pkgJsonPath = normalizePath(`${packagePath}/package.json`);
         const pkgContent = await readTextFile(pkgJsonPath);
         const pkg = JSON.parse(pkgContent) as PackageJson;
-        
+
         if (pkg.types) {
             const typesPath = normalizePath(`${packagePath}/${pkg.types}`);
             if (await fileExists(typesPath)) {
@@ -131,7 +131,7 @@ async function findTypeDefinitions(
     } catch {
         // Ignore errors
     }
-    
+
     // Check common type definition locations
     const commonPaths = [
         'index.d.ts',
@@ -141,14 +141,14 @@ async function findTypeDefinitions(
         'dist/index.d.ts',
         'lib/index.d.ts',
     ];
-    
+
     for (const relPath of commonPaths) {
         const fullPath = normalizePath(`${packagePath}/${relPath}`);
         if (await fileExists(fullPath)) {
             typeFiles.push(fullPath);
         }
     }
-    
+
     return typeFiles;
 }
 
@@ -157,13 +157,13 @@ async function findTypeDefinitions(
  */
 async function findAllTypeFiles(dirPath: string): Promise<string[]> {
     const typeFiles: string[] = [];
-    
+
     try {
         const entries = await readDirectory(dirPath);
-        
+
         for (const entry of entries) {
             const fullPath = normalizePath(`${dirPath}/${entry.name}`);
-            
+
             if (entry.isDirectory) {
                 // Skip node_modules subdirectories to avoid infinite recursion
                 if (entry.name === 'node_modules') {
@@ -179,7 +179,7 @@ async function findAllTypeFiles(dirPath: string): Promise<string[]> {
     } catch (error) {
         // Silently skip directories we can't read
     }
-    
+
     return typeFiles;
 }
 
@@ -191,42 +191,42 @@ async function loadTypesPackages(
     monaco: MonacoInstance
 ): Promise<void> {
     const typesPath = normalizePath(`${projectRoot}/node_modules/@types`);
-    
+
     // Check if @types directory exists
     const entries = await readDirectory(typesPath);
     if (entries.length === 0) {
         return;
     }
-    
+
     // Load each @types package
     for (const entry of entries) {
         if (!entry.isDirectory) continue;
-        
+
         const packagePath = normalizePath(`${typesPath}/${entry.name}`);
-        
+
         // Find all type definition files in the package
         const typeFiles = await findAllTypeFiles(packagePath);
-        
+
         // Also check for package.json specified types
         const pkgTypeFiles = await findTypeDefinitions(packagePath, entry.name);
         const allTypeFiles = [...new Set([...typeFiles, ...pkgTypeFiles])];
-        
+
         for (const typeFile of allTypeFiles) {
             try {
                 const content = await readTextFile(typeFile);
                 const uri = `file:///${typeFile}`;
-                
+
                 // Avoid loading duplicates
                 if (loadedTypeUris.has(uri)) {
                     continue;
                 }
-                
+
                 // Add to Monaco
                 monaco.typescript.typescriptDefaults.addExtraLib(
                     content,
                     uri
                 );
-                
+
                 loadedTypeUris.add(uri);
             } catch (error) {
                 console.warn(`Failed to load type file ${typeFile}:`, error);
@@ -248,24 +248,24 @@ async function loadPackageTypes(
         if (packageName.startsWith('@types/')) {
             continue;
         }
-        
+
         const packagePath = normalizePath(`${projectRoot}/node_modules/${packageName}`);
         const typeFiles = await findTypeDefinitions(packagePath, packageName);
-        
+
         for (const typeFile of typeFiles) {
             try {
                 const content = await readTextFile(typeFile);
                 const uri = `file:///${typeFile}`;
-                
+
                 if (loadedTypeUris.has(uri)) {
                     continue;
                 }
-                
+
                 monaco.typescript.typescriptDefaults.addExtraLib(
                     content,
                     uri
                 );
-                
+
                 loadedTypeUris.add(uri);
             } catch (error) {
                 // Silently skip packages without types
@@ -286,7 +286,7 @@ async function loadViteTypes(
         try {
             const content = await readTextFile(viteEnvPath);
             const uri = `file:///${viteEnvPath}`;
-            
+
             if (!loadedTypeUris.has(uri)) {
                 monaco.typescript.typescriptDefaults.addExtraLib(
                     content,
@@ -309,7 +309,7 @@ function configureCompilerOptions(
     monaco: MonacoInstance
 ): void {
     const compilerOptions = tsConfig?.compilerOptions || {};
-    
+
     const monacoOptions: Monaco.typescript.CompilerOptions = {
         target: monaco.typescript.ScriptTarget.ES2020,
         module: monaco.typescript.ModuleKind.ESNext,
@@ -326,7 +326,7 @@ function configureCompilerOptions(
         strict: true,
         jsx: monaco.typescript.JsxEmit.React,
     };
-    
+
     // Map tsconfig options to Monaco options
     if (compilerOptions.target) {
         const targetMap: Record<string, Monaco.typescript.ScriptTarget> = {
@@ -345,7 +345,7 @@ function configureCompilerOptions(
             monacoOptions.target = targetMap[compilerOptions.target];
         }
     }
-    
+
     if (compilerOptions.module) {
         const moduleMap: Record<string, Monaco.typescript.ModuleKind> = {
             ESNext: monaco.typescript.ModuleKind.ESNext,
@@ -360,11 +360,11 @@ function configureCompilerOptions(
             monacoOptions.module = moduleMap[compilerOptions.module];
         }
     }
-    
+
     if (compilerOptions.lib) {
         monacoOptions.lib = compilerOptions.lib;
     }
-    
+
     if (compilerOptions.moduleResolution) {
         if (compilerOptions.moduleResolution === 'node' || compilerOptions.moduleResolution === 'node16' || compilerOptions.moduleResolution === 'nodenext') {
             monacoOptions.moduleResolution = monaco.typescript.ModuleResolutionKind.NodeJs;
@@ -373,22 +373,22 @@ function configureCompilerOptions(
             monacoOptions.moduleResolution = monaco.typescript.ModuleResolutionKind.NodeJs;
         }
     }
-    
+
     if (compilerOptions.esModuleInterop !== undefined) {
         monacoOptions.esModuleInterop = compilerOptions.esModuleInterop;
     }
-    
+
     if (compilerOptions.allowSyntheticDefaultImports !== undefined) {
         monacoOptions.allowSyntheticDefaultImports = compilerOptions.allowSyntheticDefaultImports;
     }
-    
+
     if (compilerOptions.skipLibCheck !== undefined) {
         monacoOptions.skipLibCheck = compilerOptions.skipLibCheck;
     }
-    
+
     // Apply compiler options
     monaco.typescript.typescriptDefaults.setCompilerOptions(monacoOptions);
-    
+
     // Configure path mappings if present
     if (compilerOptions.baseUrl && compilerOptions.paths) {
         // Monaco uses a different format for path mappings
@@ -396,7 +396,7 @@ function configureCompilerOptions(
         // Note: Monaco's path mapping support is limited, but we can try
         const paths: Record<string, string[]> = {};
         for (const [pattern, replacements] of Object.entries(compilerOptions.paths)) {
-            paths[pattern] = replacements.map(r => 
+            paths[pattern] = replacements.map(r =>
                 normalizePath(`${projectRoot}/${compilerOptions.baseUrl}/${r}`)
             );
         }
@@ -415,19 +415,19 @@ export async function loadProjectTypes(
     if (!projectRoot || !monaco) {
         return;
     }
-    
+
     console.log('Loading project types from:', projectRoot);
-    
+
     // Clear previously loaded types
     loadedTypeUris.clear();
-    
+
     // Read configuration files
     const packageJson = await readPackageJson(projectRoot);
     const tsConfig = await readTsConfig(projectRoot);
-    
+
     // Configure compiler options first
     configureCompilerOptions(tsConfig, projectRoot, monaco);
-    
+
     // Collect all package names from dependencies
     const allPackages: string[] = [];
     if (packageJson) {
@@ -438,16 +438,16 @@ export async function loadProjectTypes(
             allPackages.push(...Object.keys(packageJson.devDependencies));
         }
     }
-    
+
     // Load @types packages
     await loadTypesPackages(projectRoot, monaco);
-    
+
     // Load types from regular packages
     await loadPackageTypes(projectRoot, allPackages, monaco);
-    
+
     // Load Vite-specific types
     await loadViteTypes(projectRoot, monaco);
-    
+
     // Add Node.js types if @types/node is present
     const hasNodeTypes = allPackages.some(pkg => pkg === '@types/node' || pkg.startsWith('@types/node'));
     if (hasNodeTypes) {
@@ -471,7 +471,7 @@ export async function loadProjectTypes(
             console.warn('Failed to load @types/node:', error);
         }
     }
-    
+
     console.log(`Loaded ${loadedTypeUris.size} type definition files`);
 }
 
@@ -480,10 +480,10 @@ export async function loadProjectTypes(
  */
 export function clearProjectTypes(monaco: MonacoInstance): void {
     if (!monaco) return;
-    
+
     // Clear the cache
     loadedTypeUris.clear();
-    
+
     // Reset compiler options to defaults
     monaco.typescript.typescriptDefaults.setCompilerOptions({
         target: monaco.typescript.ScriptTarget.ES2020,
@@ -497,7 +497,7 @@ export function clearProjectTypes(monaco: MonacoInstance): void {
         strict: true,
         jsx: monaco.typescript.JsxEmit.React,
     });
-    
+
     // Note: Monaco doesn't provide a direct way to remove all extra libs
     // They will be replaced when loadProjectTypes is called again
 }

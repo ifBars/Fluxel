@@ -9,6 +9,7 @@ A comprehensive style guide for building a modern, themeable, human-first AI IDE
 **Fluxel** aims to blend the precision of **Cursor** with the approachable, "vibe-coding" aesthetic of **Lovable**. The result should feel:
 
 - **Human-in-the-loop**: Fluxel empowers users to manually edit component options (typography, layout, etc.), treating AI as a collaborator rather than a replacement. This saves tokens and ensures precision.
+- **Lightweight**: Fluxel should be easy to use and understand, with minimal complexity, and should be fast to load and run, with fluent UI/UX that doesn't freeze or leave the user out of the loop.
 - **Visual Uniqueness**: NO default Shadcn/Tailwind styles. Every component must be custom-styled to ensure a unique identity.
 - **Minimalist with depth**: Generous whitespace, but elements have presence via shadows and layering.
 

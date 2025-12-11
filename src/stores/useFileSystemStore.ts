@@ -27,6 +27,8 @@ interface FileSystemState {
     rootPath: string | null;
     /** Gitignore manager instance */
     gitignoreManager: GitignoreManager | null;
+    /** Refresh ignored status for all files in the tree */
+    refreshIgnoredStatus: () => Promise<void>;
 }
 
 /**
@@ -182,6 +184,31 @@ export const useFileSystemStore = create<FileSystemState>((set, get) => ({
             rootPath: null,
             gitignoreManager: null,
         });
+    },
+
+    /**
+     * Refresh ignored status for all entries in the tree
+     */
+    refreshIgnoredStatus: async () => {
+        const { rootEntry, gitignoreManager } = get();
+        if (!rootEntry || !gitignoreManager) return;
+
+        const updateIgnoredStatus = async (entry: FileEntry): Promise<FileEntry> => {
+            const isIgnored = await gitignoreManager.isIgnored(entry.path, entry.isDirectory);
+            const updatedEntry = { ...entry, isIgnored };
+
+            if (entry.children) {
+                const updatedChildren = await Promise.all(
+                    entry.children.map(updateIgnoredStatus)
+                );
+                return { ...updatedEntry, children: updatedChildren };
+            }
+
+            return updatedEntry;
+        };
+
+        const updatedRoot = await updateIgnoredStatus(rootEntry);
+        set({ rootEntry: updatedRoot });
     },
 }));
 

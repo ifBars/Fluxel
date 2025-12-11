@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Github, Moon, Sun, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -170,9 +170,11 @@ export default function AuthPage({ onLogin }: { onLogin: () => void }) {
             </div>
 
             {/* Right Panel - Visual Shader */}
-            <div className="hidden lg:block lg:w-1/2 relative bg-black">
+            <div className="hidden lg:block lg:w-1/2 relative bg-[#050506]">
                 <div className="absolute inset-0 z-0">
-                    <AuthShader />
+                    <Suspense fallback={<div className="w-full h-full bg-[#050506]" />}>
+                        <AuthShader />
+                    </Suspense>
                 </div>
             </div>
         </div>

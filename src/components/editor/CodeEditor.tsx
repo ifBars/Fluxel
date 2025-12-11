@@ -15,6 +15,9 @@ import { useEditorStore, EditorTab } from "../../stores/useEditorStore";
 import { useProjectStore } from "../../stores/useProjectStore";
 import { loadProjectTypes, clearProjectTypes } from "../../lib/monacoTypeLoader";
 import { registerInlineCompletionProvider } from "../../lib/ollama";
+import { registerCSharpLanguage } from "../../lib/csharpConfig";
+import { getCSharpLSPClient } from "../../lib/lspClient";
+import { registerCSharpLSPFeatures } from "../../lib/csharpMonacoIntegration";
 import { File, Save, Circle } from "lucide-react";
 
 // Ensure Monaco workers are resolved by Vite/Tauri instead of the default CDN lookup
@@ -67,12 +70,15 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
         theme, fontSize, showMinimap, showLineNumbers, tabSize, wordWrap,
         autocompleteEnabled, autocompleteModel, autocompleteEndpoint, autocompleteDebounceMs
     } = useSettingsStore();
-    const { updateContent, saveFile, isDirty, pendingReveal, clearPendingReveal, setCursorPosition } = useEditorStore();
+    const { updateContent, saveFile, isDirty, pendingReveal, clearPendingReveal, setCursorPosition, openFile } = useEditorStore();
     const { currentProject } = useProjectStore();
     const monaco = useMonaco() as unknown as typeof Monaco;
     const [isSaving, setIsSaving] = useState(false);
     const [editorInstance, setEditorInstance] = useState<Monaco.editor.IStandaloneCodeEditor | null>(null);
     const autocompleteDisposableRef = useRef<{ dispose: () => void } | null>(null);
+    const lspClientRef = useRef(getCSharpLSPClient());
+    const lspInitializedRef = useRef(false);
+    const docVersionsRef = useRef<Record<string, number>>({});
 
     // When switching tabs, wait for the new editor instance before revealing a position.
     useEffect(() => {
@@ -125,6 +131,17 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
         };
     }, [monaco, currentProject?.rootPath]);
 
+    // Register C# language configuration and LSP features
+    useEffect(() => {
+        if (!monaco) return;
+        registerCSharpLanguage(monaco);
+        const lspFeatures = registerCSharpLSPFeatures(monaco);
+
+        return () => {
+            lspFeatures.dispose();
+        };
+    }, [monaco]);
+
     // Define custom Fluxel themes
     useEffect(() => {
         if (!monaco) return;
@@ -133,7 +150,32 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
         monaco.editor.defineTheme("fluxel-dark", {
             base: "vs-dark",
             inherit: true,
-            rules: [],
+            rules: [
+                // C# syntax highlighting rules
+                { token: 'keyword', foreground: 'c586c0', fontStyle: 'bold' },
+                { token: 'keyword.type', foreground: '4ec9b0' },
+                { token: 'keyword.preprocessor', foreground: '9b9b9b' },
+                { token: 'string', foreground: 'ce9178' },
+                { token: 'string.escape', foreground: 'd7ba7d' },
+                { token: 'string.char', foreground: 'ce9178' },
+                { token: 'string.invalid', foreground: 'f44747' },
+                { token: 'number', foreground: 'b5cea8' },
+                { token: 'number.hex', foreground: 'b5cea8' },
+                { token: 'number.binary', foreground: 'b5cea8' },
+                { token: 'number.float', foreground: 'b5cea8' },
+                { token: 'comment', foreground: '6a9955', fontStyle: 'italic' },
+                { token: 'comment.doc', foreground: '6a9955', fontStyle: 'italic' },
+                { token: 'operator', foreground: 'd4d4d4' },
+                { token: 'delimiter', foreground: 'd4d4d4' },
+                { token: 'delimiter.angle', foreground: 'd4d4d4' },
+                { token: 'delimiter.square', foreground: 'd4d4d4' },
+                { token: 'delimiter.parenthesis', foreground: 'd4d4d4' },
+                { token: 'attribute', foreground: '4fc1ff' },
+                // Type names (class names, interface names, etc.) - distinct cyan/teal color
+                { token: 'type.identifier', foreground: '4ec9b0', fontStyle: 'bold' },
+                // Regular identifiers (variable names, method names) - lighter blue
+                { token: 'identifier', foreground: '9cdcfe' },
+            ],
             colors: {
                 "editor.background": "#1a1a1a",
                 "editorCursor.foreground": "#f97316",
@@ -146,7 +188,32 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
         monaco.editor.defineTheme("fluxel-light", {
             base: "vs",
             inherit: true,
-            rules: [],
+            rules: [
+                // C# syntax highlighting rules
+                { token: 'keyword', foreground: '0000ff', fontStyle: 'bold' },
+                { token: 'keyword.type', foreground: '0078d4' },
+                { token: 'keyword.preprocessor', foreground: '808080' },
+                { token: 'string', foreground: 'a31515' },
+                { token: 'string.escape', foreground: 'bf8803' },
+                { token: 'string.char', foreground: 'a31515' },
+                { token: 'string.invalid', foreground: 'cd3131' },
+                { token: 'number', foreground: '098658' },
+                { token: 'number.hex', foreground: '098658' },
+                { token: 'number.binary', foreground: '098658' },
+                { token: 'number.float', foreground: '098658' },
+                { token: 'comment', foreground: '008000', fontStyle: 'italic' },
+                { token: 'comment.doc', foreground: '008000', fontStyle: 'italic' },
+                { token: 'operator', foreground: '000000' },
+                { token: 'delimiter', foreground: '000000' },
+                { token: 'delimiter.angle', foreground: '000000' },
+                { token: 'delimiter.square', foreground: '000000' },
+                { token: 'delimiter.parenthesis', foreground: '000000' },
+                { token: 'attribute', foreground: '2b91af' },
+                // Type names (class names, interface names, etc.) - distinct blue/teal color
+                { token: 'type.identifier', foreground: '0078d4', fontStyle: 'bold' },
+                // Regular identifiers (variable names, method names) - darker blue
+                { token: 'identifier', foreground: '001080' },
+            ],
             colors: {
                 "editor.background": "#fafafa",
                 "editorCursor.foreground": "#f97316",
@@ -160,50 +227,29 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
 
     // Register Ollama inline completion provider
     useEffect(() => {
-        console.log("[CodeEditor] Inline completion provider effect", {
-            monacoAvailable: !!monaco,
-            autocompleteEnabled,
-            autocompleteEndpoint,
-            autocompleteModel,
-            autocompleteDebounceMs,
-            hasExistingDisposable: !!autocompleteDisposableRef.current,
-        });
-
         if (!monaco) {
-            console.log("[CodeEditor] Monaco not available, skipping provider registration");
             return;
         }
 
         // Dispose previous provider if exists
         if (autocompleteDisposableRef.current) {
-            console.log("[CodeEditor] Disposing previous inline completion provider");
             autocompleteDisposableRef.current.dispose();
             autocompleteDisposableRef.current = null;
         }
 
         // Only register if autocomplete is enabled
         if (!autocompleteEnabled) {
-            console.log("[CodeEditor] Autocomplete disabled, not registering provider");
             return;
         }
 
         // Register the inline completion provider
-        console.log("[CodeEditor] Registering inline completion provider", {
-            endpoint: autocompleteEndpoint,
-            model: autocompleteModel,
-            debounceMs: autocompleteDebounceMs,
-        });
         autocompleteDisposableRef.current = registerInlineCompletionProvider(monaco, {
             endpoint: autocompleteEndpoint,
             model: autocompleteModel,
             debounceMs: autocompleteDebounceMs,
         });
-        console.log("[CodeEditor] Provider registered", {
-            disposableAvailable: !!autocompleteDisposableRef.current,
-        });
 
         return () => {
-            console.log("[CodeEditor] Cleaning up inline completion provider");
             if (autocompleteDisposableRef.current) {
                 autocompleteDisposableRef.current.dispose();
                 autocompleteDisposableRef.current = null;
@@ -211,29 +257,255 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
         };
     }, [monaco, autocompleteEnabled, autocompleteEndpoint, autocompleteModel, autocompleteDebounceMs]);
 
+    const [lspReady, setLspReady] = useState(false);
+
+    // Restart LSP client when workspace changes or closes
+    useEffect(() => {
+        const lspClient = lspClientRef.current;
+        (async () => {
+            // If the workspace is removed, stop the server
+            if (!currentProject?.rootPath && lspInitializedRef.current) {
+                await lspClient.stop();
+                lspInitializedRef.current = false;
+                setLspReady(false);
+                docVersionsRef.current = {};
+                return;
+            }
+
+            // If workspace changes, restart the server
+            if (
+                currentProject?.rootPath &&
+                lspClient.getWorkspaceRoot() &&
+                lspClient.getWorkspaceRoot() !== currentProject.rootPath
+            ) {
+                await lspClient.stop();
+                // Wait a moment for the process to fully terminate
+                await new Promise(resolve => setTimeout(resolve, 500));
+                lspInitializedRef.current = false;
+                setLspReady(false);
+                docVersionsRef.current = {};
+            }
+        })();
+    }, [currentProject?.rootPath]);
+
+    // Initializer
+    useEffect(() => {
+        const lspClient = lspClientRef.current;
+
+        // Only initialize once per project
+        if (activeTab?.language === 'csharp' && currentProject?.rootPath && !lspInitializedRef.current) {
+            lspInitializedRef.current = true;
+            setLspReady(false);
+
+            lspClient.start(currentProject.rootPath)
+                .then(() => {
+                    // Initialize the language server
+                    return lspClient.initialize(currentProject.rootPath);
+                })
+                .then(() => {
+                    setLspReady(true);
+                })
+                .catch(async (error) => {
+                    console.error('[CodeEditor] Failed to start LSP:', error);
+
+                    // Check if this is the MSBuild assembly loading error
+                    const errorMsg = typeof error === 'object' && error?.message ? error.message : String(error);
+                    if (errorMsg.includes('MSBuild assemblies were already loaded') ||
+                        errorMsg.includes('RegisterInstance')) {
+                        console.error('[CodeEditor] MSBuild assembly conflict detected. Try closing and reopening Fluxel.');
+                    }
+
+                    // If initialization failed, make sure to stop the server process
+                    // to avoid leaving zombie processes with loaded MSBuild assemblies
+                    try {
+                        await lspClient.stop();
+                        // Wait for process cleanup
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    } catch (stopError) {
+                        console.error('[CodeEditor] Error stopping LSP after failure:', stopError);
+                    }
+
+                    lspInitializedRef.current = false; // Allow retry on error
+                    setLspReady(false);
+                });
+        }
+
+        return () => {
+            // No cleanup needed here
+        };
+    }, [currentProject?.rootPath, activeTab?.language]);
+
+    // Send textDocument/didOpen when C# file is opened
+    useEffect(() => {
+        const lspClient = lspClientRef.current;
+
+        if (activeTab?.language === 'csharp' && lspReady && activeTab) {
+            const uri = `file:///${activeTab.path.replace(/\\/g, '/')}`;
+            docVersionsRef.current[uri] = 1;
+
+            lspClient.sendNotification('textDocument/didOpen', {
+                textDocument: {
+                    uri,
+                    languageId: 'csharp',
+                    version: 1,
+                    text: activeTab.content,
+                },
+            }).catch((error) => {
+                console.error('[CodeEditor] Failed to send didOpen:', error);
+            });
+
+            // Send didClose when the tab changes or component unmounts
+            return () => {
+                lspClient.sendNotification('textDocument/didClose', {
+                    textDocument: {
+                        uri,
+                    },
+                }).catch((error) => {
+                    console.error('[CodeEditor] Failed to send didClose:', error);
+                });
+                delete docVersionsRef.current[uri];
+            };
+        }
+    }, [activeTab?.id, activeTab?.language, activeTab?.path, lspReady]);
+
+    // Handle pending editor actions (from menu)
+    useEffect(() => {
+        if (!editorInstance || !useEditorStore.getState().pendingAction) return;
+
+        const unsubscribe = useEditorStore.subscribe((state) => {
+            const action = state.pendingAction;
+            if (!action || !editorInstance) return;
+
+            // Execute the action
+            switch (action) {
+                case 'undo':
+                    editorInstance.trigger('menu', 'undo', null);
+                    break;
+                case 'redo':
+                    editorInstance.trigger('menu', 'redo', null);
+                    break;
+                case 'cut':
+                    editorInstance.trigger('menu', 'editor.action.clipboardCutAction', null);
+                    break;
+                case 'copy':
+                    editorInstance.trigger('menu', 'editor.action.clipboardCopyAction', null);
+                    break;
+                case 'paste':
+                    editorInstance.trigger('menu', 'editor.action.clipboardPasteAction', null);
+                    break;
+                case 'selectAll':
+                    editorInstance.setSelection(editorInstance.getModel()?.getFullModelRange() || new monaco.Selection(1, 1, 1, 1));
+                    break;
+                case 'find':
+                    editorInstance.trigger('menu', 'actions.find', null);
+                    break;
+                case 'replace':
+                    editorInstance.trigger('menu', 'editor.action.startFindReplaceAction', null);
+                    break;
+                case 'gotoLine':
+                    editorInstance.trigger('menu', 'editor.action.gotoLine', null);
+                    break;
+                case 'formatDocument':
+                    editorInstance.trigger('menu', 'editor.action.formatDocument', null);
+                    break;
+                case 'fold':
+                    editorInstance.trigger('menu', 'editor.fold', null);
+                    break;
+                case 'unfold':
+                    editorInstance.trigger('menu', 'editor.unfold', null);
+                    break;
+            }
+
+            // Clear the action after execution
+            useEditorStore.getState().clearPendingAction();
+        });
+
+        return () => unsubscribe();
+    }, [editorInstance]);
+
     // Handle save keyboard shortcut
     const handleSave = useCallback(async () => {
         if (activeTab && !isSaving) {
             setIsSaving(true);
             try {
                 await saveFile(activeTab.id);
+
+                // Notify LSP server of save events for C#
+                if (activeTab.language === 'csharp' && lspReady) {
+                    const lspClient = lspClientRef.current;
+                    const uri = `file:///${activeTab.path.replace(/\\/g, '/')}`;
+                    await lspClient.sendNotification('textDocument/didSave', {
+                        textDocument: { uri },
+                        text: activeTab.content,
+                    }).catch((error) => {
+                        console.error('[CodeEditor] Failed to send didSave:', error);
+                    });
+                }
             } finally {
                 setIsSaving(false);
             }
         }
-    }, [activeTab, saveFile, isSaving]);
+    }, [activeTab, saveFile, isSaving, lspReady]);
 
     // Handle content changes
     const handleEditorChange = useCallback((value: string | undefined) => {
         if (activeTab && value !== undefined) {
             updateContent(activeTab.id, value);
+
+            // Send textDocument/didChange for C# files
+            if (activeTab.language === 'csharp' && lspReady) {
+                const lspClient = lspClientRef.current;
+                const uri = `file:///${activeTab.path.replace(/\\/g, '/')}`;
+                const nextVersion = (docVersionsRef.current[uri] ?? 1) + 1;
+                docVersionsRef.current[uri] = nextVersion;
+                lspClient.sendNotification('textDocument/didChange', {
+                    textDocument: {
+                        uri,
+                        version: nextVersion,
+                    },
+                    contentChanges: [
+                        {
+                            text: value,
+                        },
+                    ],
+                }).catch((error) => {
+                    console.error('[CodeEditor] Failed to send didChange:', error);
+                });
+            }
         }
-    }, [activeTab, updateContent]);
+    }, [activeTab, updateContent, lspReady]);
 
     // Handle editor mount (for future extensions)
     const handleEditorMount = useCallback((editor: Monaco.editor.IStandaloneCodeEditor) => {
         setEditorInstance(editor);
-    }, []);
+
+        // Override the openCodeEditor handler so "Go to Definition" works across files
+        // Monaco's editor.ICodeEditorService.openCodeEditor is called when navigating to definitions
+        const editorService = (editor as any)._codeEditorService;
+        if (editorService) {
+            const originalOpenCodeEditor = editorService.openCodeEditor.bind(editorService);
+            editorService.openCodeEditor = async (
+                input: { resource: Monaco.Uri; options?: { selection?: Monaco.IRange } },
+                source: any,
+                sideBySide?: boolean
+            ) => {
+                // Try opening in the UI first
+                const targetPath = input.resource.path.startsWith('/')
+                    ? input.resource.path.substring(1)
+                    : input.resource.path;
+                const normalizedPath = targetPath.replace(/\//g, '/');
+
+                // Open the file via the editor store
+                await openFile(normalizedPath, {
+                    line: input.options?.selection?.startLineNumber ?? 1,
+                    column: input.options?.selection?.startColumn ?? 1,
+                });
+
+                // Return the editor for that model (if it exists)
+                return originalOpenCodeEditor(input, source, sideBySide);
+            };
+        }
+    }, [openFile]);
 
     // Track cursor position changes
     useEffect(() => {

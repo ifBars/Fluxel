@@ -28,6 +28,20 @@ export interface CursorPosition {
     selectionLength: number;
 }
 
+export type EditorAction =
+    | 'undo'
+    | 'redo'
+    | 'cut'
+    | 'copy'
+    | 'paste'
+    | 'selectAll'
+    | 'find'
+    | 'replace'
+    | 'gotoLine'
+    | 'formatDocument'
+    | 'fold'
+    | 'unfold';
+
 interface EditorState {
     /** List of open tabs */
     tabs: EditorTab[];
@@ -41,6 +55,9 @@ interface EditorState {
     } | null;
     /** Current cursor position for the active tab */
     cursorPosition: CursorPosition | null;
+
+    /** Pending editor action to be executed by CodeEditor */
+    pendingAction: EditorAction | null;
 
     /** Open a file in a new tab (or focus if already open) */
     openFile: (path: string, position?: EditorPosition) => Promise<void>;
@@ -69,6 +86,11 @@ interface EditorState {
     clearPendingReveal: () => void;
     /** Update cursor position */
     setCursorPosition: (position: CursorPosition | null) => void;
+
+    /** Trigger an editor action */
+    triggerAction: (action: EditorAction) => void;
+    /** Clear pending action */
+    clearPendingAction: () => void;
 }
 
 /**
@@ -78,11 +100,20 @@ function generateId(): string {
     return `tab-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+/**
+ * Check if a file path is a .gitignore file
+ */
+function isGitignoreFile(path: string): boolean {
+    const normalized = path.replace(/\\/g, '/');
+    return normalized.endsWith('/.gitignore') || normalized === '.gitignore';
+}
+
 export const useEditorStore = create<EditorState>((set, get) => ({
     tabs: [],
     activeTabId: null,
     pendingReveal: null,
     cursorPosition: null,
+    pendingAction: null,
 
     openFile: async (path: string, position?: EditorPosition) => {
         const { tabs, setActiveTab } = get();
@@ -204,6 +235,18 @@ export const useEditorStore = create<EditorState>((set, get) => ({
                     t.id === id ? { ...t, originalContent: t.content } : t
                 ),
             }));
+
+            // If this is a .gitignore file, refresh the file tree
+            if (isGitignoreFile(tab.path)) {
+                // Import dynamically to avoid circular dependency
+                import('./useFileSystemStore').then(({ useFileSystemStore }) => {
+                    const { gitignoreManager, refreshIgnoredStatus } = useFileSystemStore.getState();
+                    if (gitignoreManager) {
+                        gitignoreManager.reset();
+                        refreshIgnoredStatus();
+                    }
+                });
+            }
         } catch (error) {
             console.error('Failed to save file:', tab.path, error);
         }
@@ -230,4 +273,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     clearPendingReveal: () => set({ pendingReveal: null }),
 
     setCursorPosition: (position) => set({ cursorPosition: position }),
+
+    triggerAction: (action) => set({ pendingAction: action }),
+
+    clearPendingAction: () => set({ pendingAction: null }),
 }));

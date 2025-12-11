@@ -29,46 +29,47 @@ export default function ActivityBar({ onSettingsClick, sidebarPanelRef }: Activi
     };
 
     return (
-        <div 
-            className="w-12 flex flex-col items-center bg-muted/40 border-r border-border h-full"
+        <div
+            className="flex flex-col items-center bg-muted/40 border-r border-border h-full"
             style={{
+                width: 'var(--activity-bar-width, 3rem)',
                 paddingTop: 'var(--density-padding-md, 0.75rem)',
                 paddingBottom: 'var(--density-padding-md, 0.75rem)',
             }}
         >
-            <div 
+            <div
                 className="flex-1 flex flex-col"
                 style={{ gap: 'var(--density-gap-md, 0.75rem)' }}
             >
                 <ActivityButton
-                    icon={<Files size={20} />}
+                    icon={<Files style={{ width: 'var(--activity-bar-icon-size, 1.25rem)', height: 'var(--activity-bar-icon-size, 1.25rem)' }} />}
                     label="Files"
                     isActive={activeActivity === 'files' && isSidebarOpen}
                     onClick={() => handleActivityClick('files')}
                 />
                 <ActivityButton
-                    icon={<Search size={20} />}
+                    icon={<Search style={{ width: 'var(--activity-bar-icon-size, 1.25rem)', height: 'var(--activity-bar-icon-size, 1.25rem)' }} />}
                     label="Search"
                     isActive={activeActivity === 'search' && isSidebarOpen}
                     onClick={() => handleActivityClick('search')}
                 />
                 <ActivityButton
-                    icon={<GitBranch size={20} />}
+                    icon={<GitBranch style={{ width: 'var(--activity-bar-icon-size, 1.25rem)', height: 'var(--activity-bar-icon-size, 1.25rem)' }} />}
                     label="Git"
                     isActive={activeActivity === 'git' && isSidebarOpen}
                     onClick={() => handleActivityClick('git')}
                 />
             </div>
 
-            <div 
+            <div
                 className="flex flex-col"
-                style={{ 
+                style={{
                     gap: 'var(--density-gap-md, 0.75rem)',
                     marginBottom: 'var(--density-padding-md, 0.75rem)',
                 }}
             >
                 <ActivityButton
-                    icon={<Settings size={20} />}
+                    icon={<Settings style={{ width: 'var(--activity-bar-icon-size, 1.25rem)', height: 'var(--activity-bar-icon-size, 1.25rem)' }} />}
                     label="Settings"
                     isActive={false}
                     onClick={onSettingsClick}
@@ -84,8 +85,8 @@ function ActivityButton({ icon, label, isActive, onClick }: { icon: React.ReactN
             onClick={onClick}
             title={label}
             className={`rounded-md transition-all duration-200 relative group ${isActive
-                    ? "text-primary"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                ? "text-primary"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
                 }`}
             style={{
                 padding: 'var(--density-padding-md, 0.75rem)',

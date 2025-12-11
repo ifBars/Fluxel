@@ -84,7 +84,11 @@ export default function TabBar() {
     return (
         <div
             className="flex items-center overflow-x-auto scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
-            style={{ gap: 'var(--density-gap-sm, 0.125rem)' }}
+            style={{
+                gap: 'var(--density-gap-sm, 0.125rem)',
+                height: 'var(--tab-bar-height, 2.25rem)',
+                fontSize: 'var(--tab-bar-font-size, 0.8125rem)',
+            }}
         >
             {tabs.map((tab) => {
                 const isActive = tab.id === activeTabId;
