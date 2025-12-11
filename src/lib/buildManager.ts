@@ -1,7 +1,6 @@
 import { Command } from '@tauri-apps/plugin-shell';
 import { buildCSharpProject } from './csharpBuild';
-import { useCSharpStore } from '@/stores/useCSharpStore';
-import type { BuildSystem } from '@/stores/useSettingsStore';
+import { useCSharpStore, type BuildSystem } from '@/stores';
 
 export interface BuildOptions {
     projectRoot: string;

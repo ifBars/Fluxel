@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, Loader2, CheckCircle2, XCircle, Terminal, Copy, Check } from 'lucide-react';
-import { useBuildPanelStore } from '@/stores/useBuildPanelStore';
+import { useBuildPanelStore } from '@/stores';
 import ScrollableArea from '@/components/ui/scrollable-area';
 
 export default function BuildPanel() {

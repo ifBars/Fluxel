@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { useSettingsStore } from '@/stores/useSettingsStore';
+import { useSettingsStore } from '@/stores';
 import { getReactIconsFileIcon } from './packs/reactIconsPack';
 import { getLucideFileIcon } from './packs/lucidePack';
 import { getReactFileIcon, getExuanboFileIcon, getMaterialFileIcon } from './packs/others';

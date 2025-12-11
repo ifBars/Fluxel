@@ -1,6 +1,6 @@
 import { forwardRef, type HTMLAttributes, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
-import { useSettingsStore } from '@/stores/useSettingsStore';
+import { useSettingsStore } from '@/stores';
 
 interface ScrollableAreaProps extends HTMLAttributes<HTMLDivElement> {
     children: ReactNode;

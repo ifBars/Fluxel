@@ -5,8 +5,7 @@ import {
     MdFolderOpen
 } from 'react-icons/md';
 
-import { useFileSystemStore } from '@/stores/useFileSystemStore';
-import { useEditorStore } from '@/stores/useEditorStore';
+import { useFileSystemStore, useEditorStore } from '@/stores';
 import type { FileEntry } from '@/types/fs';
 import { getFileExtension } from '@/types/fs';
 import { useFileIcon } from '@/lib/icons';

@@ -1,4 +1,4 @@
-import { useWorkbenchStore } from "../../stores/useWorkbenchStore";
+import { useWorkbenchStore } from "@/stores";
 import FileTree from "./FileTree";
 import SearchPanel from "./SearchPanel";
 import ScrollableArea from "../ui/scrollable-area";

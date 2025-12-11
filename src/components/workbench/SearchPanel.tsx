@@ -1,8 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { ChevronRight, ChevronDown, File, Loader2, AlertCircle, Search as SearchIcon } from 'lucide-react';
-import { useProjectStore } from '@/stores/useProjectStore';
-import { useEditorStore } from '@/stores/useEditorStore';
+import { useProjectStore, useEditorStore } from '@/stores';
 
 interface SearchMatch {
     file_path: string;

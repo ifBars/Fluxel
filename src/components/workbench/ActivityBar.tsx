@@ -1,7 +1,7 @@
 import { RefObject } from "react";
 import { Files, Search, GitBranch, Settings } from "lucide-react";
 import { ImperativePanelHandle } from "react-resizable-panels";
-import { useWorkbenchStore, ActivityItem } from "../../stores/useWorkbenchStore";
+import { useWorkbenchStore, type ActivityItem } from "@/stores";
 
 interface ActivityBarProps {
     onSettingsClick: () => void;

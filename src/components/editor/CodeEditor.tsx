@@ -10,10 +10,9 @@ import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker"
 // Use the bundled Monaco instead of the CDN loader (avoids tracking-prevention blocks)
 loader.config({ monaco: monacoApi });
 import { useEffect, useCallback, useState, useRef } from "react";
-import { useSettingsStore } from "../../stores/useSettingsStore";
-import { useEditorStore, EditorTab } from "../../stores/useEditorStore";
-import { useProjectStore } from "../../stores/useProjectStore";
+import { useSettingsStore, useEditorStore, type EditorTab, useProjectStore } from "@/stores";
 import { loadProjectTypes, clearProjectTypes } from "../../lib/monacoTypeLoader";
+import { registerProjectSourceFiles, clearProjectSourceModels } from "../../lib/monacoProjectSourceManager";
 import { registerInlineCompletionProvider } from "../../lib/ollama";
 import { registerCSharpLanguage } from "../../lib/csharpConfig";
 import { getCSharpLSPClient } from "../../lib/lspClient";
@@ -115,18 +114,26 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
 
         // Load project types if a project is open
         if (currentProject?.rootPath) {
-            loadProjectTypes(currentProject.rootPath, monaco).catch((error) => {
-                console.error("Failed to load project types:", error);
-            });
+            // First load external type definitions from node_modules
+            loadProjectTypes(currentProject.rootPath, monaco)
+                .then(() => {
+                    // Then register project source files and set up path aliases
+                    return registerProjectSourceFiles(currentProject.rootPath, monaco);
+                })
+                .catch((error) => {
+                    console.error("Failed to load project:", error);
+                });
         } else {
             // Clear types if no project is open
             clearProjectTypes(monaco);
+            clearProjectSourceModels(monaco);
         }
 
         // Cleanup on unmount or project change
         return () => {
             if (monaco && !currentProject?.rootPath) {
                 clearProjectTypes(monaco);
+                clearProjectSourceModels(monaco);
             }
         };
     }, [monaco, currentProject?.rootPath]);

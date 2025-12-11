@@ -32,7 +32,7 @@ import type {
     DependencyInfo,
     Framework,
 } from './schemas/metadata-types';
-import { useConfigMetadataStore } from '@/stores/useConfigMetadataStore';
+import { useConfigMetadataStore } from '@/stores';
 
 /**
  * Parse package.json file

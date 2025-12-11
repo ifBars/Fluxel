@@ -1,9 +1,6 @@
 import { useState, useRef } from "react";
 import { Panel, PanelGroup, PanelResizeHandle, ImperativePanelHandle } from "react-resizable-panels";
-import { useWorkbenchStore } from "../../stores/useWorkbenchStore";
-import { useEditorStore } from "../../stores/useEditorStore";
-import { useSettingsStore, densityConfigs } from "../../stores/useSettingsStore";
-import { useBuildPanelStore } from "../../stores/useBuildPanelStore";
+import { useWorkbenchStore, useEditorStore, useSettingsStore, densityConfigs, useBuildPanelStore } from "@/stores";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import ActivityBar from "./ActivityBar";
 import Sidebar from "./SideBar";

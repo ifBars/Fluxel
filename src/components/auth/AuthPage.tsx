@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Github, Moon, Sun, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AuthShader } from "./AuthShader";
-import { useSettingsStore, type AccentColor } from "@/stores/useSettingsStore";
+import { useSettingsStore, type AccentColor } from "@/stores";
 
 const accentColors: { value: AccentColor; label: string; color: string }[] = [
     { value: 'orange', label: 'Orange', color: 'bg-[#f97316]' },

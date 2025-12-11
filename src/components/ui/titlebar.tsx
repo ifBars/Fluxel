@@ -2,13 +2,16 @@ import { useState, useEffect } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
 import { X, Minus, Square } from "lucide-react";
-import { useProjectStore } from "@/stores/useProjectStore";
-import { useFileSystemStore } from "@/stores/useFileSystemStore";
-import { useEditorStore } from "@/stores/useEditorStore";
-import { useSettingsStore, UIDensity } from "@/stores/useSettingsStore";
-import { useWorkbenchStore } from "@/stores/useWorkbenchStore";
-import { useBuildPanelStore } from "@/stores/useBuildPanelStore";
-import { useCSharpStore } from "@/stores/useCSharpStore";
+import {
+  useProjectStore,
+  useFileSystemStore,
+  useEditorStore,
+  useSettingsStore,
+  type UIDensity,
+  useWorkbenchStore,
+  useBuildPanelStore,
+  useCSharpStore
+} from "@/stores";
 import { loadConfigMetadata } from "@/lib/config/loader";
 import { executeBuild, executeTypeCheck } from "@/lib/buildManager";
 import { TitlebarDropdown } from "./TitlebarDropdown";
@@ -195,7 +198,7 @@ export function TitleBar({ showMenu = true, onCloseProject }: TitleBarProps) {
   };
 
   // Helper for triggering editor actions
-  const action = (act: import("@/stores/useEditorStore").EditorAction) => {
+  const action = (act: import("@/stores").EditorAction) => {
     triggerAction(act);
     closeMenu();
   };

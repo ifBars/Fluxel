@@ -11,14 +11,14 @@ import type * as Monaco from 'monaco-editor';
 // Type alias for Monaco instance
 type MonacoInstance = typeof Monaco;
 
-interface PackageJson {
+export interface PackageJson {
     dependencies?: Record<string, string>;
     devDependencies?: Record<string, string>;
     types?: string;
     typings?: string;
 }
 
-interface TsConfig {
+export interface TsConfig {
     compilerOptions?: {
         target?: string;
         module?: string;
@@ -44,7 +44,7 @@ const loadedTypeUris = new Set<string>();
 /**
  * Normalize path separators for cross-platform compatibility
  */
-function normalizePath(path: string): string {
+export function normalizePath(path: string): string {
     return path.replace(/\\/g, '/');
 }
 
@@ -64,7 +64,7 @@ async function readPackageJson(projectRoot: string): Promise<PackageJson | null>
 /**
  * Read and parse tsconfig.json
  */
-async function readTsConfig(projectRoot: string): Promise<TsConfig | null> {
+export async function readTsConfig(projectRoot: string): Promise<TsConfig | null> {
     try {
         const content = await readTextFile(normalizePath(`${projectRoot}/tsconfig.json`));
         return JSON.parse(content) as TsConfig;
@@ -77,7 +77,7 @@ async function readTsConfig(projectRoot: string): Promise<TsConfig | null> {
 /**
  * Check if a file exists
  */
-async function fileExists(path: string): Promise<boolean> {
+export async function fileExists(path: string): Promise<boolean> {
     try {
         await readTextFile(path);
         return true;
@@ -89,7 +89,7 @@ async function fileExists(path: string): Promise<boolean> {
 /**
  * Read a directory and return entries
  */
-async function readDirectory(path: string): Promise<Array<{ name: string; isDirectory: boolean }>> {
+export async function readDirectory(path: string): Promise<Array<{ name: string; isDirectory: boolean }>> {
     try {
         const entries = await readDir(path);
         return entries.map(entry => ({

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-import { useEditorStore } from '@/stores/useEditorStore';
+import { useEditorStore } from '@/stores';
 
 export default function TabBar() {
     const {

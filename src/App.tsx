@@ -1,12 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { listen } from "@tauri-apps/api/event";
 import AuthPage from "./components/auth/AuthPage";
 import LandingPage from "./components/landing/LandingPage";
 import EditorPage from "./components/editor/EditorPage";
 import { TitleBar } from "./components/ui/titlebar";
-import { useSettingsStore } from "./stores/useSettingsStore";
-import { useEditorStore } from "./stores/useEditorStore";
-import { useFileSystemStore } from "./stores/useFileSystemStore";
-import { useProjectStore } from "./stores/useProjectStore";
+import { useSettingsStore, useEditorStore, useFileSystemStore, useProjectStore } from "@/stores";
+import { loadConfigMetadata } from "./lib/config/loader";
 import "./styles/index.css";
 
 type AppView = "auth" | "landing" | "editor";
@@ -15,8 +14,8 @@ function App() {
   const [currentView, setCurrentView] = useState<AppView>("auth");
   const initAppearance = useSettingsStore((state) => state.initAppearance);
   const { closeAllTabs } = useEditorStore();
-  const { clearTree } = useFileSystemStore();
-  const { closeProject } = useProjectStore();
+  const { clearTree, loadDirectory } = useFileSystemStore();
+  const { closeProject, openProject } = useProjectStore();
 
   // Initialize appearance settings on mount
   useEffect(() => {
@@ -37,6 +36,42 @@ function App() {
     closeProject();
     setCurrentView("landing");
   };
+
+  const openExternalProject = useCallback(
+    async (rootPath: string) => {
+      clearTree();
+      openProject(rootPath);
+      await loadDirectory(rootPath);
+
+      // Load config metadata in the background
+      loadConfigMetadata(rootPath).catch((error) => {
+        console.error("Failed to load config metadata:", error);
+      });
+
+      setCurrentView("editor");
+    },
+    [clearTree, loadDirectory, openProject],
+  );
+
+  // Listen for paths emitted from the backend (context menu launch)
+  useEffect(() => {
+    const unlistenPromise = listen<string>("external-open", async (event) => {
+      const rootPath = event.payload;
+      if (!rootPath) return;
+
+      try {
+        await openExternalProject(rootPath);
+      } catch (error) {
+        console.error("Failed to open project from external event:", error);
+      }
+    });
+
+    return () => {
+      unlistenPromise
+        .then((unlisten) => unlisten())
+        .catch(() => {});
+    };
+  }, [openExternalProject]);
 
   const renderView = () => {
     switch (currentView) {

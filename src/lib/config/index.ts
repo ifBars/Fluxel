@@ -6,7 +6,7 @@
 
 export { loadConfigMetadata, getConfigMetadata } from './loader';
 export { parseViteConfig } from './parsers/vite';
-export { useConfigMetadataStore } from '@/stores/useConfigMetadataStore';
+export { useConfigMetadataStore } from '@/stores';
 
 // Re-export types and constants
 export type {

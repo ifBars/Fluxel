@@ -6,8 +6,7 @@ import {
     Type, Eye, Indent, WrapText, Save,
     Maximize2, Sidebar as SidebarIcon, Sparkles, ExternalLink, Hammer
 } from "lucide-react";
-import { useSettingsStore, type SettingsState, Theme, AccentColor, UIDensity } from "../../stores/useSettingsStore";
-import { useWorkbenchStore, type WorkbenchState, EditorMode } from "../../stores/useWorkbenchStore";
+import { useSettingsStore, type SettingsState, type Theme, type AccentColor, type UIDensity, useWorkbenchStore, type WorkbenchState, type EditorMode } from "@/stores";
 import { RECOMMENDED_MODELS } from "../../lib/ollama";
 
 type SettingsSection = 'appearance' | 'editor' | 'autocomplete' | 'workbench' | 'build' | 'shortcuts';
@@ -763,7 +762,7 @@ function ShortcutsSection() {
 
 // Build Section
 function BuildSection({ settings }: { settings: SettingsState }) {
-    const buildSystems: { value: import("../../stores/useSettingsStore").BuildSystem; label: string; description: string }[] = [
+    const buildSystems: { value: import("@/stores").BuildSystem; label: string; description: string }[] = [
         { value: 'auto', label: 'Auto-Detect', description: 'Automatically detect project type' },
         { value: 'dotnet', label: '.NET', description: 'Build with dotnet build' },
         { value: 'bun', label: 'Bun', description: 'Build with bun run build' },

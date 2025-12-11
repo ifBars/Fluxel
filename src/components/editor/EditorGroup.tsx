@@ -1,6 +1,5 @@
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { useWorkbenchStore } from "../../stores/useWorkbenchStore";
-import { useEditorStore } from "../../stores/useEditorStore";
+import { useWorkbenchStore, useEditorStore } from "@/stores";
 import CodeEditor from "./CodeEditor";
 import VisualEditor from "./VisualEditor";
 import TabBar from "./TabBar";

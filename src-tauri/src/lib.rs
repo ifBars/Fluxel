@@ -9,8 +9,10 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
-use tauri::async_runtime::spawn_blocking;
+use std::time::Duration;
+use tauri::{async_runtime::spawn_blocking, Emitter, Manager};
 use tokio::process::Command;
+use tokio::time::sleep;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SearchMatch {
@@ -385,6 +387,37 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .manage(LSPState::new())
+        .setup(|app| {
+            // If the app was launched with a file/folder argument (e.g., from context menu),
+            // normalize it to a folder path and emit it to the frontend after the window is ready.
+            if let Some(raw_arg) = std::env::args().nth(1) {
+                let mut path = PathBuf::from(&raw_arg);
+
+                if path.is_file() {
+                    if let Some(parent) = path.parent() {
+                        path = parent.to_path_buf();
+                    }
+                }
+
+                if path.is_dir() {
+                    let normalized = path.to_string_lossy().replace('\\', "/");
+                    if let Some(window) = app.get_webview_window("main") {
+                        tauri::async_runtime::spawn(async move {
+                            // Give the frontend a moment to register listeners.
+                            sleep(Duration::from_millis(300)).await;
+                            let _ = window.emit("external-open", normalized);
+                        });
+                    }
+                } else {
+                    println!(
+                        "[Tauri] Skipping external-open: provided path is not a directory: {}",
+                        raw_arg
+                    );
+                }
+            }
+
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             greet,
             list_directory_entries,

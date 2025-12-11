@@ -1,7 +1,7 @@
 import { useRef, useMemo, useEffect, useState, useCallback, memo } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Mesh, Vector2, Vector3 } from "three";
-import { useSettingsStore, AccentColor, Theme } from "@/stores/useSettingsStore";
+import { useSettingsStore, type AccentColor, type Theme } from "@/stores";
 
 // Map accent colors to RGB values based on OKLCH hues in index.css
 const accentColorMap: Record<AccentColor, [number, number, number]> = {
