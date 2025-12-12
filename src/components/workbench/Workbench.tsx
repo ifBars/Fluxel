@@ -1,12 +1,13 @@
 import { useState, useRef } from "react";
 import { Panel, PanelGroup, PanelResizeHandle, ImperativePanelHandle } from "react-resizable-panels";
-import { useWorkbenchStore, useEditorStore, useSettingsStore, densityConfigs, useBuildPanelStore, useTypeLoadingStore } from "@/stores";
+import { useWorkbenchStore, useEditorStore, useSettingsStore, densityConfigs, useBuildPanelStore, useTypeLoadingStore, useInspectorStore } from "@/stores";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import ActivityBar from "./ActivityBar";
 import Sidebar from "./SideBar";
 import SettingsDialog from "./SettingsDialog";
 import BuildPanel from "./BuildPanel";
 import EditorGroup from "@/components/editor/EditorGroup";
+import { InspectorPanel } from "@/components/inspector";
 
 export default function Workbench() {
     const { setSidebarOpen, sidebarDefaultSize, defaultSidebarOpen } = useWorkbenchStore();
@@ -14,10 +15,12 @@ export default function Workbench() {
     const { uiDensity, tabSize, wordWrap } = useSettingsStore();
     const { isOpen: isBuildPanelOpen } = useBuildPanelStore();
     const { isLoading: isTypeLoading, loadingMessage: typeLoadingMessage } = useTypeLoadingStore();
+    const { isInspectorOpen } = useInspectorStore();
     const activeTab = getActiveTab();
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const sidebarPanelRef = useRef<ImperativePanelHandle>(null);
     const buildPanelRef = useRef<ImperativePanelHandle>(null);
+    const inspectorPanelRef = useRef<ImperativePanelHandle>(null);
 
     // Get density-specific configuration
     const densityConfig = densityConfigs[uiDensity];
@@ -99,6 +102,29 @@ export default function Workbench() {
                             )}
                         </PanelGroup>
                     </Panel>
+
+                    {/* Inspector Panel (Right Sidebar) */}
+                    {isInspectorOpen && (
+                        <>
+                            <PanelResizeHandle
+                                className="panel-resize-handle bg-border hover:bg-primary transition-colors cursor-col-resize active:bg-primary z-20 transition-all opacity-60 hover:opacity-100"
+                                style={{
+                                    width: densityConfig.panelHandleWidth,
+                                    minWidth: densityConfig.panelHandleWidth,
+                                }}
+                            />
+                            <Panel
+                                ref={inspectorPanelRef}
+                                defaultSize={20}
+                                minSize={15}
+                                maxSize={35}
+                                collapsible
+                                collapsedSize={0}
+                            >
+                                <InspectorPanel />
+                            </Panel>
+                        </>
+                    )}
                 </PanelGroup>
             </div>
 

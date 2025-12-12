@@ -9,6 +9,20 @@ export type UIDensity = 'compact' | 'comfortable' | 'spacious';
 export type IconPack = 'react-icons' | 'lucide' | 'react-file-icon' | 'exuanbo' | 'material';
 export type BuildSystem = 'auto' | 'dotnet' | 'bun' | 'npm' | 'manual';
 
+// Editor customization types
+export type CursorStyle = 'line' | 'block' | 'underline' | 'line-thin' | 'block-outline' | 'underline-thin';
+export type CursorBlinking = 'blink' | 'smooth' | 'phase' | 'expand' | 'solid';
+export type CursorSmoothCaretAnimation = 'off' | 'explicit' | 'on';
+export type RenderWhitespace = 'none' | 'boundary' | 'selection' | 'trailing' | 'all';
+export type LineNumbers = 'on' | 'off' | 'relative' | 'interval';
+export type RenderLineHighlight = 'none' | 'gutter' | 'line' | 'all';
+export type WordWrapMode = 'off' | 'on' | 'wordWrapColumn' | 'bounded';
+export type AutoClosingBehavior = 'always' | 'languageDefined' | 'beforeWhitespace' | 'never';
+export type MinimapSide = 'left' | 'right';
+export type MinimapShowSlider = 'always' | 'mouseover';
+export type EditorFontFamily = 'JetBrains Mono' | 'Fira Code' | 'Cascadia Code' | 'Source Code Pro' | 'Consolas' | 'Monaco';
+export type EditorFontWeight = 'normal' | 'bold';
+
 // Density preset configuration for layout defaults
 export interface DensityConfig {
     // Panel sizing
@@ -242,13 +256,54 @@ export interface SettingsState {
     uiDensity: UIDensity;
     iconPack: IconPack;
 
-    // Editor Behavior
+    // Editor - Font & Typography
     fontSize: number;
-    showMinimap: boolean;
-    showLineNumbers: boolean;
+    fontFamily: EditorFontFamily;
+    lineHeight: number;
+    fontLigatures: boolean;
+    fontWeight: EditorFontWeight;
+    letterSpacing: number;
+
+    // Editor - Cursor
+    cursorStyle: CursorStyle;
+    cursorBlinking: CursorBlinking;
+    cursorWidth: number;
+    cursorSmoothCaretAnimation: CursorSmoothCaretAnimation;
+
+    // Editor - Whitespace & Indentation
     tabSize: number;
-    wordWrap: boolean;
-    autosaveDelay: number; // milliseconds
+    insertSpaces: boolean;
+    renderWhitespace: RenderWhitespace;
+    renderIndentGuides: boolean;
+    highlightActiveIndentGuide: boolean;
+
+    // Editor - Display
+    showLineNumbers: boolean;
+    lineNumbers: LineNumbers;
+    renderLineHighlight: RenderLineHighlight;
+    bracketPairColorization: boolean;
+    bracketPairGuides: boolean;
+    folding: boolean;
+    foldingHighlight: boolean;
+    glyphMargin: boolean;
+
+    // Editor - Behavior
+    wordWrap: WordWrapMode;
+    wordWrapColumn: number;
+    smoothScrolling: boolean;
+    scrollBeyondLastLine: boolean;
+    stickyScroll: boolean;
+    autosaveDelay: number;
+    autoClosingBrackets: AutoClosingBehavior;
+    autoClosingQuotes: AutoClosingBehavior;
+    formatOnPaste: boolean;
+
+    // Editor - Minimap
+    showMinimap: boolean;
+    minimapSide: MinimapSide;
+    minimapScale: number;
+    minimapMaxColumn: number;
+    minimapShowSlider: MinimapShowSlider;
 
     // Autocomplete (Ollama)
     autocompleteEnabled: boolean;
@@ -266,21 +321,68 @@ export interface SettingsState {
     // Version Control
     githubToken: string;
 
-    // Setters
+    // Setters - Appearance
     setTheme: (theme: Theme) => void;
     setAccentColor: (color: AccentColor) => void;
     setUIDensity: (density: UIDensity) => void;
     setIconPack: (pack: IconPack) => void;
+
+    // Setters - Editor Font
     setFontSize: (size: number) => void;
-    setShowMinimap: (show: boolean) => void;
-    setShowLineNumbers: (show: boolean) => void;
+    setFontFamily: (family: EditorFontFamily) => void;
+    setLineHeight: (height: number) => void;
+    setFontLigatures: (enabled: boolean) => void;
+    setFontWeight: (weight: EditorFontWeight) => void;
+    setLetterSpacing: (spacing: number) => void;
+
+    // Setters - Editor Cursor
+    setCursorStyle: (style: CursorStyle) => void;
+    setCursorBlinking: (blinking: CursorBlinking) => void;
+    setCursorWidth: (width: number) => void;
+    setCursorSmoothCaretAnimation: (animation: CursorSmoothCaretAnimation) => void;
+
+    // Setters - Editor Whitespace
     setTabSize: (size: number) => void;
-    setWordWrap: (wrap: boolean) => void;
+    setInsertSpaces: (insert: boolean) => void;
+    setRenderWhitespace: (render: RenderWhitespace) => void;
+    setRenderIndentGuides: (render: boolean) => void;
+    setHighlightActiveIndentGuide: (highlight: boolean) => void;
+
+    // Setters - Editor Display
+    setShowLineNumbers: (show: boolean) => void;
+    setLineNumbers: (lineNumbers: LineNumbers) => void;
+    setRenderLineHighlight: (highlight: RenderLineHighlight) => void;
+    setBracketPairColorization: (enabled: boolean) => void;
+    setBracketPairGuides: (enabled: boolean) => void;
+    setFolding: (enabled: boolean) => void;
+    setFoldingHighlight: (enabled: boolean) => void;
+    setGlyphMargin: (enabled: boolean) => void;
+
+    // Setters - Editor Behavior
+    setWordWrap: (wrap: WordWrapMode) => void;
+    setWordWrapColumn: (column: number) => void;
+    setSmoothScrolling: (enabled: boolean) => void;
+    setScrollBeyondLastLine: (enabled: boolean) => void;
+    setStickyScroll: (enabled: boolean) => void;
     setAutosaveDelay: (delay: number) => void;
+    setAutoClosingBrackets: (behavior: AutoClosingBehavior) => void;
+    setAutoClosingQuotes: (behavior: AutoClosingBehavior) => void;
+    setFormatOnPaste: (enabled: boolean) => void;
+
+    // Setters - Editor Minimap
+    setShowMinimap: (show: boolean) => void;
+    setMinimapSide: (side: MinimapSide) => void;
+    setMinimapScale: (scale: number) => void;
+    setMinimapMaxColumn: (column: number) => void;
+    setMinimapShowSlider: (show: MinimapShowSlider) => void;
+
+    // Setters - Autocomplete
     setAutocompleteEnabled: (enabled: boolean) => void;
     setAutocompleteModel: (model: string) => void;
     setAutocompleteEndpoint: (endpoint: string) => void;
     setAutocompleteDebounceMs: (delay: number) => void;
+
+    // Setters - Workbench & Build
     setDefaultEditorMode: (mode: EditorMode) => void;
     setBuildSystem: (system: BuildSystem) => void;
     setCustomBuildCommand: (command: string) => void;
@@ -297,16 +399,57 @@ export const useSettingsStore = create<SettingsState>()(
             uiDensity: 'comfortable' as UIDensity,
             iconPack: 'material' as IconPack,
 
-            // Editor Behavior defaults
+            // Editor - Font & Typography defaults
             fontSize: 14,
-            showMinimap: false,
-            showLineNumbers: true,
+            fontFamily: 'JetBrains Mono' as EditorFontFamily,
+            lineHeight: 1.5,
+            fontLigatures: false,
+            fontWeight: 'normal' as EditorFontWeight,
+            letterSpacing: 0,
+
+            // Editor - Cursor defaults
+            cursorStyle: 'line' as CursorStyle,
+            cursorBlinking: 'smooth' as CursorBlinking,
+            cursorWidth: 2,
+            cursorSmoothCaretAnimation: 'off' as CursorSmoothCaretAnimation,
+
+            // Editor - Whitespace & Indentation defaults
             tabSize: 4,
-            wordWrap: false,
-            autosaveDelay: 1000, // 1 second
+            insertSpaces: true,
+            renderWhitespace: 'selection' as RenderWhitespace,
+            renderIndentGuides: true,
+            highlightActiveIndentGuide: true,
+
+            // Editor - Display defaults
+            showLineNumbers: true,
+            lineNumbers: 'on' as LineNumbers,
+            renderLineHighlight: 'all' as RenderLineHighlight,
+            bracketPairColorization: true,
+            bracketPairGuides: true,
+            folding: true,
+            foldingHighlight: true,
+            glyphMargin: true,
+
+            // Editor - Behavior defaults
+            wordWrap: 'off' as WordWrapMode,
+            wordWrapColumn: 80,
+            smoothScrolling: true,
+            scrollBeyondLastLine: false,
+            stickyScroll: false,
+            autosaveDelay: 1000,
+            autoClosingBrackets: 'languageDefined' as AutoClosingBehavior,
+            autoClosingQuotes: 'languageDefined' as AutoClosingBehavior,
+            formatOnPaste: true,
+
+            // Editor - Minimap defaults
+            showMinimap: false,
+            minimapSide: 'right' as MinimapSide,
+            minimapScale: 1,
+            minimapMaxColumn: 120,
+            minimapShowSlider: 'mouseover' as MinimapShowSlider,
 
             // Autocomplete defaults
-            autocompleteEnabled: false, // Opt-in feature
+            autocompleteEnabled: false,
             autocompleteModel: 'qwen2.5-coder:1.5b',
             autocompleteEndpoint: 'http://localhost:11434',
             autocompleteDebounceMs: 300,
@@ -321,8 +464,8 @@ export const useSettingsStore = create<SettingsState>()(
             // VC defaults
             githubToken: '',
 
+            // Setters - Appearance
             setTheme: (theme) => {
-                // Side effect: update document class
                 const root = window.document.documentElement;
                 root.setAttribute('data-theme', theme);
                 if (theme === 'dark') {
@@ -333,39 +476,83 @@ export const useSettingsStore = create<SettingsState>()(
                 set({ theme });
             },
             setAccentColor: (accentColor) => {
-                // Side effect: update document attribute
                 const root = window.document.documentElement;
                 root.setAttribute('data-accent', accentColor);
                 set({ accentColor });
             },
             setUIDensity: (uiDensity) => {
-                // Side effect: update document attribute
                 const root = window.document.documentElement;
                 root.setAttribute('data-density', uiDensity);
                 applyDensityConfigToRoot(root, densityConfigs[uiDensity]);
                 set({ uiDensity });
             },
             setIconPack: (iconPack) => set({ iconPack }),
+
+            // Setters - Editor Font
             setFontSize: (fontSize) => set({ fontSize }),
-            setShowMinimap: (showMinimap) => set({ showMinimap }),
-            setShowLineNumbers: (showLineNumbers) => set({ showLineNumbers }),
+            setFontFamily: (fontFamily) => set({ fontFamily }),
+            setLineHeight: (lineHeight) => set({ lineHeight }),
+            setFontLigatures: (fontLigatures) => set({ fontLigatures }),
+            setFontWeight: (fontWeight) => set({ fontWeight }),
+            setLetterSpacing: (letterSpacing) => set({ letterSpacing }),
+
+            // Setters - Editor Cursor
+            setCursorStyle: (cursorStyle) => set({ cursorStyle }),
+            setCursorBlinking: (cursorBlinking) => set({ cursorBlinking }),
+            setCursorWidth: (cursorWidth) => set({ cursorWidth }),
+            setCursorSmoothCaretAnimation: (cursorSmoothCaretAnimation) => set({ cursorSmoothCaretAnimation }),
+
+            // Setters - Editor Whitespace
             setTabSize: (tabSize) => set({ tabSize }),
+            setInsertSpaces: (insertSpaces) => set({ insertSpaces }),
+            setRenderWhitespace: (renderWhitespace) => set({ renderWhitespace }),
+            setRenderIndentGuides: (renderIndentGuides) => set({ renderIndentGuides }),
+            setHighlightActiveIndentGuide: (highlightActiveIndentGuide) => set({ highlightActiveIndentGuide }),
+
+            // Setters - Editor Display
+            setShowLineNumbers: (showLineNumbers) => set({ showLineNumbers }),
+            setLineNumbers: (lineNumbers) => set({ lineNumbers }),
+            setRenderLineHighlight: (renderLineHighlight) => set({ renderLineHighlight }),
+            setBracketPairColorization: (bracketPairColorization) => set({ bracketPairColorization }),
+            setBracketPairGuides: (bracketPairGuides) => set({ bracketPairGuides }),
+            setFolding: (folding) => set({ folding }),
+            setFoldingHighlight: (foldingHighlight) => set({ foldingHighlight }),
+            setGlyphMargin: (glyphMargin) => set({ glyphMargin }),
+
+            // Setters - Editor Behavior
             setWordWrap: (wordWrap) => set({ wordWrap }),
+            setWordWrapColumn: (wordWrapColumn) => set({ wordWrapColumn }),
+            setSmoothScrolling: (smoothScrolling) => set({ smoothScrolling }),
+            setScrollBeyondLastLine: (scrollBeyondLastLine) => set({ scrollBeyondLastLine }),
+            setStickyScroll: (stickyScroll) => set({ stickyScroll }),
             setAutosaveDelay: (autosaveDelay) => set({ autosaveDelay }),
+            setAutoClosingBrackets: (autoClosingBrackets) => set({ autoClosingBrackets }),
+            setAutoClosingQuotes: (autoClosingQuotes) => set({ autoClosingQuotes }),
+            setFormatOnPaste: (formatOnPaste) => set({ formatOnPaste }),
+
+            // Setters - Editor Minimap
+            setShowMinimap: (showMinimap) => set({ showMinimap }),
+            setMinimapSide: (minimapSide) => set({ minimapSide }),
+            setMinimapScale: (minimapScale) => set({ minimapScale }),
+            setMinimapMaxColumn: (minimapMaxColumn) => set({ minimapMaxColumn }),
+            setMinimapShowSlider: (minimapShowSlider) => set({ minimapShowSlider }),
+
+            // Setters - Autocomplete
             setAutocompleteEnabled: (autocompleteEnabled) => set({ autocompleteEnabled }),
             setAutocompleteModel: (autocompleteModel) => set({ autocompleteModel }),
             setAutocompleteEndpoint: (autocompleteEndpoint) => set({ autocompleteEndpoint }),
             setAutocompleteDebounceMs: (autocompleteDebounceMs) => set({ autocompleteDebounceMs }),
+
+            // Setters - Workbench & Build
             setDefaultEditorMode: (defaultEditorMode) => set({ defaultEditorMode }),
             setBuildSystem: (buildSystem) => set({ buildSystem }),
             setCustomBuildCommand: (customBuildCommand) => set({ customBuildCommand }),
             setGithubToken: (githubToken) => set({ githubToken }),
+
             initAppearance: () => {
-                // Initialize all appearance settings on app load
                 const state = get();
                 const root = window.document.documentElement;
 
-                // Initialize theme
                 root.setAttribute('data-theme', state.theme);
                 if (state.theme === 'dark') {
                     root.classList.add('dark');
@@ -373,10 +560,7 @@ export const useSettingsStore = create<SettingsState>()(
                     root.classList.remove('dark');
                 }
 
-                // Initialize accent color
                 root.setAttribute('data-accent', state.accentColor);
-
-                // Initialize UI density
                 root.setAttribute('data-density', state.uiDensity);
                 applyDensityConfigToRoot(root, densityConfigs[state.uiDensity]);
             },

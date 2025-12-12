@@ -60,6 +60,99 @@ let currentLoadedProject: string | null = null;
 let isLoadingTypes = false;
 
 /**
+ * Memory management constants to prevent Monaco worker crashes
+ */
+const MAX_FILE_SIZE_BYTES = 500_000; // Skip files larger than 500KB (e.g., lib.dom.d.ts is 1.4MB)
+const MAX_TOTAL_TYPES_BYTES = 20_000_000; // Stop loading after 20MB total
+const MAX_FILES_PER_PACKAGE = 50; // Limit files per package to prevent runaway loading
+const BATCH_DELAY_MS = 50; // Small delay between batches to let the worker process
+
+let totalLoadedBytes = 0;
+
+/**
+ * Batch queue for addExtraLib to prevent overwhelming the worker
+ */
+interface ExtraLibEntry {
+    content: string;
+    uri: string;
+}
+let pendingExtraLibs: ExtraLibEntry[] = [];
+let flushTimeout: ReturnType<typeof setTimeout> | null = null;
+let isFlushingBatch = false;
+
+/**
+ * Flush the pending extra libs to Monaco in a controlled manner
+ */
+async function flushExtraLibBatch(monaco: MonacoInstance): Promise<void> {
+    if (isFlushingBatch || pendingExtraLibs.length === 0) return;
+
+    isFlushingBatch = true;
+    const batch = pendingExtraLibs.splice(0, 100); // Process 100 at a time
+
+    for (const entry of batch) {
+        try {
+            monaco.typescript.typescriptDefaults.addExtraLib(entry.content, entry.uri);
+            loadedTypeUris.add(entry.uri);
+        } catch (error) {
+            console.warn(`[TypeLoader] Failed to add extra lib ${entry.uri}:`, error);
+        }
+    }
+
+    isFlushingBatch = false;
+
+    // If there are more pending, schedule another flush with a delay
+    if (pendingExtraLibs.length > 0) {
+        await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
+        await flushExtraLibBatch(monaco);
+    }
+}
+
+/**
+ * Queue an extra lib to be added, with batching to prevent worker overload
+ */
+function queueExtraLib(content: string, uri: string, monaco: MonacoInstance): boolean {
+    // Skip if already loaded
+    if (loadedTypeUris.has(uri)) return false;
+
+    // Check file size
+    const contentSize = content.length;
+    if (contentSize > MAX_FILE_SIZE_BYTES) {
+        console.debug(`[TypeLoader] Skipping large file (${(contentSize / 1024).toFixed(1)}KB): ${uri}`);
+        return false;
+    }
+
+    // Check total memory budget
+    if (totalLoadedBytes + contentSize > MAX_TOTAL_TYPES_BYTES) {
+        console.warn(`[TypeLoader] Memory budget exhausted (${(totalLoadedBytes / 1024 / 1024).toFixed(1)}MB), skipping: ${uri}`);
+        return false;
+    }
+
+    totalLoadedBytes += contentSize;
+    pendingExtraLibs.push({ content, uri });
+
+    // Schedule flush if not already scheduled
+    if (!flushTimeout && !isFlushingBatch) {
+        flushTimeout = setTimeout(async () => {
+            flushTimeout = null;
+            await flushExtraLibBatch(monaco);
+        }, 10);
+    }
+
+    return true;
+}
+
+/**
+ * Wait for all pending extra libs to be flushed
+ */
+async function waitForPendingLibs(monaco: MonacoInstance): Promise<void> {
+    if (flushTimeout) {
+        clearTimeout(flushTimeout);
+        flushTimeout = null;
+    }
+    await flushExtraLibBatch(monaco);
+}
+
+/**
  * Normalize path separators for cross-platform compatibility
  */
 export function normalizePath(path: string): string {
@@ -190,14 +283,25 @@ async function findTypeDefinitions(
 
 /**
  * Recursively find all .d.ts files in a directory
+ * Limited to MAX_FILES_PER_PACKAGE to prevent memory issues
  */
-async function findAllTypeFiles(dirPath: string): Promise<string[]> {
+async function findAllTypeFiles(dirPath: string, currentCount: number = 0): Promise<string[]> {
     const typeFiles: string[] = [];
+
+    // Respect per-package file limit
+    if (currentCount >= MAX_FILES_PER_PACKAGE) {
+        return typeFiles;
+    }
 
     try {
         const entries = await readDirectory(dirPath);
 
         for (const entry of entries) {
+            // Stop if we've hit the limit
+            if (typeFiles.length + currentCount >= MAX_FILES_PER_PACKAGE) {
+                break;
+            }
+
             const fullPath = normalizePath(`${dirPath}/${entry.name}`);
 
             if (entry.isDirectory) {
@@ -205,8 +309,8 @@ async function findAllTypeFiles(dirPath: string): Promise<string[]> {
                 if (entry.name === 'node_modules') {
                     continue;
                 }
-                // Recursively search subdirectories
-                const subFiles = await findAllTypeFiles(fullPath);
+                // Recursively search subdirectories with updated count
+                const subFiles = await findAllTypeFiles(fullPath, currentCount + typeFiles.length);
                 typeFiles.push(...subFiles);
             } else if (entry.name.endsWith('.d.ts') || entry.name.endsWith('.d.mts')) {
                 typeFiles.push(fullPath);
@@ -279,6 +383,9 @@ async function loadTypesPackages(
             await addExtraLibFromFile(typeFile, monaco, `@types/${entry.name}`);
         }
     }
+
+    // Wait for all queued types to be processed
+    await waitForPendingLibs(monaco);
 }
 
 
@@ -306,16 +413,14 @@ async function addExtraLibFromFile(path: string, monaco: MonacoInstance, package
     try {
         const content = await readTextFile(normalizedPath);
 
-        // Register with virtual path only (removed duplicate registration to save memory)
-        // This is what Monaco TypeScript uses to resolve imports
+        // Use the queue-based system for controlled memory usage
         if (virtualPath) {
-            monaco.typescript.typescriptDefaults.addExtraLib(content, virtualPath);
-            loadedTypeUris.add(virtualPath);
-        }
+            const queued = queueExtraLib(content, virtualPath, monaco);
 
-        // DIAGNOSTIC: Log first few type additions
-        if (loadedTypeUris.size <= 10) {
-            console.log(`[TypeLoader] Added: ${packageName || 'unknown'} -> ${virtualPath}`);
+            // DIAGNOSTIC: Log first few type additions
+            if (queued && loadedTypeUris.size <= 10) {
+                console.log(`[TypeLoader] Queued: ${packageName || 'unknown'} -> ${virtualPath}`);
+            }
         }
     } catch (error) {
         console.warn(`[TypeLoader] Failed to load type file ${normalizedPath}:`, error);
@@ -357,16 +462,16 @@ async function loadResolverTypings(
         if (allFilesToRead.length > 0) {
             const fileContents = await batchReadFiles(allFilesToRead);
 
-            // Register all types
+            // Register all types using the queue-based system
             for (const [filePath, content] of Object.entries(fileContents)) {
                 const virtualPath = toFileUri(filePath);
 
-                // Skip if already loaded
+                // Skip if already loaded or use queue system which handles this
                 if (loadedTypeUris.has(virtualPath)) continue;
 
-                try {
-                    monaco.typescript.typescriptDefaults.addExtraLib(content, virtualPath);
-                    loadedTypeUris.add(virtualPath);
+                // Use queue-based system for controlled memory usage
+                const queued = queueExtraLib(content, virtualPath, monaco);
+                if (queued) {
                     totalFiles++;
 
                     // Collect references from first few files
@@ -375,10 +480,11 @@ async function loadResolverTypings(
                             referencedPackages.add(root);
                         }
                     }
-                } catch (error) {
-                    // Skip files that fail to add
                 }
             }
+
+            // Wait for the batch to be processed
+            await waitForPendingLibs(monaco);
         }
 
         // Ensure TS can read package.json for modern packages with exports/types
@@ -485,8 +591,9 @@ async function loadDefaultLibFiles(
                 'lib.es2021.weakref.d.ts'],
             'es2022': ['lib.es2022.d.ts', 'lib.es2022.array.d.ts', 'lib.es2022.error.d.ts',
                 'lib.es2022.object.d.ts', 'lib.es2022.string.d.ts', 'lib.es2022.regexp.d.ts'],
-            // DOM libs - these are large but necessary for console, fetch, document, etc.
-            'dom': ['lib.dom.d.ts'],
+            // DOM libs - SKIP lib.dom.d.ts as it's ~1.4MB and causes memory issues
+            // Monaco should have built-in DOM types, and we load dom.iterable which is small
+            'dom': [], // Skip - too large
             'dom.iterable': ['lib.dom.iterable.d.ts'],
         };
 
@@ -815,6 +922,8 @@ export async function loadProjectTypes(
         // Clear previously loaded types if switching projects
         if (currentLoadedProject !== projectRoot) {
             loadedTypeUris.clear();
+            totalLoadedBytes = 0; // Reset memory budget for new project
+            pendingExtraLibs = []; // Clear any pending queued libs
         }
         currentLoadedProject = projectRoot;
 

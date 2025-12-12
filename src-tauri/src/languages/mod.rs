@@ -6,14 +6,14 @@
 //! ## Structure
 //!
 //! - `lsp_manager` - Generic LSP manager for process lifecycle and communication
-//! - `csharp` - C# language support (csharp-ls)
+//! - `csharp` - C# language support (csharp-ls, project parsing)
 //!
 //! ## Adding New Languages
 //!
 //! To add support for a new language:
-//! 1. Create a new module (e.g., `python.rs`)
+//! 1. Create a new subdirectory (e.g., `python/`)
 //! 2. Implement Tauri commands using the `LSPManager` from `lsp_manager`
-//! 3. Export the commands from this module
+//! 3. Export the commands from the new module
 //! 4. Register the commands in `lib.rs`
 
 pub mod csharp;

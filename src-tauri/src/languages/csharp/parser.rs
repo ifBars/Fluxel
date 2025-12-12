@@ -1,3 +1,7 @@
+//! C# Project File Parser
+//!
+//! Parses .csproj files to extract build configurations.
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;

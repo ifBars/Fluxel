@@ -9,5 +9,22 @@ export type {
   UIDensity,
   IconPack,
   BuildSystem,
-  DensityConfig
+  DensityConfig,
+  // Editor customization types
+  CursorStyle,
+  CursorBlinking,
+  CursorSmoothCaretAnimation,
+  RenderWhitespace,
+  LineNumbers,
+  RenderLineHighlight,
+  WordWrapMode,
+  AutoClosingBehavior,
+  MinimapSide,
+  MinimapShowSlider,
+  EditorFontFamily,
+  EditorFontWeight,
 } from './useSettingsStore';
+
+export { useInspectorStore } from './useInspectorStore';
+export type { InspectorState, InspectorTab, PendingChange } from './useInspectorStore';
+

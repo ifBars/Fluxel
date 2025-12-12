@@ -78,6 +78,8 @@ Four Tauri commands are exposed to the frontend. TypeScript types are available 
 
 ### Example Usage (Frontend)
 
+**TypeScript/React:**
+
 ```typescript
 import { invoke } from "@tauri-apps/api/core";
 
@@ -96,6 +98,73 @@ const report = await invoke("profiler_get_attribution", {
 
 console.log("Breakdown:", report.breakdowns);
 console.log("Critical Path:", report.criticalPath);
+```
+
+**Browser Console (Paste-Ready):**
+
+Use these commands directly in your browser's developer console (dev mode only):
+
+```javascript
+// Quick enable/disable
+await window.invoke("profiler_set_enabled", { enabled: true });
+await window.invoke("profiler_set_enabled", { enabled: false });
+
+// Check profiler status
+const status = await window.invoke("profiler_get_status");
+console.table(status);
+
+// View recent spans (adjust limit as needed)
+const spans = await window.invoke("profiler_get_recent_spans", { limit: 20 });
+console.table(spans.map(s => ({
+  name: s.name,
+  duration_ms: s.durationMs.toFixed(2),
+  category: s.fields?.find(f => f[0] === 'category')?.[1] || s.category
+})));
+
+// Analyze a specific operation (replace with actual span ID)
+if (spans.length > 0) {
+  const report = await window.invoke("profiler_get_attribution", {
+    rootSpanId: spans[0].id
+  });
+  console.log("📊 Time Breakdown:", report.breakdowns);
+  console.log("🔥 Critical Path:", report.criticalPath);
+  console.log("⚡ Hotspots:", report.hotspots);
+} else {
+  console.warn("⚠️ No spans captured yet. Try navigating around the app first.");
+}
+
+// Full profiling workflow example
+(async () => {
+  // 1. Enable profiling
+  await window.invoke("profiler_set_enabled", { enabled: true });
+  console.log("✅ Profiling enabled");
+  
+  // 2. Perform some operations in the IDE (open files, run commands, etc.)
+  console.log("⏳ Perform IDE operations now...");
+  
+  // 3. Wait a moment for operations to complete
+  await new Promise(r => setTimeout(r, 2000));
+  
+  // 4. Fetch and analyze results
+  const spans = await window.invoke("profiler_get_recent_spans", { limit: 10 });
+  console.log(`📈 Captured ${spans.length} operations`);
+  
+  // 5. Analyze the slowest operation
+  if (spans.length > 0) {
+    const slowest = spans.reduce((a, b) => a.durationMs > b.durationMs ? a : b);
+    const report = await window.invoke("profiler_get_attribution", {
+      rootSpanId: slowest.id
+    });
+    
+    console.log(`\n🐌 Slowest: ${slowest.name} (${slowest.durationMs.toFixed(2)}ms)`);
+    console.table(report.breakdowns.map(b => ({
+      category: b.category,
+      time_ms: b.totalTimeMs.toFixed(2),
+      percentage: `${b.percentage.toFixed(1)}%`,
+      count: b.spanCount
+    })));
+  }
+})();
 ```
 
 ## 5. Latency Attribution

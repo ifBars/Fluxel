@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 
-use super::lsp_manager::{
+use crate::languages::lsp_manager::{
     check_csharp_ls_installed, find_project_file, find_solution_file, get_path_with_dotnet_tools,
     install_csharp_ls, LSPServerConfig, LSPState,
 };

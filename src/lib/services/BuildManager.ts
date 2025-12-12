@@ -1,6 +1,8 @@
 import { Command } from '@tauri-apps/plugin-shell';
 import { buildCSharpProject } from '@/lib/languages/csharp';
 import { useCSharpStore, type BuildSystem } from '@/stores';
+import { invoke } from '@tauri-apps/api/core';
+import type { ProjectProfile } from '@/types/project';
 
 export interface BuildOptions {
     projectRoot: string;
@@ -19,17 +21,28 @@ export interface BuildResult {
  */
 async function detectProjectType(projectRoot: string): Promise<'dotnet' | 'javascript' | 'unknown'> {
     try {
-        const { readDir } = await import('@tauri-apps/plugin-fs');
-        const entries = await readDir(projectRoot);
+        const profile = await invoke<ProjectProfile>('detect_project_profile', {
+            workspace_root: projectRoot,
+        });
 
-        const hasCsproj = entries.some(entry => entry.name?.endsWith('.csproj'));
-        const hasPackageJson = entries.some(entry => entry.name === 'package.json');
-
-        if (hasCsproj) return 'dotnet';
-        if (hasPackageJson) return 'javascript';
-
+        if (profile.kind === 'dotnet' || profile.kind === 'mixed') return 'dotnet';
+        if (profile.kind === 'javascript') return 'javascript';
         return 'unknown';
     } catch (error) {
+        // Fallback to a quick root scan if the backend detector isn't available.
+        try {
+            const { readDir } = await import('@tauri-apps/plugin-fs');
+            const entries = await readDir(projectRoot);
+
+            const hasCsproj = entries.some(entry => entry.name?.endsWith('.csproj') || entry.name?.endsWith('.sln'));
+            const hasPackageJson = entries.some(entry => entry.name === 'package.json');
+
+            if (hasCsproj) return 'dotnet';
+            if (hasPackageJson) return 'javascript';
+        } catch {
+            // ignore
+        }
+
         console.error('Error detecting project type:', error);
         return 'unknown';
     }

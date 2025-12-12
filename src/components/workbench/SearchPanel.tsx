@@ -52,7 +52,7 @@ export default function SearchPanel() {
                 });
 
                 setResults(searchResult);
-                
+
                 // Auto-expand files with matches
                 const filePaths = new Set(searchResult.matches.map(m => m.file_path));
                 setExpandedFiles(filePaths);
@@ -72,7 +72,7 @@ export default function SearchPanel() {
         if (!results || results.matches.length === 0) return [];
 
         const groups = new Map<string, SearchMatch[]>();
-        
+
         for (const match of results.matches) {
             const existing = groups.get(match.file_path) || [];
             existing.push(match);

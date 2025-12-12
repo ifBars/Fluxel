@@ -65,17 +65,31 @@ interface CodeEditorProps {
 
 export default function CodeEditor({ activeTab }: CodeEditorProps) {
     const {
-        theme, fontSize, showMinimap, showLineNumbers, tabSize, wordWrap,
+        theme,
+        // Font settings
+        fontSize, fontFamily, lineHeight, fontLigatures, fontWeight, letterSpacing,
+        // Cursor settings
+        cursorStyle, cursorBlinking, cursorWidth, cursorSmoothCaretAnimation,
+        // Whitespace settings
+        tabSize, insertSpaces, renderWhitespace, renderIndentGuides, highlightActiveIndentGuide,
+        // Display settings
+        showLineNumbers, lineNumbers, renderLineHighlight, bracketPairColorization,
+        bracketPairGuides, folding, foldingHighlight, glyphMargin,
+        // Behavior settings
+        wordWrap, wordWrapColumn, smoothScrolling, scrollBeyondLastLine, stickyScroll,
+        autoClosingBrackets, autoClosingQuotes, formatOnPaste,
+        // Minimap settings
+        showMinimap, minimapSide, minimapScale, minimapMaxColumn, minimapShowSlider,
+        // Autocomplete settings
         autocompleteEnabled, autocompleteModel, autocompleteEndpoint, autocompleteDebounceMs
     } = useSettingsStore();
     const { updateContent, saveFile, isDirty, pendingReveal, clearPendingReveal, setCursorPosition, openFile } = useEditorStore();
-    const { currentProject } = useProjectStore();
+    const { currentProject, projectProfile, csharpLspStatus, ensureCSharpLspReady } = useProjectStore();
     const monaco = useMonaco() as unknown as typeof Monaco;
     const [isSaving, setIsSaving] = useState(false);
     const [editorInstance, setEditorInstance] = useState<Monaco.editor.IStandaloneCodeEditor | null>(null);
     const autocompleteDisposableRef = useRef<{ dispose: () => void } | null>(null);
     const lspClientRef = useRef(getCSharpLSPClient());
-    const lspInitializedRef = useRef(false);
     const docVersionsRef = useRef<Record<string, number>>({});
 
     // When switching tabs, wait for the new editor instance before revealing a position.
@@ -102,6 +116,12 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                     return;
                 }
 
+                // If we have a profile and it doesn't look like a JS/TS workspace, avoid expensive hydration.
+                if (projectProfile && !projectProfile.node.has_package_json && !projectProfile.node.has_tsconfig && !projectProfile.node.has_jsconfig) {
+                    resetTypeScriptWorkspace(monaco);
+                    return;
+                }
+
                 await hydrateTypeScriptWorkspace(projectRoot, monaco);
             } catch (error) {
                 if (!cancelled) {
@@ -115,7 +135,7 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
         return () => {
             cancelled = true;
         };
-    }, [monaco, currentProject?.rootPath]);
+    }, [monaco, currentProject?.rootPath, projectProfile]);
 
     // Register C# language configuration and LSP features
     useEffect(() => {
@@ -243,83 +263,26 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
         };
     }, [monaco, autocompleteEnabled, autocompleteEndpoint, autocompleteModel, autocompleteDebounceMs]);
 
-    const [lspReady, setLspReady] = useState(false);
+    const normalizedProjectRoot = currentProject?.rootPath?.replace(/\\/g, '/');
+    const lspReady =
+        csharpLspStatus === 'ready' &&
+        Boolean(normalizedProjectRoot) &&
+        lspClientRef.current.getWorkspaceRoot()?.replace(/\\/g, '/') === normalizedProjectRoot;
 
-    // Restart LSP client when workspace changes or closes
+    // Ensure C# LSP is ready when editing C# files (managed centrally via the project store).
     useEffect(() => {
-        const lspClient = lspClientRef.current;
-        (async () => {
-            // If the workspace is removed, stop the server
-            if (!currentProject?.rootPath && lspInitializedRef.current) {
-                await lspClient.stop();
-                lspInitializedRef.current = false;
-                setLspReady(false);
-                docVersionsRef.current = {};
-                return;
-            }
+        if (activeTab?.language !== 'csharp') return;
+        if (!currentProject?.rootPath) return;
+        if (lspReady || csharpLspStatus === 'starting') return;
+        void ensureCSharpLspReady();
+    }, [activeTab?.language, currentProject?.rootPath, csharpLspStatus, lspReady, ensureCSharpLspReady]);
 
-            // If workspace changes, restart the server
-            if (
-                currentProject?.rootPath &&
-                lspClient.getWorkspaceRoot() &&
-                lspClient.getWorkspaceRoot() !== currentProject.rootPath
-            ) {
-                await lspClient.stop();
-                // Wait a moment for the process to fully terminate
-                await new Promise(resolve => setTimeout(resolve, 500));
-                lspInitializedRef.current = false;
-                setLspReady(false);
-                docVersionsRef.current = {};
-            }
-        })();
-    }, [currentProject?.rootPath]);
-
-    // Initializer
+    // Clear document version tracking when workspace/LSP is not active.
     useEffect(() => {
-        const lspClient = lspClientRef.current;
-
-        // Only initialize once per project
-        if (activeTab?.language === 'csharp' && currentProject?.rootPath && !lspInitializedRef.current) {
-            lspInitializedRef.current = true;
-            setLspReady(false);
-
-            lspClient.start(currentProject.rootPath)
-                .then(() => {
-                    // Initialize the language server
-                    return lspClient.initialize(currentProject.rootPath);
-                })
-                .then(() => {
-                    setLspReady(true);
-                })
-                .catch(async (error) => {
-                    console.error('[CodeEditor] Failed to start LSP:', error);
-
-                    // Check if this is the MSBuild assembly loading error
-                    const errorMsg = typeof error === 'object' && error?.message ? error.message : String(error);
-                    if (errorMsg.includes('MSBuild assemblies were already loaded') ||
-                        errorMsg.includes('RegisterInstance')) {
-                        console.error('[CodeEditor] MSBuild assembly conflict detected. Try closing and reopening Fluxel.');
-                    }
-
-                    // If initialization failed, make sure to stop the server process
-                    // to avoid leaving zombie processes with loaded MSBuild assemblies
-                    try {
-                        await lspClient.stop();
-                        // Wait for process cleanup
-                        await new Promise(resolve => setTimeout(resolve, 500));
-                    } catch (stopError) {
-                        console.error('[CodeEditor] Error stopping LSP after failure:', stopError);
-                    }
-
-                    lspInitializedRef.current = false; // Allow retry on error
-                    setLspReady(false);
-                });
+        if (!currentProject?.rootPath || csharpLspStatus === 'stopped') {
+            docVersionsRef.current = {};
         }
-
-        return () => {
-            // No cleanup needed here
-        };
-    }, [currentProject?.rootPath, activeTab?.language]);
+    }, [currentProject?.rootPath, csharpLspStatus]);
 
     // Send textDocument/didOpen when C# file is opened
     useEffect(() => {
@@ -678,14 +641,22 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                         language={activeTab.language}
                         theme={theme === "dark" ? "fluxel-dark" : "fluxel-light"}
                         options={{
-                            minimap: { enabled: showMinimap },
+                            // Minimap
+                            minimap: { enabled: showMinimap, side: minimapSide, scale: minimapScale, maxColumn: minimapMaxColumn, showSlider: minimapShowSlider },
+                            // Font
                             fontSize: fontSize,
-                            fontFamily: "'JetBrains Mono', monospace",
-                            smoothScrolling: true,
+                            fontFamily: `'${fontFamily}', monospace`,
+                            lineHeight: lineHeight,
+                            fontLigatures: fontLigatures,
+                            fontWeight: fontWeight,
+                            letterSpacing: letterSpacing,
+                            // Scrolling
+                            smoothScrolling: smoothScrolling,
                             padding: { top: 8, bottom: 8 },
                             automaticLayout: true,
-                            wordWrap: wordWrap ? "on" : "off",
-                            lineNumbers: showLineNumbers ? "on" : "off",
+                            wordWrap: wordWrap,
+                            wordWrapColumn: wordWrapColumn,
+                            lineNumbers: showLineNumbers ? lineNumbers : 'off',
                             renderSideBySide: true,
                             readOnly: true, // Diff view is read-only for now
                         }}
@@ -701,31 +672,61 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                         onMount={handleEditorMount}
                         theme={theme === "dark" ? "fluxel-dark" : "fluxel-light"}
                         options={{
-                            minimap: { enabled: showMinimap },
+                            // Minimap
+                            minimap: { enabled: showMinimap, side: minimapSide, scale: minimapScale, maxColumn: minimapMaxColumn, showSlider: minimapShowSlider },
+                            // Font
                             fontSize: fontSize,
-                            fontFamily: "'JetBrains Mono', monospace",
-                            smoothScrolling: true,
-                            cursorBlinking: "smooth",
+                            fontFamily: `'${fontFamily}', monospace`,
+                            lineHeight: lineHeight,
+                            fontLigatures: fontLigatures,
+                            fontWeight: fontWeight,
+                            letterSpacing: letterSpacing,
+                            // Cursor
+                            cursorStyle: cursorStyle,
+                            cursorBlinking: cursorBlinking,
+                            cursorWidth: cursorWidth,
+                            cursorSmoothCaretAnimation: cursorSmoothCaretAnimation,
+                            // Layout
                             padding: { top: 8, bottom: 8 },
                             automaticLayout: true,
-                            wordWrap: wordWrap ? "on" : "off",
-                            lineNumbers: showLineNumbers ? "on" : "off",
+                            glyphMargin: glyphMargin,
+                            // Line Numbers & Highlight
+                            lineNumbers: showLineNumbers ? lineNumbers : 'off',
+                            renderLineHighlight: renderLineHighlight,
+                            // Whitespace & Indentation
                             tabSize: tabSize,
-                            renderWhitespace: "selection",
-                            bracketPairColorization: { enabled: true },
+                            insertSpaces: insertSpaces,
+                            renderWhitespace: renderWhitespace,
                             guides: {
-                                bracketPairs: true,
-                                indentation: true,
+                                bracketPairs: bracketPairGuides,
+                                indentation: renderIndentGuides,
+                                highlightActiveIndentation: highlightActiveIndentGuide,
                             },
-                            scrollBeyondLastLine: false,
-                            renderLineHighlight: "all",
+                            // Brackets
+                            bracketPairColorization: { enabled: bracketPairColorization },
+                            // Folding
+                            folding: folding,
+                            foldingHighlight: foldingHighlight,
+                            // Scrolling
+                            smoothScrolling: smoothScrolling,
+                            scrollBeyondLastLine: scrollBeyondLastLine,
+                            stickyScroll: { enabled: stickyScroll },
+                            // Word Wrap
+                            wordWrap: wordWrap,
+                            wordWrapColumn: wordWrapColumn,
+                            // Auto Closing
+                            autoClosingBrackets: autoClosingBrackets,
+                            autoClosingQuotes: autoClosingQuotes,
+                            // Formatting
+                            formatOnPaste: formatOnPaste,
+                            // Autocomplete
                             inlineSuggest: {
                                 enabled: autocompleteEnabled,
                             },
-                            // Enable inline suggestions feature
                             suggest: {
                                 showInlineDetails: true,
                             },
+                            fixedOverflowWidgets: true,
                         }}
                     />
                 )}

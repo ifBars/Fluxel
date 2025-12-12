@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { getConfigMetadata } from '@/lib/config/loader';
+import { Command, Child } from '@tauri-apps/plugin-shell';
+import { registerProcess, unregisterProcess } from '@/lib/services/processManager';
 
 interface PreviewState {
     // Preview URL for the iframe
@@ -12,6 +14,7 @@ interface PreviewState {
 
     // Server settings
     port: number;
+    devServerChild: Child | null;
 
     // Actions
     setPreviewUrl: (url: string | null) => void;
@@ -19,8 +22,8 @@ interface PreviewState {
     setLoading: (loading: boolean) => void;
     setError: (error: string | null) => void;
     setPort: (port: number) => void;
-    startPreview: (projectPath: string) => Promise<void>;
-    stopPreview: () => void;
+    startPreview: (projectPath: string, autoStart?: boolean) => Promise<void>;
+    stopPreview: () => Promise<void>;
     refreshPreview: () => void;
 }
 
@@ -30,6 +33,7 @@ export const usePreviewStore = create<PreviewState>((set, get) => ({
     isLoading: false,
     error: null,
     port: 5173, // Default Vite port
+    devServerChild: null,
 
     setPreviewUrl: (url) => set({ previewUrl: url }),
     setServerRunning: (running) => set({ isServerRunning: running }),
@@ -37,7 +41,7 @@ export const usePreviewStore = create<PreviewState>((set, get) => ({
     setError: (error) => set({ error }),
     setPort: (port) => set({ port }),
 
-    startPreview: async (projectPath: string) => {
+    startPreview: async (projectPath: string, autoStart = true) => {
         set({ isLoading: true, error: null });
 
         try {
@@ -95,6 +99,51 @@ export const usePreviewStore = create<PreviewState>((set, get) => ({
                 }
             }
 
+            // If no server found and we haven't tried auto-starting yet
+            if (autoStart) {
+                set({
+                    isLoading: true,
+                    error: 'Starting dev server (bun run dev)...',
+                    isServerRunning: false,
+                    previewUrl: null
+                });
+
+                try {
+                    // Kill existing process if any (e.g. from a previous failed/slow attempt)
+                    const existingChild = get().devServerChild;
+                    if (existingChild) {
+                        try {
+                            await existingChild.kill();
+                        } catch (e) {
+                            // Ignore errors if already dead
+                        }
+                    }
+
+                    console.log('Auto-starting dev server...');
+                    const cmd = Command.create('bun', ['run', 'dev'], { cwd: projectPath });
+                    const child = await cmd.spawn();
+                    set({ devServerChild: child });
+
+                    // Register the process with the backend for cleanup on app exit
+                    if (child.pid) {
+                        await registerProcess(child.pid);
+                    }
+
+                    // Wait for server to start up
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+
+                    // Retry connection (without auto-starting again)
+                    return get().startPreview(projectPath, false);
+                } catch (err) {
+                    console.error('Failed to auto-start dev server:', err);
+                    set({
+                        error: `Failed to auto-start dev server: ${err}. Please run "bun run dev" manually.`,
+                        isLoading: false
+                    });
+                    return;
+                }
+            }
+
             // No server found
             set({
                 error: `No dev server found. Please start your dev server (e.g., "bun run dev" or "npm run dev") and try again.`,
@@ -110,11 +159,26 @@ export const usePreviewStore = create<PreviewState>((set, get) => ({
         }
     },
 
-    stopPreview: () => {
+    stopPreview: async () => {
+        const { devServerChild } = get();
+        if (devServerChild) {
+            // Unregister from process manager first
+            if (devServerChild.pid) {
+                await unregisterProcess(devServerChild.pid).catch(console.error);
+            }
+
+            try {
+                await devServerChild.kill();
+            } catch (e) {
+                console.error('Failed to stop dev server:', e);
+            }
+        }
+
         set({
             previewUrl: null,
             isServerRunning: false,
-            error: null
+            error: null,
+            devServerChild: null
         });
     },
 

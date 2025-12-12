@@ -1,3 +1,7 @@
+//! Git Service
+//!
+//! Provides git operations for the Fluxel editor.
+
 use git2::{Cred, PushOptions, RemoteCallbacks, Repository, Status, StatusOptions};
 use serde::{Deserialize, Serialize};
 

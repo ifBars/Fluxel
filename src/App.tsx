@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import AuthPage from "./components/auth/AuthPage";
 import LandingPage from "./components/landing/LandingPage";
 import EditorPage from "./components/editor/EditorPage";
 import { TitleBar } from "./components/ui/titlebar";
-import { useSettingsStore, useEditorStore, useFileSystemStore, useProjectStore } from "@/stores";
-import { loadConfigMetadata } from "./lib/config/loader";
+import { useSettingsStore, usePreviewStore } from "@/stores";
+import { openWorkspace, closeWorkspace } from "@/lib/services/ProjectManager";
 import "./styles/index.css";
 
 type AppView = "auth" | "landing" | "editor";
@@ -13,9 +14,6 @@ type AppView = "auth" | "landing" | "editor";
 function App() {
   const [currentView, setCurrentView] = useState<AppView>("auth");
   const initAppearance = useSettingsStore((state) => state.initAppearance);
-  const { closeAllTabs } = useEditorStore();
-  const { clearTree, loadDirectory } = useFileSystemStore();
-  const { closeProject, openProject } = useProjectStore();
 
   // Initialize appearance settings on mount
   useEffect(() => {
@@ -30,27 +28,18 @@ function App() {
     setCurrentView("editor");
   };
 
-  const handleCloseProject = () => {
-    closeAllTabs();
-    clearTree();
-    closeProject();
+  const handleCloseProject = async () => {
+    await closeWorkspace();
     setCurrentView("landing");
   };
 
   const openExternalProject = useCallback(
     async (rootPath: string) => {
-      clearTree();
-      openProject(rootPath);
-      await loadDirectory(rootPath);
-
-      // Load config metadata in the background
-      loadConfigMetadata(rootPath).catch((error) => {
-        console.error("Failed to load config metadata:", error);
-      });
+      await openWorkspace(rootPath);
 
       setCurrentView("editor");
     },
-    [clearTree, loadDirectory, openProject],
+    [],
   );
 
 
@@ -70,6 +59,36 @@ function App() {
 
     checkLaunchPath();
   }, [openExternalProject]);
+
+  // Setup window close handler to cleanup processes before exit
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    const setupCloseHandler = async () => {
+      const currentWindow = getCurrentWindow();
+      unlisten = await currentWindow.onCloseRequested(async (_event) => {
+        console.log("[App] Window close requested, cleaning up processes...");
+
+        // Stop preview/dev server before allowing close
+        try {
+          await usePreviewStore.getState().stopPreview();
+        } catch (error) {
+          console.error("[App] Error stopping preview during close:", error);
+        }
+
+        // Allow the window to close
+        // Note: The Rust backend will also kill any remaining tracked processes
+      });
+    };
+
+    setupCloseHandler();
+
+    return () => {
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, []);
 
   const renderView = () => {
     switch (currentView) {

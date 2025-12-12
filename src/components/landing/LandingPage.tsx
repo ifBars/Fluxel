@@ -2,8 +2,8 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { FolderOpen, GitBranch, Box } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { useProjectStore, useFileSystemStore } from "@/stores";
-import { loadConfigMetadata } from "@/lib/config/loader";
+import { useProjectStore } from "@/stores";
+import { openWorkspace } from "@/lib/services/ProjectManager";
 import SettingsDialog from "@/components/workbench/SettingsDialog";
 import { Button } from "@/components/ui/button";
 import logo from "@/assets/logo.png";
@@ -13,8 +13,7 @@ interface LandingPageProps {
 }
 
 export default function LandingPage({ onProjectOpen }: LandingPageProps) {
-    const { recentProjects, openProject } = useProjectStore();
-    const { loadDirectory, clearTree } = useFileSystemStore();
+    const { recentProjects } = useProjectStore();
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
     const handleOpenProject = async () => {
@@ -26,14 +25,7 @@ export default function LandingPage({ onProjectOpen }: LandingPageProps) {
             });
 
             if (selected && typeof selected === "string") {
-                clearTree();
-                openProject(selected);
-                await loadDirectory(selected);
-
-                // Load config metadata in the background
-                loadConfigMetadata(selected).catch((error) => {
-                    console.error("Failed to load config metadata:", error);
-                });
+                await openWorkspace(selected);
 
                 onProjectOpen();
             }
@@ -44,14 +36,7 @@ export default function LandingPage({ onProjectOpen }: LandingPageProps) {
 
     const handleOpenRecentProject = async (rootPath: string) => {
         try {
-            clearTree();
-            openProject(rootPath);
-            await loadDirectory(rootPath);
-
-            // Load config metadata in the background
-            loadConfigMetadata(rootPath).catch((error) => {
-                console.error("Failed to load config metadata:", error);
-            });
+            await openWorkspace(rootPath);
 
             onProjectOpen();
         } catch (error) {

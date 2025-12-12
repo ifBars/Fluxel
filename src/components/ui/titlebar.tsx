@@ -4,16 +4,17 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { X, Minus, Square } from "lucide-react";
 import {
   useProjectStore,
-  useFileSystemStore,
   useEditorStore,
   useSettingsStore,
   type UIDensity,
   useWorkbenchStore,
   useBuildPanelStore,
-  useCSharpStore
+  useCSharpStore,
+  usePreviewStore
 } from "@/stores";
-import { loadConfigMetadata } from "@/lib/config/loader";
 import { executeBuild, executeTypeCheck } from '@/lib/services/BuildManager';
+import { openWorkspace, closeWorkspace } from "@/lib/services/ProjectManager";
+import { killAllProcesses } from '@/lib/services/processManager';
 import { TitlebarDropdown } from "./TitlebarDropdown";
 import {
   TitlebarMenuButton,
@@ -34,9 +35,8 @@ export function TitleBar({ showMenu = true, onCloseProject }: TitleBarProps) {
   // Menu state management
   const { activeMenu, menuRef, toggleMenu, openMenuOnHover, closeMenu } = useTitlebarMenu();
 
-  const { openProject, currentProject } = useProjectStore();
-  const { loadDirectory, clearTree } = useFileSystemStore();
-  const { closeAllTabs, saveAllFiles, triggerAction } = useEditorStore();
+  const { currentProject } = useProjectStore();
+  const { saveAllFiles, triggerAction } = useEditorStore();
 
   // Settings and Workbench stores for View menu
   const {
@@ -82,18 +82,7 @@ export function TitleBar({ showMenu = true, onCloseProject }: TitleBarProps) {
       });
 
       if (selected && typeof selected === 'string') {
-        // Close existing tabs and clear tree
-        closeAllTabs();
-        clearTree();
-
-        // Open the new project
-        openProject(selected);
-        await loadDirectory(selected);
-
-        // Load config metadata in the background
-        loadConfigMetadata(selected).catch((error) => {
-          console.error("Failed to load config metadata:", error);
-        });
+        await openWorkspace(selected);
       }
     } catch (error) {
       console.error("Failed to open folder:", error);
@@ -155,10 +144,9 @@ export function TitleBar({ showMenu = true, onCloseProject }: TitleBarProps) {
     }
   };
 
-  const handleCloseProject = () => {
+  const handleCloseProject = async () => {
     closeMenu();
-    closeAllTabs();
-    clearTree();
+    await closeWorkspace();
     onCloseProject?.();
   };
 
@@ -191,6 +179,21 @@ export function TitleBar({ showMenu = true, onCloseProject }: TitleBarProps) {
 
   const handleClose = async () => {
     try {
+      console.log('[TitleBar] Cleaning up before close...');
+
+      // Stop preview server first (if running)
+      await usePreviewStore.getState().stopPreview().catch((err) => {
+        console.error('Failed to stop preview server:', err);
+      });
+
+      // Kill all tracked child processes
+      await killAllProcesses().catch((err) => {
+        console.error('Failed to kill all processes:', err);
+      });
+
+      console.log('[TitleBar] Cleanup complete, closing window...');
+
+      // Close the window - Tauri backend will also run cleanup on exit event
       await getCurrentWindow().close();
     } catch (error) {
       console.error("Close error:", error);
@@ -322,8 +325,8 @@ export function TitleBar({ showMenu = true, onCloseProject }: TitleBarProps) {
                   <TitlebarMenuItem
                     label="Toggle Word Wrap"
                     shortcut="Alt+Z"
-                    onClick={() => { setWordWrap(!wordWrap); closeMenu(); }}
-                    checked={wordWrap}
+                    onClick={() => { setWordWrap(wordWrap === 'off' ? 'on' : 'off'); closeMenu(); }}
+                    checked={wordWrap !== 'off'}
                   />
                   <TitlebarMenuDivider />
                   <TitlebarMenuItem label="Zoom In" shortcut="Ctrl+=" onClick={handleZoomIn} />

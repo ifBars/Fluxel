@@ -138,7 +138,7 @@ Currently using simple boolean state in App.tsx. Auth flow:
 
 ## Important Notes
 
-- The Rust library name is `first_tauri_app_lib` in Cargo.toml (legacy name, works fine)
+- The Rust library name is `fluxel_lib` in Cargo.toml
 - Vite dev server runs on port 1420 (configured in vite.config.ts and tauri.conf.json)
 - HMR uses port 1421
 - Bun is the configured package manager (don't use npm/yarn commands)
