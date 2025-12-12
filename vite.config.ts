@@ -39,4 +39,40 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
+  build: {
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          if (id.includes("node_modules")) {
+            if (id.includes("monaco") || id.includes("vscode")) {
+              return "monaco";
+            }
+            if (id.includes("three") || id.includes("@react-three")) {
+              return "three";
+            }
+            if (id.includes("framer-motion")) {
+              return "framer";
+            }
+            if (
+              id.includes("lucide-react") ||
+              id.includes("react-icons") ||
+              id.includes("file-icons") ||
+              id.includes("material-file-icons")
+            ) {
+              return "icons";
+            }
+            // Group React and other core vendors
+            if (
+              id.includes("react") ||
+              id.includes("react-dom") ||
+              id.includes("zustand")
+            ) {
+              return "vendor";
+            }
+          }
+        },
+      },
+    },
+  },
 }));

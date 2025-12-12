@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import AuthPage from "./components/auth/AuthPage";
 import LandingPage from "./components/landing/LandingPage";
 import EditorPage from "./components/editor/EditorPage";
@@ -53,24 +53,22 @@ function App() {
     [clearTree, loadDirectory, openProject],
   );
 
-  // Listen for paths emitted from the backend (context menu launch)
+
+
+  // Check for launch arguments on mount (context menu launch)
   useEffect(() => {
-    const unlistenPromise = listen<string>("external-open", async (event) => {
-      const rootPath = event.payload;
-      if (!rootPath) return;
-
+    const checkLaunchPath = async () => {
       try {
-        await openExternalProject(rootPath);
+        const path = await invoke<string | null>("get_launch_path");
+        if (path) {
+          await openExternalProject(path);
+        }
       } catch (error) {
-        console.error("Failed to open project from external event:", error);
+        console.error("Failed to check launch path:", error);
       }
-    });
-
-    return () => {
-      unlistenPromise
-        .then((unlisten) => unlisten())
-        .catch(() => {});
     };
+
+    checkLaunchPath();
   }, [openExternalProject]);
 
   const renderView = () => {

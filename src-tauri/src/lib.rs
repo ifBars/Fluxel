@@ -14,10 +14,11 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
-use std::time::Duration;
-use tauri::{async_runtime::spawn_blocking, Emitter, Manager};
+use std::sync::Mutex;
+use tauri::{async_runtime::spawn_blocking, Manager, State};
 use tokio::process::Command;
-use tokio::time::sleep;
+
+struct LaunchState(Mutex<Option<String>>);
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SearchMatch {
@@ -155,6 +156,12 @@ async fn list_directory_entries(
     .map_err(|e| format!("Failed to join directory listing task: {e}"))??;
 
     Ok(entries)
+}
+
+#[tauri::command]
+fn get_launch_path(state: State<LaunchState>) -> Option<String> {
+    let mut path = state.0.lock().unwrap();
+    path.take()
 }
 
 #[tauri::command]
@@ -365,9 +372,9 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .manage(LSPState::new())
+        .manage(LaunchState(Mutex::new(None)))
         .setup(|app| {
-            // If the app was launched with a file/folder argument (e.g., from context menu),
-            // normalize it to a folder path and emit it to the frontend after the window is ready.
+            // Check for CLI args (e.g. context menu launch)
             if let Some(raw_arg) = std::env::args().nth(1) {
                 let mut path = PathBuf::from(&raw_arg);
 
@@ -379,18 +386,10 @@ pub fn run() {
 
                 if path.is_dir() {
                     let normalized = path.to_string_lossy().replace('\\', "/");
-                    if let Some(window) = app.get_webview_window("main") {
-                        tauri::async_runtime::spawn(async move {
-                            // Give the frontend a moment to register listeners.
-                            sleep(Duration::from_millis(300)).await;
-                            let _ = window.emit("external-open", normalized);
-                        });
+                    // Store in state for frontend to pick up
+                    if let Some(state) = app.try_state::<LaunchState>() {
+                        *state.0.lock().unwrap() = Some(normalized);
                     }
-                } else {
-                    println!(
-                        "[Tauri] Skipping external-open: provided path is not a directory: {}",
-                        raw_arg
-                    );
                 }
             }
 
@@ -399,6 +398,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             list_directory_entries,
+            get_launch_path,
             search_files,
             // LSP Commands (from languages module)
             languages::csharp::start_csharp_ls,

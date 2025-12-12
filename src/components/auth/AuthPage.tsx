@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Github, Moon, Sun, Check } from "lucide-react";
+import { Github, Moon, Sun, Check, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AuthShader } from "./AuthShader";
 import { useSettingsStore, type AccentColor } from "@/stores";
@@ -13,7 +13,13 @@ const accentColors: { value: AccentColor; label: string; color: string }[] = [
     { value: 'red', label: 'Red', color: 'bg-[#ef4444]' },
 ];
 
-export default function AuthPage({ onLogin }: { onLogin: () => void }) {
+export default function AuthPage({
+    onLogin,
+    onSkipLogin,
+}: {
+    onLogin: () => void;
+    onSkipLogin?: () => void;
+}) {
     const { theme, setTheme, accentColor, setAccentColor } = useSettingsStore();
     const [isExpanded, setIsExpanded] = useState(false);
     const pickerRef = useRef<HTMLDivElement>(null);
@@ -33,6 +39,7 @@ export default function AuthPage({ onLogin }: { onLogin: () => void }) {
     }, [isExpanded]);
 
     const currentAccent = accentColors.find(c => c.value === accentColor);
+    const handleSkipLogin = onSkipLogin ?? onLogin;
 
     return (
         <div className="h-full w-full flex">
@@ -167,6 +174,25 @@ export default function AuthPage({ onLogin }: { onLogin: () => void }) {
                                     </span>
                                     <span className="text-xs text-muted-foreground">
                                         Use your Google account
+                                    </span>
+                                </div>
+                            </div>
+                        </Button>
+
+                        <Button
+                            variant="surface"
+                            size="tile"
+                            className="w-full justify-start"
+                            onClick={handleSkipLogin}
+                        >
+                            <div className="flex items-center gap-3">
+                                <LogOut className="h-5 w-5 text-muted-foreground" />
+                                <div className="flex flex-col items-start">
+                                    <span className="text-sm font-medium text-foreground">
+                                        Continue without login
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                        Use Fluxel without connecting accounts
                                     </span>
                                 </div>
                             </div>
