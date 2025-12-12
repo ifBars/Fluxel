@@ -263,6 +263,9 @@ export interface SettingsState {
     buildSystem: BuildSystem;
     customBuildCommand: string;
 
+    // Version Control
+    githubToken: string;
+
     // Setters
     setTheme: (theme: Theme) => void;
     setAccentColor: (color: AccentColor) => void;
@@ -281,6 +284,7 @@ export interface SettingsState {
     setDefaultEditorMode: (mode: EditorMode) => void;
     setBuildSystem: (system: BuildSystem) => void;
     setCustomBuildCommand: (command: string) => void;
+    setGithubToken: (token: string) => void;
     initAppearance: () => void;
 }
 
@@ -313,6 +317,9 @@ export const useSettingsStore = create<SettingsState>()(
             // Build defaults
             buildSystem: 'auto',
             customBuildCommand: '',
+
+            // VC defaults
+            githubToken: '',
 
             setTheme: (theme) => {
                 // Side effect: update document class
@@ -352,6 +359,7 @@ export const useSettingsStore = create<SettingsState>()(
             setDefaultEditorMode: (defaultEditorMode) => set({ defaultEditorMode }),
             setBuildSystem: (buildSystem) => set({ buildSystem }),
             setCustomBuildCommand: (customBuildCommand) => set({ customBuildCommand }),
+            setGithubToken: (githubToken) => set({ githubToken }),
             initAppearance: () => {
                 // Initialize all appearance settings on app load
                 const state = get();

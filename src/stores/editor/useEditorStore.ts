@@ -11,10 +11,14 @@ export interface EditorTab {
     filename: string;
     /** Current content in editor */
     content: string;
-    /** Original content when opened (for dirty detection) */
+    /** Original content of the file on disk (for dirty detection) */
     originalContent: string;
+    /** Content for the 'original' side of the diff editor (HEAD version) */
+    diffBaseContent?: string;
     /** Monaco language identifier */
     language: string;
+    /** Editor mode */
+    type: 'code' | 'diff';
 }
 
 export interface EditorPosition {
@@ -61,6 +65,8 @@ interface EditorState {
 
     /** Open a file in a new tab (or focus if already open) */
     openFile: (path: string, position?: EditorPosition) => Promise<void>;
+    /** Open a diff viewer for a file */
+    openDiff: (path: string, originalContent?: string, modifiedContent?: string) => Promise<void>;
     /** Close a tab by ID */
     closeTab: (id: string) => void;
     /** Close all tabs except the specified one */
@@ -122,7 +128,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         const targetColumn = position?.column ?? 1;
 
         // Check if file is already open
-        const existingTab = tabs.find((t) => t.path === normalizedPath);
+        const existingTab = tabs.find((t) => t.path === normalizedPath && t.type === 'code');
         if (existingTab) {
             setActiveTab(existingTab.id);
             set({
@@ -146,6 +152,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
                 content,
                 originalContent: content,
                 language,
+                type: 'code',
             };
 
             set((state) => ({
@@ -158,6 +165,53 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         } catch (error) {
             console.error('Failed to open file:', path, error);
         }
+    },
+
+    openDiff: async (path: string, originalContent?: string, modifiedContent?: string) => {
+        const { tabs, setActiveTab } = get();
+        const normalizedPath = path.replace(/\\/g, '/');
+
+        // Check if diff is already open for this file
+        // Note: We intentionally separate code tabs and diff tabs.
+        // A user might want both the code editor and the diff view open.
+        const existingTab = tabs.find((t) => t.path === normalizedPath && t.type === 'diff');
+        if (existingTab) {
+            setActiveTab(existingTab.id);
+            // Verify if content needs update?
+            // For now, assume if it's open, it's fine.
+            return;
+        }
+
+        const filename = getFileName(normalizedPath);
+        const extension = getFileExtension(normalizedPath);
+        const language = getLanguageFromExtension(extension);
+
+        // If modifiedContent is not provided, try to read from disk
+        let currentContent = modifiedContent;
+        if (currentContent === undefined) {
+            try {
+                currentContent = await readTextFile(normalizedPath);
+            } catch (e) {
+                console.error('Failed to read file for diff:', e);
+                throw new Error(`Failed to read file ${normalizedPath}: ${e}`);
+            }
+        }
+
+        const newTab: EditorTab = {
+            id: generateId(),
+            path: normalizedPath,
+            filename: `${filename} (Diff)`,
+            content: currentContent,
+            originalContent: currentContent, // Not really used for dirty check in diff mode usually, but consistency
+            diffBaseContent: originalContent || '',
+            language,
+            type: 'diff',
+        };
+
+        set((state) => ({
+            tabs: [...state.tabs, newTab],
+            activeTabId: newTab.id,
+        }));
     },
 
     closeTab: (id: string) => {

@@ -1,10 +1,12 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 mod csproj_parser;
+mod git_manager;
 mod lsp_manager;
+mod node_services;
 
 use csproj_parser::BuildConfiguration;
-use lsp_manager::LSPState;
 use ignore::gitignore::GitignoreBuilder;
+use lsp_manager::LSPState;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -119,15 +121,15 @@ async fn list_directory_entries(
             } else {
                 gitignore
                     .as_ref()
-                    .map(|g| g.matched_path_or_any_parents(&child_path, is_directory).is_ignore())
+                    .map(|g| {
+                        g.matched_path_or_any_parents(&child_path, is_directory)
+                            .is_ignore()
+                    })
                     .unwrap_or(false)
             };
 
             collected.push(DirEntry {
-                name: dir_entry
-                    .file_name()
-                    .to_string_lossy()
-                    .to_string(),
+                name: dir_entry.file_name().to_string_lossy().to_string(),
                 path: child_path.to_string_lossy().replace('\\', "/"),
                 is_directory,
                 is_ignored,
@@ -140,9 +142,7 @@ async fn list_directory_entries(
             } else if !a.is_directory && b.is_directory {
                 std::cmp::Ordering::Greater
             } else {
-                a.name
-                    .to_lowercase()
-                    .cmp(&b.name.to_lowercase())
+                a.name.to_lowercase().cmp(&b.name.to_lowercase())
             }
         });
 
@@ -426,7 +426,16 @@ pub fn run() {
             send_lsp_message,
             stop_csharp_ls,
             get_project_configurations,
-            build_csharp_project
+            build_csharp_project,
+            node_services::resolve_node_module,
+            node_services::discover_package_typings,
+            node_services::analyze_module_graph,
+            git_manager::git_status,
+            git_manager::git_commit,
+            git_manager::git_push,
+            git_manager::git_pull,
+            git_manager::git_read_file_at_head,
+            git_manager::git_discard_changes
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

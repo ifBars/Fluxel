@@ -190,17 +190,23 @@ function cleanCompletion(text: string): string {
     cleaned = cleaned
         .replace(/^```\w*\n?/, "") // Remove opening code fence
         .replace(/\n```$/, "")     // Remove closing code fence
-        .replace(/<\|.*?\|>/g, "") // Remove special tokens
+        .replace(/<\|.*?\|>/g, "") // Remove special tokens (generic)
+        .replace(/<\|fim_prefix\|>/g, "")
+        .replace(/<\|fim_middle\|>/g, "")
+        .replace(/<\|fim_suffix\|>/g, "")
         .replace(/<(?:fim_prefix|fim_middle|fim_suffix)>/g, "")
         .replace(/<｜fim▁(?:begin｜|hole｜|end｜)>/g, "")
         .replace(/\[EOL\]/g, "")   // Remove EOL markers
-        .replace(/<file_sep>/g, ""); // Remove file separators some models emit
+        .replace(/<file_sep>/g, "") // Remove file separators
+        .replace(/^<\|file_sep\|>.*$/gm, ""); // Remove full lines with file separators
 
     // Limit to reasonable length (single logical completion)
     const lines = cleaned.split("\n");
     if (lines.length > 5) {
         // For multi-line completions, try to find a natural break point
-        cleaned = lines.slice(0, 5).join("\n");
+        // But if it's a block (like an if statement), we might want more.
+        // For now, increasing the limit slightly to 8 to avoid cutting off small functions.
+        cleaned = lines.slice(0, 8).join("\n");
     }
 
     return cleaned;
@@ -224,6 +230,13 @@ export function createInlineCompletionProvider(
 
     // Track active requests for cancellation
     let activeAbortController: AbortController | null = null;
+
+    // State for caching the last completion to support "typing through" suggestions
+    let lastCompletion: {
+        text: string;
+        requestPrefix: string;
+        requestSuffix: string;
+    } | null = null;
 
     return {
         provideInlineCompletions: async (
@@ -302,6 +315,46 @@ export function createInlineCompletionProvider(
                     model: finalConfig.model,
                 };
 
+                // --- CACHING LOGIC START ---
+                // If we have a cached completion that still matches what the user typed, return it immediately.
+                if (lastCompletion) {
+                    const reqPrefix = lastCompletion.requestPrefix;
+                    const cachedText = lastCompletion.text;
+                    const currentPrefix = prefix;
+
+                    // Check if the current prefix is just an extension of the old prefix
+                    if (currentPrefix.length > reqPrefix.length && currentPrefix.startsWith(reqPrefix)) {
+                        const addedText = currentPrefix.slice(reqPrefix.length);
+
+                        // Check if what the user typed matches the beginning of the cached completion
+                        if (cachedText.startsWith(addedText)) {
+                            const remainingText = cachedText.slice(addedText.length);
+                            if (remainingText.length > 0) {
+                                // Update the cache to reflect the new state (optional, but good for next char)
+                                // Actually, we can just keep the original valid cache or update it.
+                                // Let's not update 'requestPrefix' to keep the anchor point, 
+                                // but relying on the original anchor is safer.
+
+                                return {
+                                    items: [{
+                                        insertText: remainingText,
+                                        range: {
+                                            startLineNumber: position.lineNumber,
+                                            startColumn: position.column,
+                                            endLineNumber: position.lineNumber,
+                                            endColumn: position.column,
+                                        },
+                                    }]
+                                };
+                            }
+                        }
+                    }
+
+                    // If we're here, the cache is invalid (user typed something else or moved cursor disjointly)
+                    lastCompletion = null;
+                }
+                // --- CACHING LOGIC END ---
+
                 try {
                     for await (const chunk of generateCompletion(
                         completionRequest,
@@ -367,6 +420,13 @@ export function createInlineCompletionProvider(
                         endLineNumber: position.lineNumber,
                         endColumn: position.column,
                     },
+                };
+
+                // Cache the completion for sticky behavior
+                lastCompletion = {
+                    text: cleanedCompletion,
+                    requestPrefix: prefix,
+                    requestSuffix: sanitizedSuffix
                 };
 
                 // If Monaco already cancelled this request, silently drop the result

@@ -1,6 +1,7 @@
 import { useWorkbenchStore } from "@/stores";
 import FileTree from "./FileTree";
 import SearchPanel from "./SearchPanel";
+import GitPanel from "./GitPanel";
 import ScrollableArea from "../ui/scrollable-area";
 
 export default function Sidebar() {
@@ -8,7 +9,7 @@ export default function Sidebar() {
 
     return (
         <div className="h-full flex flex-col bg-muted/20 min-w-[14rem]">
-            <div 
+            <div
                 className="flex items-center border-b border-border"
                 style={{
                     height: 'calc(2.25rem + var(--density-padding-sm, 0.5rem))',
@@ -30,12 +31,9 @@ export default function Sidebar() {
                     </ScrollableArea>
                 )}
                 {activeActivity === 'search' && <SearchPanel />}
-                {activeActivity === 'git' && (
-                    <ScrollableArea className="h-full p-4 text-sm text-muted-foreground">
-                        <p>Git integration coming soon...</p>
-                    </ScrollableArea>
-                )}
+                {activeActivity === 'git' && <GitPanel />}
             </div>
         </div>
     );
 }
+

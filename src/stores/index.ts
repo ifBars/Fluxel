@@ -3,3 +3,4 @@ export * from './workbench';
 export * from './editor';
 export * from './project';
 export * from './build';
+export * from './git/useGitStore';

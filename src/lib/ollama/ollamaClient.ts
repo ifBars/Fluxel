@@ -56,40 +56,55 @@ const FIM_TOKEN_SETS: Array<{ matcher: RegExp; tokens: FimTokenSet }> = [
         // Qwen / Qwen Coder
         matcher: /qwen/i,
         tokens: {
-            prefix: "<fim_prefix>",
-            middle: "<fim_middle>",
-            suffix: "<fim_suffix>",
-            extraStops: ["<|im_end|>"],
+            prefix: "<|fim_prefix|>",
+            middle: "<|fim_middle|>",
+            suffix: "<|fim_suffix|>",
+            extraStops: ["<|im_start|>", "<|im_end|>", "<|file_sep|>"],
         },
     },
     {
-        // StarCoder / StarCoder2 / CodeGeeX style models
-        matcher: /(starcoder|codegeex|codegeex|codellama|phi|gemma)/i,
+        // Llama 3 / CodeLlama
+        // Note: Llama 3 usually supports FIM in base models. 
+        // Some fine-tunes might use <PRE> <SUF> <MID> but standard Llama 3 is <|fim_prefix|> etc.
+        // We add both sets of stops to be safe.
+        matcher: /(llama|codellama)/i,
         tokens: {
-            prefix: "<fim_prefix>",
-            middle: "<fim_middle>",
-            suffix: "<fim_suffix>",
-            extraStops: ["<|endoftext|>"],
+            prefix: "<|fim_prefix|>",
+            middle: "<|fim_middle|>",
+            suffix: "<|fim_suffix|>",
+            extraStops: ["<|eot_id|>", "<|end_of_text|>", "<|file_separator|>"],
         },
     },
     {
-        // DeepSeek Coder
+        // DeepSeek Coder (V1 and V2)
         matcher: /deepseek/i,
         tokens: {
             prefix: "<｜fim▁begin｜>",
             middle: "<｜fim▁hole｜>",
             suffix: "<｜fim▁end｜>",
-            extraStops: ["<eoa>"],
+            extraStops: ["<｜end of sentence｜>", "<|EOT|>", "<|file_sep|>"],
         },
     },
     {
-        // Mistral / Ministral
-        matcher: /(mistral|ministral)/i,
+        // StarCoder / StarCoder2 / CodeGeeX
+        matcher: /(starcoder|codegeex|phi|gemma)/i,
+        tokens: {
+            prefix: "<fim_prefix>",
+            middle: "<fim_middle>",
+            suffix: "<fim_suffix>",
+            extraStops: ["<|endoftext|>", "<file_sep>"],
+        },
+    },
+    {
+        // Mistral / Codestral / Mixtral
+        matcher: /(mistral|codestral|mixtral)/i,
         tokens: {
             prefix: "[PREFIX]",
-            middle: "[INFILL]",
+            // Mistral FIM is [PREFIX]...[SUFFIX]... then generates middle
+            // Standard implementation often uses [MIDDLE] as the trigger.
+            middle: "[MIDDLE]",
             suffix: "[SUFFIX]",
-            extraStops: ["</s>"],
+            extraStops: ["</s>", "[INST]", "[/INST]"],
         },
     },
 ];
@@ -118,7 +133,7 @@ function buildFimPrompt(
         ...[tokens.extraStops ?? []].flat(),
         "<fim_suffix>",
         "<|endoftext|>",
-        "\n\n",
+        "<|endoftext|>",
         "```",
     ]);
 
@@ -241,9 +256,9 @@ export async function* generateCompletion(
         },
     };
 
-    console.log("[Ollama] Request prepared:", { 
-        model: finalConfig.model, 
-        promptLength: fimPrompt.length, 
+    console.log("[Ollama] Request prepared:", {
+        model: finalConfig.model,
+        promptLength: fimPrompt.length,
         prefixLength: request.prefix.length,
         suffixLength: request.suffix?.length ?? 0,
         hasSuffix: !!request.suffix,

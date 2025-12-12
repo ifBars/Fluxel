@@ -4,12 +4,12 @@ import {
     X, Moon, Sun, Check, Code, Monitor, Columns,
     Palette, Layout, Keyboard,
     Type, Eye, Indent, WrapText, Save,
-    Maximize2, Sidebar as SidebarIcon, Sparkles, ExternalLink, Hammer
+    Maximize2, Sidebar as SidebarIcon, Sparkles, ExternalLink, Hammer, GitBranch
 } from "lucide-react";
 import { useSettingsStore, type SettingsState, type Theme, type AccentColor, type UIDensity, useWorkbenchStore, type WorkbenchState, type EditorMode } from "@/stores";
 import { RECOMMENDED_MODELS } from "../../lib/ollama";
 
-type SettingsSection = 'appearance' | 'editor' | 'autocomplete' | 'workbench' | 'build' | 'shortcuts';
+type SettingsSection = 'appearance' | 'editor' | 'autocomplete' | 'workbench' | 'build' | 'versionControl' | 'shortcuts';
 
 const settingsSchema = z.object({
     fontSize: z.number().min(10).max(32),
@@ -102,6 +102,7 @@ export default function SettingsDialog({ isOpen, onClose }: { isOpen: boolean; o
         { id: 'autocomplete', label: 'Autocomplete', icon: <Sparkles size={16} /> },
         { id: 'workbench', label: 'Workbench', icon: <Layout size={16} /> },
         { id: 'build', label: 'Build', icon: <Hammer size={16} /> },
+        { id: 'versionControl', label: 'Version Control', icon: <GitBranch size={16} /> },
         { id: 'shortcuts', label: 'Shortcuts', icon: <Keyboard size={16} /> },
     ];
 
@@ -166,6 +167,7 @@ export default function SettingsDialog({ isOpen, onClose }: { isOpen: boolean; o
                             />
                         )}
                         {activeSection === 'build' && <BuildSection settings={settings} />}
+                        {activeSection === 'versionControl' && <VersionControlSection settings={settings} />}
                         {activeSection === 'shortcuts' && <ShortcutsSection />}
                     </div>
                 </div>
@@ -786,8 +788,8 @@ function BuildSection({ settings }: { settings: SettingsState }) {
                             key={system.value}
                             onClick={() => settings.setBuildSystem(system.value)}
                             className={`w-full flex items-center justify-between p-3 rounded-lg border transition-all text-left ${settings.buildSystem === system.value
-                                    ? "border-primary bg-primary/10 ring-1 ring-primary"
-                                    : "border-border hover:bg-muted/50"
+                                ? "border-primary bg-primary/10 ring-1 ring-primary"
+                                : "border-border hover:bg-muted/50"
                                 }`}
                         >
                             <div className="flex flex-col">
@@ -803,38 +805,49 @@ function BuildSection({ settings }: { settings: SettingsState }) {
             </div>
 
             {/* Custom Build Command */}
-            {settings.buildSystem === 'manual' && (
-                <div className="space-y-3">
-                    <label className="text-sm font-medium text-foreground">Custom Build Command</label>
-                    <input
-                        type="text"
-                        value={settings.customBuildCommand}
-                        onChange={(e) => settings.setCustomBuildCommand(e.target.value)}
-                        placeholder="e.g., make build"
-                        className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary font-mono"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                        Enter the command to run when building your project
-                    </p>
-                </div>
-            )}
-
-            {/* Info Box */}
-            <div className="p-4 rounded-lg border border-border bg-muted/30">
-                <div className="flex items-start gap-3">
-                    <Hammer size={20} className="text-primary shrink-0 mt-0.5" />
-                    <div className="space-y-2">
-                        <p className="text-sm font-medium">Build Configuration</p>
-                        <p className="text-xs text-muted-foreground">
-                            The build system determines how your project is compiled. Auto-detect will
-                            examine your project files to choose the appropriate build tool.
-                        </p>
-                    </div>
-                </div>
+            <div className="space-y-3">
+                <label className="text-sm font-medium text-foreground">Custom Build Command</label>
+                <input
+                    type="text"
+                    value={settings.customBuildCommand}
+                    onChange={(e) => settings.setCustomBuildCommand(e.target.value)}
+                    placeholder="e.g. npm run build:prod"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary font-mono"
+                    disabled={settings.buildSystem !== 'manual'}
+                />
             </div>
         </div>
     );
 }
+
+// Version Control Section
+function VersionControlSection({ settings }: { settings: SettingsState }) {
+    return (
+        <div className="space-y-6">
+            <div>
+                <h3 className="text-lg font-semibold mb-1">Version Control</h3>
+                <p className="text-sm text-muted-foreground">Configure Git and GitHub integration</p>
+            </div>
+
+            {/* GitHub Token */}
+            <div className="space-y-3">
+                <label className="text-sm font-medium text-foreground">GitHub Personal Access Token</label>
+                <input
+                    type="password"
+                    value={settings.githubToken}
+                    onChange={(e) => settings.setGithubToken(e.target.value)}
+                    placeholder="ghp_..."
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary font-mono"
+                />
+                <p className="text-xs text-muted-foreground">
+                    Required for push/pull operations. Create one at <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">GitHub Settings</a>.
+                    Scopes needed: <code>repo</code>
+                </p>
+            </div>
+        </div>
+    );
+}
+
 
 // Shortcuts Section
 function ThemeOption({

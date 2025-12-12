@@ -1,3 +1,6 @@
+[workspace]
+members = ["crates/node_resolver"]
+
 [package]
 name = "fluxel"
 version = "0.1.0"
@@ -31,4 +34,10 @@ tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 futures = "0.3"
 dirs = "6.0.0"
+fluxel_node_resolver = { path = "crates/node_resolver" }
+camino = "1.2.1"
+git2 = "0.19"
+
+[patch.crates-io]
+napi = { git = "https://github.com/napi-rs/napi-rs", branch = "main", default-features = false, features = ["serde-json", "napi6"] }
 

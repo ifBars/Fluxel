@@ -1,4 +1,4 @@
-import Editor, { loader, useMonaco } from "@monaco-editor/react";
+import Editor, { DiffEditor, loader, useMonaco } from "@monaco-editor/react";
 import * as monacoApi from "monaco-editor";
 import type * as Monaco from "monaco-editor";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
@@ -11,12 +11,12 @@ import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker"
 loader.config({ monaco: monacoApi });
 import { useEffect, useCallback, useState, useRef } from "react";
 import { useSettingsStore, useEditorStore, type EditorTab, useProjectStore } from "@/stores";
-import { loadProjectTypes, clearProjectTypes } from "../../lib/monacoTypeLoader";
-import { registerProjectSourceFiles, clearProjectSourceModels } from "../../lib/monacoProjectSourceManager";
+import { toFileUri } from "../../lib/monacoTypeLoader";
 import { registerInlineCompletionProvider } from "../../lib/ollama";
 import { registerCSharpLanguage } from "../../lib/csharpConfig";
 import { getCSharpLSPClient } from "../../lib/lspClient";
 import { registerCSharpLSPFeatures } from "../../lib/csharpMonacoIntegration";
+import { configureTypeScriptLanguage, hydrateTypeScriptWorkspace, resetTypeScriptWorkspace } from "../../lib/monacoLanguageService";
 import { File, Save, Circle } from "lucide-react";
 
 // Ensure Monaco workers are resolved by Vite/Tauri instead of the default CDN lookup
@@ -84,57 +84,37 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
         setEditorInstance(null);
     }, [activeTab?.id]);
 
-    // Configure Monaco TypeScript defaults and load project types
+    // Configure Monaco TypeScript to behave like VSCode (full IntelliSense)
     useEffect(() => {
         if (!monaco) return;
+        configureTypeScriptLanguage(monaco);
+    }, [monaco]);
 
-        // Keep models in sync with the TS worker so local imports resolve
-        monaco.typescript.typescriptDefaults.setEagerModelSync(true);
+    // Hydrate Monaco with project types/models when the workspace changes
+    useEffect(() => {
+        if (!monaco) return;
+        const projectRoot = currentProject?.rootPath;
+        let cancelled = false;
 
-        // Configure TypeScript defaults with Node-style module resolution
-        monaco.typescript.typescriptDefaults.setCompilerOptions({
-            target: monaco.typescript.ScriptTarget.ES2020,
-            module: monaco.typescript.ModuleKind.ESNext,
-            lib: ["ES2020", "DOM", "DOM.Iterable"],
-            moduleResolution: monaco.typescript.ModuleResolutionKind.NodeJs,
-            allowJs: true,
-            esModuleInterop: true,
-            allowSyntheticDefaultImports: true,
-            skipLibCheck: true,
-            strict: true,
-            jsx: monaco.typescript.JsxEmit.React,
-        });
+        const hydrate = async () => {
+            try {
+                if (!projectRoot) {
+                    resetTypeScriptWorkspace(monaco);
+                    return;
+                }
 
-        // Set up diagnostics options
-        monaco.typescript.typescriptDefaults.setDiagnosticsOptions({
-            noSemanticValidation: false,
-            noSyntaxValidation: false,
-            noSuggestionDiagnostics: false,
-        });
-
-        // Load project types if a project is open
-        if (currentProject?.rootPath) {
-            // First load external type definitions from node_modules
-            loadProjectTypes(currentProject.rootPath, monaco)
-                .then(() => {
-                    // Then register project source files and set up path aliases
-                    return registerProjectSourceFiles(currentProject.rootPath, monaco);
-                })
-                .catch((error) => {
-                    console.error("Failed to load project:", error);
-                });
-        } else {
-            // Clear types if no project is open
-            clearProjectTypes(monaco);
-            clearProjectSourceModels(monaco);
-        }
-
-        // Cleanup on unmount or project change
-        return () => {
-            if (monaco && !currentProject?.rootPath) {
-                clearProjectTypes(monaco);
-                clearProjectSourceModels(monaco);
+                await hydrateTypeScriptWorkspace(projectRoot, monaco);
+            } catch (error) {
+                if (!cancelled) {
+                    console.error('[Monaco] Failed to hydrate TypeScript workspace:', error);
+                }
             }
+        };
+
+        hydrate();
+
+        return () => {
+            cancelled = true;
         };
     }, [monaco, currentProject?.rootPath]);
 
@@ -672,45 +652,68 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                 </button>
             </div>
 
-            {/* Monaco Editor */}
+            {/* Monaco Editor (Code or Diff) */}
             <div className="flex-1 overflow-hidden relative">
-                <Editor
-                    key={activeTab.id}
-                    height="100%"
-                    path={activeTab.path}
-                    language={activeTab.language}
-                    value={activeTab.content}
-                    onChange={handleEditorChange}
-                    onMount={handleEditorMount}
-                    theme={theme === "dark" ? "fluxel-dark" : "fluxel-light"}
-                    options={{
-                        minimap: { enabled: showMinimap },
-                        fontSize: fontSize,
-                        fontFamily: "'JetBrains Mono', monospace",
-                        smoothScrolling: true,
-                        cursorBlinking: "smooth",
-                        padding: { top: 8, bottom: 8 },
-                        automaticLayout: true,
-                        wordWrap: wordWrap ? "on" : "off",
-                        lineNumbers: showLineNumbers ? "on" : "off",
-                        tabSize: tabSize,
-                        renderWhitespace: "selection",
-                        bracketPairColorization: { enabled: true },
-                        guides: {
-                            bracketPairs: true,
-                            indentation: true,
-                        },
-                        scrollBeyondLastLine: false,
-                        renderLineHighlight: "all",
-                        inlineSuggest: {
-                            enabled: autocompleteEnabled,
-                        },
-                        // Enable inline suggestions feature
-                        suggest: {
-                            showInlineDetails: true,
-                        },
-                    }}
-                />
+                {activeTab.type === 'diff' ? (
+                    <DiffEditor
+                        key={activeTab.id}
+                        height="100%"
+                        original={activeTab.diffBaseContent}
+                        modified={activeTab.content}
+                        language={activeTab.language}
+                        theme={theme === "dark" ? "fluxel-dark" : "fluxel-light"}
+                        options={{
+                            minimap: { enabled: showMinimap },
+                            fontSize: fontSize,
+                            fontFamily: "'JetBrains Mono', monospace",
+                            smoothScrolling: true,
+                            padding: { top: 8, bottom: 8 },
+                            automaticLayout: true,
+                            wordWrap: wordWrap ? "on" : "off",
+                            lineNumbers: showLineNumbers ? "on" : "off",
+                            renderSideBySide: true,
+                            readOnly: true, // Diff view is read-only for now
+                        }}
+                    />
+                ) : (
+                    <Editor
+                        key={activeTab.id}
+                        height="100%"
+                        path={toFileUri(activeTab.path)}
+                        language={activeTab.language}
+                        value={activeTab.content}
+                        onChange={handleEditorChange}
+                        onMount={handleEditorMount}
+                        theme={theme === "dark" ? "fluxel-dark" : "fluxel-light"}
+                        options={{
+                            minimap: { enabled: showMinimap },
+                            fontSize: fontSize,
+                            fontFamily: "'JetBrains Mono', monospace",
+                            smoothScrolling: true,
+                            cursorBlinking: "smooth",
+                            padding: { top: 8, bottom: 8 },
+                            automaticLayout: true,
+                            wordWrap: wordWrap ? "on" : "off",
+                            lineNumbers: showLineNumbers ? "on" : "off",
+                            tabSize: tabSize,
+                            renderWhitespace: "selection",
+                            bracketPairColorization: { enabled: true },
+                            guides: {
+                                bracketPairs: true,
+                                indentation: true,
+                            },
+                            scrollBeyondLastLine: false,
+                            renderLineHighlight: "all",
+                            inlineSuggest: {
+                                enabled: autocompleteEnabled,
+                            },
+                            // Enable inline suggestions feature
+                            suggest: {
+                                showInlineDetails: true,
+                            },
+                        }}
+                    />
+                )}
             </div>
         </div>
     );
