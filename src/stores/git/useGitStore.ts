@@ -21,7 +21,7 @@ interface GitState {
     // Actions
     setCommitMessage: (message: string) => void;
     refreshStatus: (rootPath: string) => Promise<void>;
-    commit: (rootPath: string, message: string) => Promise<void>;
+    commit: (rootPath: string, message: string, files: string[]) => Promise<void>;
     push: (rootPath: string, token: string) => Promise<void>;
     pull: (rootPath: string, token: string) => Promise<void>;
     getFileAtHead: (rootPath: string, filePath: string) => Promise<string>;
@@ -57,10 +57,10 @@ export const useGitStore = create<GitState>((set, get) => ({
         }
     },
 
-    commit: async (rootPath, message) => {
+    commit: async (rootPath, message, files) => {
         set({ isLoading: true, error: null });
         try {
-            await invoke('git_commit', { rootPath, message });
+            await invoke('git_commit', { rootPath, message, files });
             // Refresh status after commit
             await get().refreshStatus(rootPath);
             set({ commitMessage: '' }); // Clear message on success

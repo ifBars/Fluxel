@@ -15,6 +15,7 @@ import { toFileUri } from "@/lib/languages/typescript";
 import { registerInlineCompletionProvider } from "../../lib/ollama";
 import { registerCSharpLanguage, getCSharpLSPClient, registerCSharpLSPFeatures } from "@/lib/languages/csharp";
 import { configureTypeScriptLanguage, hydrateTypeScriptWorkspace, resetTypeScriptWorkspace } from "@/lib/languages/typescript";
+import { getLazyTypeResolver } from "@/lib/languages/typescript/LazyTypeResolver";
 import { File, Save, Circle } from "lucide-react";
 
 // Ensure Monaco workers are resolved by Vite/Tauri instead of the default CDN lookup
@@ -457,8 +458,24 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                     console.error('[CodeEditor] Failed to send didChange:', error);
                 });
             }
+
+            // Lazy load types for TypeScript/JavaScript files when imports change
+            if (currentProject && (
+                activeTab.language === 'typescript' ||
+                activeTab.language === 'javascript' ||
+                activeTab.language === 'typescriptreact' ||
+                activeTab.language === 'javascriptreact'
+            )) {
+                const resolver = getLazyTypeResolver(monaco, currentProject.rootPath);
+                if (resolver) {
+                    // Debounced call to avoid excessive processing
+                    resolver.ensureTypesForFile(value).catch((error) => {
+                        console.debug('[CodeEditor] LazyTypeResolver error:', error);
+                    });
+                }
+            }
         }
-    }, [activeTab, updateContent, lspReady]);
+    }, [activeTab, updateContent, lspReady, currentProject, monaco]);
 
     // Handle editor mount (for future extensions)
     const handleEditorMount = useCallback((editor: Monaco.editor.IStandaloneCodeEditor) => {

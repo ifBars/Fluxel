@@ -2,6 +2,8 @@
 mod csproj_parser;
 mod git_manager;
 mod languages;
+#[cfg(feature = "profiling")]
+mod profiling;
 mod services;
 
 // Keep old modules for reference until migration is verified
@@ -53,6 +55,10 @@ fn greet(name: &str) -> String {
 
 /// List the immediate children of a directory without blocking the UI thread.
 /// Runs on a blocking thread pool and applies .gitignore rules (from the provided workspace root) when available.
+#[cfg_attr(
+    feature = "profiling",
+    tracing::instrument(skip(path, workspace_root), fields(category = "workspace"))
+)]
 #[tauri::command]
 async fn list_directory_entries(
     path: String,
@@ -164,6 +170,10 @@ fn get_launch_path(state: State<LaunchState>) -> Option<String> {
     path.take()
 }
 
+#[cfg_attr(
+    feature = "profiling",
+    tracing::instrument(skip(query, root_path), fields(category = "search"))
+)]
 #[tauri::command]
 fn search_files(
     query: String,
@@ -374,6 +384,13 @@ pub fn run() {
         .manage(LSPState::new())
         .manage(LaunchState(Mutex::new(None)))
         .setup(|app| {
+            // Initialize profiling subsystem (feature-gated)
+            #[cfg(feature = "profiling")]
+            {
+                let profiler = profiling::init();
+                app.manage(profiler);
+            }
+
             // Check for CLI args (e.g. context menu launch)
             if let Some(raw_arg) = std::env::args().nth(1) {
                 let mut path = PathBuf::from(&raw_arg);
@@ -411,13 +428,28 @@ pub fn run() {
             services::node_resolver::resolve_node_module,
             services::node_resolver::discover_package_typings,
             services::node_resolver::analyze_module_graph,
+            // Batch File Operations (for efficient type loading)
+            services::batch_file_reader::batch_read_files,
+            services::batch_file_reader::batch_discover_typings,
+            services::batch_file_reader::count_package_type_files,
             // Git Commands
             git_manager::git_status,
             git_manager::git_commit,
             git_manager::git_push,
             git_manager::git_pull,
             git_manager::git_read_file_at_head,
-            git_manager::git_discard_changes
+            git_manager::git_discard_changes,
+            // Profiling Commands (feature-gated)
+            #[cfg(feature = "profiling")]
+            profiling::commands::profiler_set_enabled,
+            #[cfg(feature = "profiling")]
+            profiling::commands::profiler_get_status,
+            #[cfg(feature = "profiling")]
+            profiling::commands::profiler_get_recent_spans,
+            #[cfg(feature = "profiling")]
+            profiling::commands::profiler_get_attribution,
+            #[cfg(feature = "profiling")]
+            profiling::commands::profiler_clear
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

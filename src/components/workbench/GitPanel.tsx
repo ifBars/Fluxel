@@ -1,7 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { readTextFile } from '@tauri-apps/plugin-fs';
 import { useGitStore, useProjectStore, useSettingsStore, useEditorStore } from '@/stores';
-import { RefreshCw, GitCommit, Upload, Download, Loader2, Trash2 } from 'lucide-react';
+import { RefreshCw, GitCommit, Upload, Download, Loader2, Trash2, CheckSquare, Square } from 'lucide-react';
 
 export default function GitPanel() {
     const {
@@ -22,6 +22,43 @@ export default function GitPanel() {
     const { currentProject } = useProjectStore();
     const { githubToken } = useSettingsStore();
 
+    const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
+
+    // Initialize selection when files change
+    useEffect(() => {
+        // By default select all files that are not already selected (to preserve unselected state if we wanted distinct behavior, 
+        // but here we just re-select everything on refresh effectively similar to VSCode's behavior of staging all new changes 
+        // if we consider "files" as "changes"). 
+        // Actually, better UX: if files change significantly (refresh), reset selection to all?
+        // Or if we consider this list as "Unstaged Changes" + "Staged Changes" combined (simplified view), 
+        // we might want to default to all selected.
+
+        // Let's default to all files selected whenever the file list changes length or content
+        const newSet = new Set<string>();
+        files.forEach(f => newSet.add(f.path));
+        setSelectedFiles(newSet);
+    }, [files]);
+
+    const toggleFileSelection = (path: string) => {
+        const newSet = new Set(selectedFiles);
+        if (newSet.has(path)) {
+            newSet.delete(path);
+        } else {
+            newSet.add(path);
+        }
+        setSelectedFiles(newSet);
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedFiles.size === files.length) {
+            setSelectedFiles(new Set());
+        } else {
+            const newSet = new Set<string>();
+            files.forEach(f => newSet.add(f.path));
+            setSelectedFiles(newSet);
+        }
+    };
+
     useEffect(() => {
         if (currentProject) {
             refreshStatus(currentProject.rootPath);
@@ -30,8 +67,12 @@ export default function GitPanel() {
 
     const handleCommit = async () => {
         if (!currentProject || !commitMessage.trim()) return;
+        if (selectedFiles.size === 0) {
+            alert('No files selected for commit');
+            return;
+        }
         try {
-            await commit(currentProject.rootPath, commitMessage);
+            await commit(currentProject.rootPath, commitMessage, Array.from(selectedFiles));
         } catch (e) {
             console.error(e);
         }
@@ -175,8 +216,21 @@ export default function GitPanel() {
             {/* Changes List */}
             <div className="flex-1 overflow-auto">
                 <div className="px-3 py-2 text-xs font-medium text-muted-foreground flex items-center justify-between">
-                    <span>Changes</span>
-                    <span>{files.length}</span>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={toggleSelectAll}
+                            className="hover:text-foreground transition-colors"
+                            title={selectedFiles.size === files.length ? "Deselect All" : "Select All"}
+                        >
+                            {files.length > 0 && selectedFiles.size === files.length ? (
+                                <CheckSquare size={14} />
+                            ) : (
+                                <Square size={14} className={selectedFiles.size > 0 ? "opacity-50" : ""} />
+                            )}
+                        </button>
+                        <span>Changes</span>
+                    </div>
+                    <span>{selectedFiles.size} / {files.length}</span>
                 </div>
 
                 {files.length === 0 ? (
@@ -191,6 +245,19 @@ export default function GitPanel() {
                                 className="flex items-center gap-2 px-3 py-1.5 hover:bg-muted/50 text-sm group cursor-pointer"
                                 onClick={() => handleFileClick(file)}
                             >
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleFileSelection(file.path);
+                                    }}
+                                    className="text-muted-foreground hover:text-foreground transition-colors"
+                                >
+                                    {selectedFiles.has(file.path) ? (
+                                        <CheckSquare size={14} className="text-primary" />
+                                    ) : (
+                                        <Square size={14} />
+                                    )}
+                                </button>
                                 <span className={`w-3 h-3 rounded-full shrink-0 ${file.status === 'modified' ? 'bg-orange-500' :
                                     file.status === 'new' ? 'bg-green-500' :
                                         file.status === 'deleted' ? 'bg-red-500' : 'bg-gray-500'
@@ -233,11 +300,11 @@ export default function GitPanel() {
                     />
                     <button
                         onClick={handleCommit}
-                        disabled={isLoading || files.length === 0 || !commitMessage.trim()}
+                        disabled={isLoading || files.length === 0 || selectedFiles.size === 0 || !commitMessage.trim()}
                         className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground py-1.5 rounded text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {isLoading ? <Loader2 size={14} className="animate-spin" /> : <GitCommit size={14} />}
-                        Commit
+                        Commit ({selectedFiles.size})
                     </button>
                 </div>
             </div>

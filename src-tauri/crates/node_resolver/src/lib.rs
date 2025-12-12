@@ -342,8 +342,31 @@ fn select_export_target_with_conditions(value: &Value, conditions: &[String]) ->
     }
 }
 
-/// Recursively discover .d.ts files in a directory (shallow, max 2 levels)
+/// Recursively discover .d.ts files in a directory with depth and file count limits
+/// to prevent excessive memory usage during type discovery.
+///
+/// # Limits
+/// - MAX_DEPTH: 2 levels to avoid deep recursion
+/// - MAX_FILES_PER_PACKAGE: 50 files to cap memory usage
 fn discover_dts_in_dir(dir: &Utf8Path, files: &mut Vec<String>, visited: &mut HashSet<String>) {
+    discover_dts_in_dir_impl(dir, files, visited, 0);
+}
+
+/// Internal implementation with depth tracking
+fn discover_dts_in_dir_impl(
+    dir: &Utf8Path,
+    files: &mut Vec<String>,
+    visited: &mut HashSet<String>,
+    depth: usize,
+) {
+    const MAX_DEPTH: usize = 2;
+    const MAX_FILES_PER_PACKAGE: usize = 50;
+
+    // Early exit if limits reached
+    if depth > MAX_DEPTH || files.len() >= MAX_FILES_PER_PACKAGE {
+        return;
+    }
+
     let dir_str = dir.to_string();
     if visited.contains(&dir_str) {
         return;
@@ -352,6 +375,11 @@ fn discover_dts_in_dir(dir: &Utf8Path, files: &mut Vec<String>, visited: &mut Ha
 
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
+            // Check file limit on each iteration
+            if files.len() >= MAX_FILES_PER_PACKAGE {
+                return;
+            }
+
             let path = entry.path();
             if let Some(path_str) = path.to_str() {
                 let utf8_path = Utf8PathBuf::from(path_str.replace('\\', "/"));
@@ -364,15 +392,12 @@ fn discover_dts_in_dir(dir: &Utf8Path, files: &mut Vec<String>, visited: &mut Ha
                     {
                         files.push(utf8_path.to_string());
                     }
-                } else if path.is_dir() {
-                    // Only go one level deep to avoid massive scans
+                } else if path.is_dir() && depth < MAX_DEPTH {
                     let subdir_name = utf8_path.file_name().unwrap_or("");
+                    // Skip node_modules and hidden directories
                     if subdir_name != "node_modules" && !subdir_name.starts_with('.') {
-                        // Check for index.d.ts in subdirectory only
-                        let sub_index = utf8_path.join("index.d.ts");
-                        if sub_index.is_file() {
-                            files.push(sub_index.to_string());
-                        }
+                        // Recurse with incremented depth
+                        discover_dts_in_dir_impl(&utf8_path, files, visited, depth + 1);
                     }
                 }
             }

@@ -65,6 +65,7 @@ impl LSPManager {
     }
 
     /// Start the language server with the given configuration
+    #[cfg_attr(feature = "profiling", tracing::instrument(skip(self, window, config), fields(category = "lsp", server = %self.server_name)))]
     pub async fn start_with_config(
         &mut self,
         window: tauri::Window,
@@ -150,6 +151,7 @@ impl LSPManager {
     }
 
     /// Stop the language server process
+    #[cfg_attr(feature = "profiling", tracing::instrument(skip(self), fields(category = "lsp", server = %self.server_name)))]
     pub async fn stop(&mut self) -> Result<(), String> {
         println!(
             "[LSPManager:{}] Stopping language server...",
@@ -203,6 +205,7 @@ impl LSPManager {
     }
 
     /// Send an LSP message to the language server
+    #[cfg_attr(feature = "profiling", tracing::instrument(skip(self, message), fields(category = "lsp", server = %self.server_name)))]
     pub async fn send_message(&mut self, message: String) -> Result<(), String> {
         if let Some(stdin) = &mut self.stdin_handle {
             let content_length = message.len();

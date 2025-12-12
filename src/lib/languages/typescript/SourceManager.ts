@@ -25,6 +25,7 @@ type MonacoInstance = typeof Monaco;
 const createdModels = new Map<string, Monaco.editor.ITextModel>();
 let projectVfs: MonacoVfs | null = null;
 let lastRoot: string | null = null;
+let isRegistering = false; // Guard against concurrent/duplicate registration
 
 function getVfs(monaco: MonacoInstance): MonacoVfs {
     if (!projectVfs) {
@@ -237,8 +238,22 @@ export async function registerProjectSourceFiles(
         return;
     }
 
-    console.log('[Project Source] ===== Starting registration =====');
-    console.log('[Project Source] Project root:', projectRoot);
+    // Guard against true concurrent registration only
+    if (isRegistering) {
+        console.log('[Project Source] Already registering, skipping concurrent call');
+        return;
+    }
+
+    // Check if this is a re-registration for the same project
+    const isReregistration = lastRoot === projectRoot && createdModels.size > 0;
+
+    isRegistering = true;
+
+    // Only log verbosely on first registration
+    if (!isReregistration) {
+        console.log('[Project Source] ===== Starting registration =====');
+        console.log('[Project Source] Project root:', projectRoot);
+    }
     const startTime = performance.now();
 
     try {
@@ -260,127 +275,142 @@ export async function registerProjectSourceFiles(
         // Scan source files
         const srcPath = normalizePath(`${projectRoot}/src`);
         const sourceFiles = await scanProjectSourceFiles(srcPath);
-        console.log(`[Project Source] Found ${sourceFiles.length} source files`);
+
+        // Only log on first registration
+        if (!isReregistration) {
+            console.log(`[Project Source] Found ${sourceFiles.length} source files`);
+        }
 
         // Create models for all source files (enables relative imports)
         await createModelsForSourceFiles(sourceFiles, monaco);
 
         const endTime = performance.now();
-        console.log(`[Project Source] ===== Registration complete in ${(endTime - startTime).toFixed(0)}ms =====`);
-        console.log(`[Project Source] Total models in registry: ${createdModels.size}`);
 
-        // Debug: List all models
-        const allModels = monaco.editor.getModels();
-        console.log(`[Project Source] Total models in Monaco: ${allModels.length}`);
-        if (allModels.length > 0) {
-            console.log(`[Project Source] First 5 model URIs:`, allModels.slice(0, 5).map(m => m.uri.toString()));
-        }
+        // Only log completion details on first registration
+        if (!isReregistration) {
+            console.log(`[Project Source] ===== Registration complete in ${(endTime - startTime).toFixed(0)}ms =====`);
+            console.log(`[Project Source] Total models in registry: ${createdModels.size}`);
 
-        // DIAGNOSTIC: Check TypeScript worker configuration
-        console.log('\n[DIAGNOSTIC] ===== TypeScript Configuration Check =====');
-        const compilerOptions = monaco.typescript.typescriptDefaults.getCompilerOptions();
-        console.log('[DIAGNOSTIC] Compiler Options:', {
-            baseUrl: compilerOptions.baseUrl,
-            paths: compilerOptions.paths,
-            moduleResolution: compilerOptions.moduleResolution,
-            target: compilerOptions.target,
-            module: compilerOptions.module,
-            lib: compilerOptions.lib,
-            noLib: compilerOptions.noLib,
-            strict: compilerOptions.strict,
-        });
-        console.log('[DIAGNOSTIC] Compiler Options (full):', JSON.stringify({
-            ...compilerOptions,
-            // Avoid giant circular structures; keep only primitives/arrays.
-            paths: compilerOptions.paths,
-        }));
-
-        // DIAGNOSTIC: Check extra libs
-        const extraLibs = monaco.typescript.typescriptDefaults.getExtraLibs();
-        console.log(`[DIAGNOSTIC] Extra libs loaded: ${Object.keys(extraLibs).length}`);
-        if (Object.keys(extraLibs).length > 0) {
-            const sampleLibs = Object.keys(extraLibs).slice(0, 5);
-            console.log('[DIAGNOSTIC] Sample extra lib URIs:', sampleLibs);
-        }
-
-        // DIAGNOSTIC: Test a specific model for diagnostics
-        if (allModels.length > 0) {
-            const testModel = allModels.find(m => m.getLanguageId() === 'typescript' || m.getLanguageId() === 'typescriptreact');
-            if (testModel) {
-                console.log('\n[DIAGNOSTIC] Testing model:', testModel.uri.toString());
-                console.log('[DIAGNOSTIC] Model language:', testModel.getLanguageId());
-                console.log('[DIAGNOSTIC] Model line count:', testModel.getLineCount());
-
-                // Get diagnostics from TypeScript worker
-                setTimeout(async () => {
-                    try {
-                        const worker = await monaco.typescript.getTypeScriptWorker();
-                        const client = await worker(testModel.uri);
-
-                        const syntaxDiag = await client.getSyntacticDiagnostics(testModel.uri.toString());
-                        const semanticDiag = await client.getSemanticDiagnostics(testModel.uri.toString());
-                        const suggestionDiag = await client.getSuggestionDiagnostics(testModel.uri.toString());
-
-                        console.log('[DIAGNOSTIC] Syntax diagnostics:', syntaxDiag.length);
-                        console.log('[DIAGNOSTIC] Semantic diagnostics:', semanticDiag.length);
-                        console.log('[DIAGNOSTIC] Suggestion diagnostics:', suggestionDiag.length);
-
-                        if (semanticDiag.length > 0) {
-                            console.log('[DIAGNOSTIC] First 3 semantic errors:', semanticDiag.slice(0, 3).map(d => ({
-                                code: d.code,
-                                message: d.messageText,
-                                start: d.start,
-                                length: d.length,
-                            })));
-                        }
-
-                        // Note: getProgram() and getSourceFiles() are not available on the worker client
-                        // TypeScript diagnostics are sufficient to verify the worker is functioning
-                    } catch (error) {
-                        console.error('[DIAGNOSTIC] Failed to get worker diagnostics:', error);
-                    }
-                }, 1000);
-            } else {
-                console.warn('[DIAGNOSTIC] No TypeScript/TSX models found for testing');
+            // Debug: List all models
+            const allModels = monaco.editor.getModels();
+            console.log(`[Project Source] Total models in Monaco: ${allModels.length}`);
+            if (allModels.length > 0) {
+                console.log(`[Project Source] First 5 model URIs:`, allModels.slice(0, 5).map(m => m.uri.toString()));
             }
         }
 
-        // DIAGNOSTIC: Check for URI consistency issues
-        console.log('\n[DIAGNOSTIC] ===== URI Consistency Check =====');
-        const modelUris = allModels.map(m => m.uri.toString());
-        const typesUris = Object.keys(extraLibs);
+        // DIAGNOSTIC: Only log diagnostics on first registration
+        if (!isReregistration) {
+            const allModels = monaco.editor.getModels();
 
-        const modelHasFileScheme = modelUris.filter(u => u.startsWith('file:///')).length;
-        const modelNoFileScheme = modelUris.filter(u => !u.startsWith('file:///')).length;
-        const typesHasFileScheme = typesUris.filter(u => u.startsWith('file:///')).length;
-        const typesNoFileScheme = typesUris.filter(u => !u.startsWith('file:///')).length;
+            // DIAGNOSTIC: Check TypeScript worker configuration
+            console.log('\n[DIAGNOSTIC] ===== TypeScript Configuration Check =====');
+            const compilerOptions = monaco.typescript.typescriptDefaults.getCompilerOptions();
+            console.log('[DIAGNOSTIC] Compiler Options:', {
+                baseUrl: compilerOptions.baseUrl,
+                paths: compilerOptions.paths,
+                moduleResolution: compilerOptions.moduleResolution,
+                target: compilerOptions.target,
+                module: compilerOptions.module,
+                lib: compilerOptions.lib,
+                noLib: compilerOptions.noLib,
+                strict: compilerOptions.strict,
+            });
+            console.log('[DIAGNOSTIC] Compiler Options (full):', JSON.stringify({
+                ...compilerOptions,
+                // Avoid giant circular structures; keep only primitives/arrays.
+                paths: compilerOptions.paths,
+            }));
 
-        console.log('[DIAGNOSTIC] Model URIs:', {
-            total: modelUris.length,
-            withFileScheme: modelHasFileScheme,
-            withoutFileScheme: modelNoFileScheme,
-        });
+            // DIAGNOSTIC: Check extra libs
+            const extraLibs = monaco.typescript.typescriptDefaults.getExtraLibs();
+            console.log(`[DIAGNOSTIC] Extra libs loaded: ${Object.keys(extraLibs).length}`);
+            if (Object.keys(extraLibs).length > 0) {
+                const sampleLibs = Object.keys(extraLibs).slice(0, 5);
+                console.log('[DIAGNOSTIC] Sample extra lib URIs:', sampleLibs);
+            }
 
-        console.log('[DIAGNOSTIC] Type definition URIs:', {
-            total: typesUris.length,
-            withFileScheme: typesHasFileScheme,
-            withoutFileScheme: typesNoFileScheme,
-        });
+            // DIAGNOSTIC: Test a specific model for diagnostics
+            if (allModels.length > 0) {
+                const testModel = allModels.find((m: Monaco.editor.ITextModel) => m.getLanguageId() === 'typescript' || m.getLanguageId() === 'typescriptreact');
+                if (testModel) {
+                    console.log('\n[DIAGNOSTIC] Testing model:', testModel.uri.toString());
+                    console.log('[DIAGNOSTIC] Model language:', testModel.getLanguageId());
+                    console.log('[DIAGNOSTIC] Model line count:', testModel.getLineCount());
 
-        if (modelNoFileScheme > 0 && typesHasFileScheme > 0) {
-            console.error('[DIAGNOSTIC] ⚠️ URI MISMATCH DETECTED! Models use plain paths but types use file:// URIs');
-            console.error('[DIAGNOSTIC] This will prevent TypeScript from resolving imports correctly');
-            console.log('[DIAGNOSTIC] Sample model URI (no scheme):', modelUris.find(u => !u.startsWith('file:///')));
-            console.log('[DIAGNOSTIC] Sample type URI (with scheme):', typesUris.find(u => u.startsWith('file:///')));
-        } else if (modelHasFileScheme > 0 && modelNoFileScheme > 0) {
-            console.warn('[DIAGNOSTIC] ⚠️ MIXED URI FORMATS in models - some have file:// scheme, some don\'t');
+                    // Get diagnostics from TypeScript worker
+                    setTimeout(async () => {
+                        try {
+                            const worker = await monaco.typescript.getTypeScriptWorker();
+                            const client = await worker(testModel.uri);
+
+                            const syntaxDiag = await client.getSyntacticDiagnostics(testModel.uri.toString());
+                            const semanticDiag = await client.getSemanticDiagnostics(testModel.uri.toString());
+                            const suggestionDiag = await client.getSuggestionDiagnostics(testModel.uri.toString());
+
+                            console.log('[DIAGNOSTIC] Syntax diagnostics:', syntaxDiag.length);
+                            console.log('[DIAGNOSTIC] Semantic diagnostics:', semanticDiag.length);
+                            console.log('[DIAGNOSTIC] Suggestion diagnostics:', suggestionDiag.length);
+
+                            if (semanticDiag.length > 0) {
+                                console.log('[DIAGNOSTIC] First 3 semantic errors:', semanticDiag.slice(0, 3).map(d => ({
+                                    code: d.code,
+                                    message: d.messageText,
+                                    start: d.start,
+                                    length: d.length,
+                                })));
+                            }
+
+                            // Note: getProgram() and getSourceFiles() are not available on the worker client
+                            // TypeScript diagnostics are sufficient to verify the worker is functioning
+                        } catch (error) {
+                            console.error('[DIAGNOSTIC] Failed to get worker diagnostics:', error);
+                        }
+                    }, 1000);
+                } else {
+                    console.warn('[DIAGNOSTIC] No TypeScript/TSX models found for testing');
+                }
+            }
+
+            // DIAGNOSTIC: Check for URI consistency issues
+            console.log('\n[DIAGNOSTIC] ===== URI Consistency Check =====');
+            const modelUris = allModels.map((m: Monaco.editor.ITextModel) => m.uri.toString());
+            const typesUris = Object.keys(extraLibs);
+
+            const modelHasFileScheme = modelUris.filter((u: string) => u.startsWith('file:///')).length;
+            const modelNoFileScheme = modelUris.filter((u: string) => !u.startsWith('file:///')).length;
+            const typesHasFileScheme = typesUris.filter((u: string) => u.startsWith('file:///')).length;
+            const typesNoFileScheme = typesUris.filter((u: string) => !u.startsWith('file:///')).length;
+
+            console.log('[DIAGNOSTIC] Model URIs:', {
+                total: modelUris.length,
+                withFileScheme: modelHasFileScheme,
+                withoutFileScheme: modelNoFileScheme,
+            });
+
+            console.log('[DIAGNOSTIC] Type definition URIs:', {
+                total: typesUris.length,
+                withFileScheme: typesHasFileScheme,
+                withoutFileScheme: typesNoFileScheme,
+            });
+
+            if (modelNoFileScheme > 0 && typesHasFileScheme > 0) {
+                console.error('[DIAGNOSTIC] ⚠️ URI MISMATCH DETECTED! Models use plain paths but types use file:// URIs');
+                console.error('[DIAGNOSTIC] This will prevent TypeScript from resolving imports correctly');
+                console.log('[DIAGNOSTIC] Sample model URI (no scheme):', modelUris.find((u: string) => !u.startsWith('file:///')));
+                console.log('[DIAGNOSTIC] Sample type URI (with scheme):', typesUris.find((u: string) => u.startsWith('file:///')));
+            } else if (modelHasFileScheme > 0 && modelNoFileScheme > 0) {
+                console.warn('[DIAGNOSTIC] ⚠️ MIXED URI FORMATS in models - some have file:// scheme, some don\'t');
+            }
+
+            console.log('[DIAGNOSTIC] ===== End URI Consistency Check =====\n');
+            console.log('[DIAGNOSTIC] ===== End Configuration Check =====\n');
         }
-
-        console.log('[DIAGNOSTIC] ===== End URI Consistency Check =====\n');
-        console.log('[DIAGNOSTIC] ===== End Configuration Check =====\n');
 
     } catch (error) {
         console.error('[Project Source] Registration failed:', error);
+    } finally {
+        isRegistering = false;
     }
 }
 

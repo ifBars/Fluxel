@@ -8,6 +8,8 @@
 import { readTextFile, readDir } from '@tauri-apps/plugin-fs';
 import type * as Monaco from 'monaco-editor';
 import { discoverTypingsForPackages } from '../../services/NodeResolverService';
+import { batchReadFiles } from '../../services/BatchFileService';
+import { useTypeLoadingStore } from '@/stores';
 
 // Type alias for Monaco instance
 type MonacoInstance = typeof Monaco;
@@ -298,33 +300,22 @@ async function addExtraLibFromFile(path: string, monaco: MonacoInstance, package
     // Get the virtual node_modules path for Monaco's module resolution
     const virtualPath = toVirtualNodeModulesPath(normalizedPath);
 
-    // Skip if we've already loaded this type (check by virtual path first, then absolute)
+    // Skip if we've already loaded this type
     if (virtualPath && loadedTypeUris.has(virtualPath)) return;
-
-    // Also get the full file URI for completeness
-    const fileUri = toFileUri(normalizedPath);
-    if (loadedTypeUris.has(fileUri)) return;
 
     try {
         const content = await readTextFile(normalizedPath);
 
-        // PRIMARY: Register with virtual node_modules path for module resolution
-        // This is what Monaco TypeScript uses to resolve imports like 'react-router-dom'
+        // Register with virtual path only (removed duplicate registration to save memory)
+        // This is what Monaco TypeScript uses to resolve imports
         if (virtualPath) {
             monaco.typescript.typescriptDefaults.addExtraLib(content, virtualPath);
             loadedTypeUris.add(virtualPath);
         }
 
-        // SECONDARY: Also add with absolute file URI for editor features (go-to-definition)
-        // Only add if it's a different URI to avoid duplicates
-        if (fileUri !== virtualPath) {
-            monaco.typescript.typescriptDefaults.addExtraLib(content, fileUri);
-            loadedTypeUris.add(fileUri);
-        }
-
         // DIAGNOSTIC: Log first few type additions
         if (loadedTypeUris.size <= 10) {
-            console.log(`[TypeLoader] Added: ${packageName || 'unknown'} -> ${virtualPath || fileUri}`);
+            console.log(`[TypeLoader] Added: ${packageName || 'unknown'} -> ${virtualPath}`);
         }
     } catch (error) {
         console.warn(`[TypeLoader] Failed to load type file ${normalizedPath}:`, error);
@@ -346,32 +337,52 @@ async function loadResolverTypings(
 
     try {
         const responses = await discoverTypingsForPackages(packageNames, projectRoot);
+
+        // Collect all files to read in one batch
+        const allFilesToRead: string[] = [];
+        const fileToPackage = new Map<string, string>();
+
         for (const res of responses) {
             if (res.files.length > 0) {
                 loadedPackages++;
-
-                if (collectReferences) {
-                    const filesForRefs = res.files
-                        .filter(f => f.endsWith('.d.ts') || f.endsWith('.d.mts') || f.endsWith('.d.cts'))
-                        .slice(0, 3);
-                    for (const file of filesForRefs) {
-                        try {
-                            const content = await readTextFile(normalizePath(file));
-                            for (const root of extractBarePackageRoots(content)) {
-                                referencedPackages.add(root);
-                            }
-                        } catch {
-                            // ignore
-                        }
-                    }
-                }
-
                 for (const file of res.files) {
-                    await addExtraLibFromFile(file, monaco, res.package_name);
-                    totalFiles++;
+                    const normalizedFile = normalizePath(file);
+                    allFilesToRead.push(normalizedFile);
+                    fileToPackage.set(normalizedFile, res.package_name);
                 }
             }
-            // Ensure TS can read package.json for modern packages with exports/types
+        }
+
+        // Batch read all files in one IPC call
+        if (allFilesToRead.length > 0) {
+            const fileContents = await batchReadFiles(allFilesToRead);
+
+            // Register all types
+            for (const [filePath, content] of Object.entries(fileContents)) {
+                const virtualPath = toFileUri(filePath);
+
+                // Skip if already loaded
+                if (loadedTypeUris.has(virtualPath)) continue;
+
+                try {
+                    monaco.typescript.typescriptDefaults.addExtraLib(content, virtualPath);
+                    loadedTypeUris.add(virtualPath);
+                    totalFiles++;
+
+                    // Collect references from first few files
+                    if (collectReferences && totalFiles <= 50) {
+                        for (const root of extractBarePackageRoots(content)) {
+                            referencedPackages.add(root);
+                        }
+                    }
+                } catch (error) {
+                    // Skip files that fail to add
+                }
+            }
+        }
+
+        // Ensure TS can read package.json for modern packages with exports/types
+        for (const res of responses) {
             await addPackageJsonForPackage(projectRoot, res.package_name, monaco);
         }
 
@@ -519,6 +530,50 @@ async function loadDefaultLibFiles(
     } catch (error) {
         console.error('[TypeLoader] Failed to load default lib files:', error);
         // Don't rethrow - this is a non-critical enhancement
+    }
+}
+
+/**
+ * Load project-level .d.ts files (like vite-env.d.ts, global.d.ts)
+ * These contain type declarations for image imports, custom modules, etc.
+ */
+async function loadProjectDeclarationFiles(
+    projectRoot: string,
+    monaco: MonacoInstance
+): Promise<void> {
+    // Common locations for project type declarations
+    const declarationFiles = [
+        'vite-env.d.ts',
+        'src/vite-env.d.ts',
+        'env.d.ts',
+        'src/env.d.ts',
+        'types.d.ts',
+        'src/types.d.ts',
+        'global.d.ts',
+        'src/global.d.ts',
+    ];
+
+    let loadedCount = 0;
+
+    for (const relPath of declarationFiles) {
+        const filePath = normalizePath(`${projectRoot}/${relPath}`);
+        try {
+            const content = await readTextFile(filePath);
+            const uri = `file:///${filePath.replace(/\\/g, '/')}`;
+
+            if (!loadedTypeUris.has(uri)) {
+                monaco.typescript.typescriptDefaults.addExtraLib(content, uri);
+                loadedTypeUris.add(uri);
+                loadedCount++;
+                console.log(`[TypeLoader] Loaded project declaration: ${relPath}`);
+            }
+        } catch {
+            // File doesn't exist, skip silently
+        }
+    }
+
+    if (loadedCount > 0) {
+        console.log(`[TypeLoader] Loaded ${loadedCount} project declaration files`);
     }
 }
 
@@ -752,12 +807,18 @@ export async function loadProjectTypes(
     isLoadingTypes = true;
     console.log('[TypeLoader] Loading project types from:', projectRoot);
 
+    // Get the store for status updates
+    const store = useTypeLoadingStore.getState();
+    store.startLoading('Initializing TypeScript...');
+
     try {
         // Clear previously loaded types if switching projects
         if (currentLoadedProject !== projectRoot) {
             loadedTypeUris.clear();
         }
         currentLoadedProject = projectRoot;
+
+        store.updateProgress(0, 'Reading project configuration...');
 
         // Read configuration files
         const packageJson = await readPackageJson(projectRoot);
@@ -771,6 +832,9 @@ export async function loadProjectTypes(
         const compilerOpts = monaco.typescript.typescriptDefaults.getCompilerOptions();
         const libsToLoad = (compilerOpts.lib as string[]) || ['es2015', 'es2020', 'dom', 'dom.iterable'];
         await loadDefaultLibFiles(projectRoot, monaco, libsToLoad);
+
+        // Load project-level .d.ts files (e.g., vite-env.d.ts for image imports)
+        await loadProjectDeclarationFiles(projectRoot, monaco);
 
         // Collect all package names from dependencies
         const allPackages: string[] = [];
@@ -806,10 +870,12 @@ export async function loadProjectTypes(
         const directPackages = shouldLoadNodeTypes
             ? allPackages
             : allPackages.filter(pkg => !(pkg === '@types/node' || pkg.startsWith('@types/node/')));
+
+        store.updateProgress(0, `Loading types for ${directPackages.length} packages...`);
         const referenced = await loadResolverTypings(projectRoot, directPackages, monaco, true);
 
         const transitivePackages: string[] = [];
-        const MAX_TRANSITIVE_PACKAGES = 50;
+        const MAX_TRANSITIVE_PACKAGES = 10; // Reduced from 50 for faster initial load
         for (const root of referenced) {
             if (directPackages.includes(root)) continue;
             if (transitivePackages.length >= MAX_TRANSITIVE_PACKAGES) break;
@@ -820,11 +886,13 @@ export async function loadProjectTypes(
         }
 
         if (transitivePackages.length > 0) {
+            store.updateProgress(0, `Loading ${transitivePackages.length} transitive packages...`);
             console.log(`[TypeLoader] Loading transitive typings for ${transitivePackages.length} packages referenced by types...`);
             await loadResolverTypings(projectRoot, transitivePackages, monaco, false);
         }
 
         // Fallback: Load @types packages and direct package scans
+        store.updateProgress(0, 'Loading @types packages...');
         await loadTypesPackages(projectRoot, monaco, tsConfig);
         await loadPackageTypes(projectRoot, directPackages, monaco);
         if (transitivePackages.length > 0) {
@@ -865,6 +933,7 @@ export async function loadProjectTypes(
         console.error('[TypeLoader] Failed to load project types:', error);
     } finally {
         isLoadingTypes = false;
+        store.finishLoading();
     }
 }
 

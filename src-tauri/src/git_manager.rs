@@ -13,6 +13,10 @@ pub struct GitStatusResult {
     pub files: Vec<GitFileStatus>,
 }
 
+#[cfg_attr(
+    feature = "profiling",
+    tracing::instrument(skip(root_path), fields(category = "git"))
+)]
 #[tauri::command]
 pub async fn git_status(root_path: String) -> Result<GitStatusResult, String> {
     // Run blocking git operations in a separate thread
@@ -72,15 +76,28 @@ pub async fn git_status(root_path: String) -> Result<GitStatusResult, String> {
     .map_err(|e| e.to_string())?
 }
 
+#[cfg_attr(
+    feature = "profiling",
+    tracing::instrument(skip(root_path, message, files), fields(category = "git"))
+)]
 #[tauri::command]
-pub async fn git_commit(root_path: String, message: String) -> Result<String, String> {
+pub async fn git_commit(
+    root_path: String,
+    message: String,
+    files: Vec<String>,
+) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let repo = Repository::open(&root_path).map_err(|e| e.to_string())?;
 
-        // Add all changed files to index (simplified workflow for now)
+        // Add specific files to index
         let mut index = repo.index().map_err(|e| e.to_string())?;
+
+        if files.is_empty() {
+            return Err("No files selected for commit".to_string());
+        }
+
         index
-            .add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)
+            .add_all(files.iter(), git2::IndexAddOption::DEFAULT, None)
             .map_err(|e| e.to_string())?;
         index.write().map_err(|e| e.to_string())?;
 
@@ -117,6 +134,10 @@ pub async fn git_commit(root_path: String, message: String) -> Result<String, St
     .map_err(|e| e.to_string())?
 }
 
+#[cfg_attr(
+    feature = "profiling",
+    tracing::instrument(skip(root_path, token), fields(category = "git"))
+)]
 #[tauri::command]
 pub async fn git_push(root_path: String, token: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -147,6 +168,10 @@ pub async fn git_push(root_path: String, token: String) -> Result<String, String
     .map_err(|e| e.to_string())?
 }
 
+#[cfg_attr(
+    feature = "profiling",
+    tracing::instrument(skip(root_path, token), fields(category = "git"))
+)]
 #[tauri::command]
 pub async fn git_pull(root_path: String, token: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -205,6 +230,10 @@ pub async fn git_pull(root_path: String, token: String) -> Result<String, String
     .map_err(|e| e.to_string())?
 }
 
+#[cfg_attr(
+    feature = "profiling",
+    tracing::instrument(skip(root_path, file_path), fields(category = "git"))
+)]
 #[tauri::command]
 pub async fn git_read_file_at_head(root_path: String, file_path: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -233,6 +262,10 @@ pub async fn git_read_file_at_head(root_path: String, file_path: String) -> Resu
     .map_err(|e| e.to_string())?
 }
 
+#[cfg_attr(
+    feature = "profiling",
+    tracing::instrument(skip(root_path, file_path), fields(category = "git"))
+)]
 #[tauri::command]
 pub async fn git_discard_changes(root_path: String, file_path: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
