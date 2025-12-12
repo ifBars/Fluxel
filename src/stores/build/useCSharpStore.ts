@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { getProjectConfigurations, BuildConfiguration } from '@/lib/csharpBuild';
+import { getProjectConfigurations, BuildConfiguration } from '@/lib/languages/csharp';
 
 interface CSharpStore {
     configurations: BuildConfiguration[];

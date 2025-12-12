@@ -16,9 +16,9 @@ export interface InlineCompletionProviderConfig extends Partial<OllamaConfig> {
 
 const DEFAULT_PROVIDER_CONFIG: InlineCompletionProviderConfig = {
     debounceMs: 300,
-    maxContextLines: 50,
-    maxContextChars: 500,
-    maxCompletionLength: 512,
+    maxContextLines: 75,
+    maxContextChars: 1000,
+    maxCompletionLength: 1024,
 };
 
 /**

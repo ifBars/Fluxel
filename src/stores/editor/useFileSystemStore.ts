@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { create } from 'zustand';
 import { readDir, readTextFile } from '@tauri-apps/plugin-fs';
 import type { FileEntry } from '@/types/fs';
-import { GitignoreManager } from '@/lib/gitignore';
+import { GitignoreManager } from '@/lib/utils/GitIgnore';
 
 type BackendDirEntry = {
     name: string;
@@ -81,8 +81,8 @@ async function readDirectoryEntries(
                 const isIgnored = parentIsIgnored
                     ? true
                     : gitignoreManager
-                      ? await gitignoreManager.isIgnored(entryPath, !!entry.isDirectory)
-                      : false;
+                        ? await gitignoreManager.isIgnored(entryPath, !!entry.isDirectory)
+                        : false;
 
                 return {
                     name: entry.name,
@@ -153,7 +153,7 @@ export const useFileSystemStore = create<FileSystemState>((set, get) => ({
 
     loadFolderChildren: async (path: string) => {
         const { gitignoreManager, rootPath, rootEntry } = get();
-        
+
         // Check if the parent folder is ignored to optimize gitignore checking
         let parentIsIgnored = false;
         if (rootEntry) {
@@ -170,7 +170,7 @@ export const useFileSystemStore = create<FileSystemState>((set, get) => ({
             const folder = findEntry(rootEntry);
             parentIsIgnored = folder?.isIgnored ?? false;
         }
-        
+
         const children = await readDirectoryEntries(path, rootPath, gitignoreManager, parentIsIgnored);
 
         // Update the tree with loaded children

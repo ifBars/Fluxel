@@ -11,12 +11,10 @@ import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker"
 loader.config({ monaco: monacoApi });
 import { useEffect, useCallback, useState, useRef } from "react";
 import { useSettingsStore, useEditorStore, type EditorTab, useProjectStore } from "@/stores";
-import { toFileUri } from "../../lib/monacoTypeLoader";
+import { toFileUri } from "@/lib/languages/typescript";
 import { registerInlineCompletionProvider } from "../../lib/ollama";
-import { registerCSharpLanguage } from "../../lib/csharpConfig";
-import { getCSharpLSPClient } from "../../lib/lspClient";
-import { registerCSharpLSPFeatures } from "../../lib/csharpMonacoIntegration";
-import { configureTypeScriptLanguage, hydrateTypeScriptWorkspace, resetTypeScriptWorkspace } from "../../lib/monacoLanguageService";
+import { registerCSharpLanguage, getCSharpLSPClient, registerCSharpLSPFeatures } from "@/lib/languages/csharp";
+import { configureTypeScriptLanguage, hydrateTypeScriptWorkspace, resetTypeScriptWorkspace } from "@/lib/languages/typescript";
 import { File, Save, Circle } from "lucide-react";
 
 // Ensure Monaco workers are resolved by Vite/Tauri instead of the default CDN lookup

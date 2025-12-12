@@ -1,5 +1,5 @@
 import { Command } from '@tauri-apps/plugin-shell';
-import { buildCSharpProject } from './csharpBuild';
+import { buildCSharpProject } from '@/lib/languages/csharp';
 import { useCSharpStore, type BuildSystem } from '@/stores';
 
 export interface BuildOptions {

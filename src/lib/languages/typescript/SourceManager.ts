@@ -13,8 +13,8 @@ import {
     readTsConfig,
     readDirectory,
     toFileUri
-} from './monacoTypeLoader';
-import { MonacoVfs } from './monacoVfs';
+} from './TypeLoader';
+import { MonacoVfs } from '../../monaco/MonacoVFS';
 
 // Type alias for Monaco instance
 type MonacoInstance = typeof Monaco;
@@ -188,7 +188,7 @@ function configurePathAliases(
     // Normalize path replacements to absolute URIs so Monaco/TS can resolve them
     const resolvedPaths: Record<string, string[]> = {};
     for (const [pattern, replacements] of Object.entries(paths)) {
-        resolvedPaths[pattern] = replacements.map((r: string) => {
+        resolvedPaths[pattern] = (replacements as string[]).map((r: string) => {
             const absFs = r.startsWith('/')
                 ? normalizePath(r)
                 : normalizePath(`${resolvedBaseUrlFs}/${r}`);
@@ -206,7 +206,7 @@ function configurePathAliases(
         noLib: false,
         lib: currentOptions.lib && currentOptions.lib.length > 0
             ? currentOptions.lib
-            : ['es2020', 'dom', 'dom.iterable'],
+            : ['es2015', 'es2020', 'dom', 'dom.iterable'],
         baseUrl: baseUrlUri,
         paths: resolvedPaths,
         moduleResolution: monaco.typescript.ModuleResolutionKind.NodeJs,
@@ -220,7 +220,7 @@ function configurePathAliases(
         monaco.typescript.typescriptDefaults.setCompilerOptions({
             ...patchedOptions,
             noLib: false,
-            lib: ['es2020', 'dom', 'dom.iterable'],
+            lib: ['es2015', 'es2020', 'dom', 'dom.iterable'],
         });
     }
 }

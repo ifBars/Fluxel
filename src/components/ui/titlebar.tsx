@@ -13,7 +13,7 @@ import {
   useCSharpStore
 } from "@/stores";
 import { loadConfigMetadata } from "@/lib/config/loader";
-import { executeBuild, executeTypeCheck } from "@/lib/buildManager";
+import { executeBuild, executeTypeCheck } from '@/lib/services/BuildManager';
 import { TitlebarDropdown } from "./TitlebarDropdown";
 import {
   TitlebarMenuButton,

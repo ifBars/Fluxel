@@ -1,5 +1,5 @@
 import type * as Monaco from 'monaco-editor';
-import { csharpMonarch } from './csharpMonarch';
+import { csharpMonarch } from './Monarch';
 
 /**
  * C# language configuration for Monaco Editor

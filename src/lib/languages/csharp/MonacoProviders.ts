@@ -1,5 +1,5 @@
 import type * as Monaco from 'monaco-editor';
-import { getCSharpLSPClient } from './lspClient';
+import { getCSharpLSPClient } from './CSharpLSPClient';
 
 // Track if LSP features are already registered to prevent duplicates
 let lspFeaturesRegistered = false;

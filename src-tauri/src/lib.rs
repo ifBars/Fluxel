@@ -1,12 +1,15 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 mod csproj_parser;
 mod git_manager;
-mod lsp_manager;
-mod node_services;
+mod languages;
+mod services;
+
+// Keep old modules for reference until migration is verified
+// TODO: Remove these after verification
 
 use csproj_parser::BuildConfiguration;
 use ignore::gitignore::GitignoreBuilder;
-use lsp_manager::LSPState;
+use languages::LSPState;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -265,37 +268,12 @@ fn search_files(
 }
 
 // ============================================================================
-// LSP Commands
+// LSP Commands (now in languages::csharp module)
 // ============================================================================
-
-#[tauri::command]
-async fn start_csharp_ls(
-    state: tauri::State<'_, LSPState>,
-    window: tauri::Window,
-    workspace_root: Option<String>,
-) -> Result<(), String> {
-    println!(
-        "[Tauri] start_csharp_ls called with workspace: {:?}",
-        workspace_root
-    );
-    let mut manager = state.manager.lock().await;
-    manager.start(window, workspace_root).await
-}
-
-#[tauri::command]
-async fn send_lsp_message(
-    state: tauri::State<'_, LSPState>,
-    message: String,
-) -> Result<(), String> {
-    let mut manager = state.manager.lock().await;
-    manager.send_message(message).await
-}
-
-#[tauri::command]
-async fn stop_csharp_ls(state: tauri::State<'_, LSPState>) -> Result<(), String> {
-    let mut manager = state.manager.lock().await;
-    manager.stop().await
-}
+// See src-tauri/src/languages/csharp.rs for:
+// - start_csharp_ls
+// - stop_csharp_ls
+// - send_lsp_message
 
 // ============================================================================
 // Build Commands
@@ -422,14 +400,18 @@ pub fn run() {
             greet,
             list_directory_entries,
             search_files,
-            start_csharp_ls,
-            send_lsp_message,
-            stop_csharp_ls,
+            // LSP Commands (from languages module)
+            languages::csharp::start_csharp_ls,
+            languages::csharp::send_lsp_message,
+            languages::csharp::stop_csharp_ls,
+            // Build Commands
             get_project_configurations,
             build_csharp_project,
-            node_services::resolve_node_module,
-            node_services::discover_package_typings,
-            node_services::analyze_module_graph,
+            // Node Resolution (from services module)
+            services::node_resolver::resolve_node_module,
+            services::node_resolver::discover_package_typings,
+            services::node_resolver::analyze_module_graph,
+            // Git Commands
             git_manager::git_status,
             git_manager::git_commit,
             git_manager::git_push,

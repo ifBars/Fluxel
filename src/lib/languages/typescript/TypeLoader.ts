@@ -7,7 +7,7 @@
 
 import { readTextFile, readDir } from '@tauri-apps/plugin-fs';
 import type * as Monaco from 'monaco-editor';
-import { discoverTypingsForPackages } from './nodeResolverService';
+import { discoverTypingsForPackages } from '../../services/NodeResolverService';
 
 // Type alias for Monaco instance
 type MonacoInstance = typeof Monaco;
@@ -425,6 +425,102 @@ async function loadViteTypes(
         await addExtraLibFromFile(viteEnvPath, monaco, 'vite-env');
     }
 }
+/**
+ * Load TypeScript default lib files from node_modules/typescript/lib
+ * This is necessary because Monaco's bundled libs may not load correctly
+ * when using Vite or other modern bundlers.
+ * 
+ * NOTE: We skip DOM libs as they are very large (~1.4MB) and Monaco should
+ * have built-in DOM types. We only load ES libs for Promise, Map, Set, etc.
+ */
+async function loadDefaultLibFiles(
+    projectRoot: string,
+    monaco: MonacoInstance,
+    libs: string[]
+): Promise<void> {
+    try {
+        const tsLibPath = normalizePath(`${projectRoot}/node_modules/typescript/lib`);
+
+        // Check if typescript is installed
+        const entries = await readDirectory(tsLibPath);
+        if (entries.length === 0) {
+            console.log('[TypeLoader] TypeScript not found in node_modules, skipping default lib loading');
+            return;
+        }
+
+        // Map lib names to their corresponding files
+        // We ONLY load ES libs - DOM libs are too large and Monaco should have built-in DOM types
+        const libFileMap: Record<string, string[]> = {
+            'es5': ['lib.es5.d.ts'],
+            'es6': ['lib.es2015.d.ts', 'lib.es2015.core.d.ts', 'lib.es2015.collection.d.ts',
+                'lib.es2015.generator.d.ts', 'lib.es2015.iterable.d.ts', 'lib.es2015.promise.d.ts',
+                'lib.es2015.proxy.d.ts', 'lib.es2015.reflect.d.ts', 'lib.es2015.symbol.d.ts',
+                'lib.es2015.symbol.wellknown.d.ts'],
+            'es2015': ['lib.es2015.d.ts', 'lib.es2015.core.d.ts', 'lib.es2015.collection.d.ts',
+                'lib.es2015.generator.d.ts', 'lib.es2015.iterable.d.ts', 'lib.es2015.promise.d.ts',
+                'lib.es2015.proxy.d.ts', 'lib.es2015.reflect.d.ts', 'lib.es2015.symbol.d.ts',
+                'lib.es2015.symbol.wellknown.d.ts'],
+            'es2016': ['lib.es2016.d.ts', 'lib.es2016.array.include.d.ts'],
+            'es2017': ['lib.es2017.d.ts', 'lib.es2017.object.d.ts', 'lib.es2017.sharedmemory.d.ts',
+                'lib.es2017.string.d.ts', 'lib.es2017.typedarrays.d.ts'],
+            'es2018': ['lib.es2018.d.ts', 'lib.es2018.asyncgenerator.d.ts', 'lib.es2018.asynciterable.d.ts',
+                'lib.es2018.promise.d.ts', 'lib.es2018.regexp.d.ts'],
+            'es2019': ['lib.es2019.d.ts', 'lib.es2019.array.d.ts', 'lib.es2019.object.d.ts',
+                'lib.es2019.string.d.ts', 'lib.es2019.symbol.d.ts'],
+            'es2020': ['lib.es2020.d.ts', 'lib.es2020.bigint.d.ts', 'lib.es2020.promise.d.ts',
+                'lib.es2020.sharedmemory.d.ts', 'lib.es2020.string.d.ts', 'lib.es2020.symbol.wellknown.d.ts',
+                'lib.es2020.intl.d.ts', 'lib.es2020.date.d.ts', 'lib.es2020.number.d.ts'],
+            'es2021': ['lib.es2021.d.ts', 'lib.es2021.promise.d.ts', 'lib.es2021.string.d.ts',
+                'lib.es2021.weakref.d.ts'],
+            'es2022': ['lib.es2022.d.ts', 'lib.es2022.array.d.ts', 'lib.es2022.error.d.ts',
+                'lib.es2022.object.d.ts', 'lib.es2022.string.d.ts', 'lib.es2022.regexp.d.ts'],
+            // DOM libs - these are large but necessary for console, fetch, document, etc.
+            'dom': ['lib.dom.d.ts'],
+            'dom.iterable': ['lib.dom.iterable.d.ts'],
+        };
+
+        // Always load ES5 as the base - it contains fundamental types
+        const filesToLoad = new Set<string>(['lib.es5.d.ts']);
+
+        // Add files for each requested lib (only if we have a mapping for it)
+        for (const lib of libs) {
+            const normalizedLib = lib.toLowerCase();
+            const files = libFileMap[normalizedLib];
+            if (files) {
+                files.forEach(f => filesToLoad.add(f));
+            }
+        }
+
+        console.log(`[TypeLoader] Loading ${filesToLoad.size} default lib files (ES + DOM libs)`);
+        let loadedCount = 0;
+
+        for (const fileName of filesToLoad) {
+            const filePath = normalizePath(`${tsLibPath}/${fileName}`);
+            const libUri = `lib:${fileName}`;
+
+            // Skip if already loaded
+            if (loadedTypeUris.has(libUri)) {
+                continue;
+            }
+
+            try {
+                const content = await readTextFile(filePath);
+                // Use a special lib: URI scheme so Monaco recognizes these as default libs
+                monaco.typescript.typescriptDefaults.addExtraLib(content, libUri);
+                loadedTypeUris.add(libUri);
+                loadedCount++;
+            } catch (error) {
+                // Silent failure - file may not exist
+                console.debug(`[TypeLoader] Could not load lib file: ${fileName}`);
+            }
+        }
+
+        console.log(`[TypeLoader] Loaded ${loadedCount} default lib files`);
+    } catch (error) {
+        console.error('[TypeLoader] Failed to load default lib files:', error);
+        // Don't rethrow - this is a non-critical enhancement
+    }
+}
 
 /**
  * Configure Monaco TypeScript compiler options from tsconfig.json
@@ -440,6 +536,7 @@ function configureCompilerOptions(
         target: monaco.typescript.ScriptTarget.ES2020,
         module: monaco.typescript.ModuleKind.ESNext,
         lib: [
+            'es2015',
             'es2020',
             'dom',
             'dom.iterable',
@@ -500,7 +597,11 @@ function configureCompilerOptions(
         // Ensure an ES lib is present for Promise/iterators/etc.
         const hasEsLib = normalizedLibs.some(lib => lib.startsWith('es'));
         if (!hasEsLib) {
-            normalizedLibs.unshift('es2020');
+            normalizedLibs.unshift('es2020', 'es2015');
+        } else if (!normalizedLibs.includes('es2015')) {
+            // Explicitly add es2015 if missing, even if other es libs are present.
+            // This ensures Promise, Map, Set, etc. are definitely available.
+            normalizedLibs.unshift('es2015');
         }
 
         // Always ensure DOM types are available for web development
@@ -665,6 +766,12 @@ export async function loadProjectTypes(
         // Configure compiler options first
         configureCompilerOptions(tsConfig, projectRoot, monaco);
 
+        // Load TypeScript default lib files explicitly
+        // This is required because Vite-bundled Monaco doesn't auto-load built-in libs
+        const compilerOpts = monaco.typescript.typescriptDefaults.getCompilerOptions();
+        const libsToLoad = (compilerOpts.lib as string[]) || ['es2015', 'es2020', 'dom', 'dom.iterable'];
+        await loadDefaultLibFiles(projectRoot, monaco, libsToLoad);
+
         // Collect all package names from dependencies
         const allPackages: string[] = [];
         if (packageJson) {
@@ -775,7 +882,7 @@ export function clearProjectTypes(monaco: MonacoInstance): void {
     monaco.typescript.typescriptDefaults.setCompilerOptions({
         target: monaco.typescript.ScriptTarget.ES2020,
         module: monaco.typescript.ModuleKind.ESNext,
-        lib: ['es2020', 'dom', 'dom.iterable'],
+        lib: ['es2015', 'es2020', 'dom', 'dom.iterable'],
         moduleResolution: monaco.typescript.ModuleResolutionKind.NodeJs,
         allowJs: true,
         esModuleInterop: true,

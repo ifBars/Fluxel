@@ -5,14 +5,8 @@
  * of project types/models so we get real IntelliSense instead of syntax-only mode.
  */
 import type * as Monaco from 'monaco-editor';
-import {
-    loadProjectTypes,
-    clearProjectTypes,
-} from './monacoTypeLoader';
-import {
-    registerProjectSourceFiles,
-    clearProjectSourceModels,
-} from './monacoProjectSourceManager';
+import { loadProjectTypes, clearProjectTypes } from './TypeLoader';
+import { registerProjectSourceFiles, clearProjectSourceModels } from './SourceManager';
 
 type MonacoInstance = typeof Monaco;
 
@@ -40,7 +34,7 @@ export function configureTypeScriptLanguage(monaco: MonacoInstance): void {
         skipLibCheck: true,
         noEmit: true,
         noLib: false, // Ensure default libs are loaded
-        lib: ['es2020', 'dom', 'dom.iterable', 'webworker.importscripts'],
+        lib: ['es2015', 'es2020', 'dom', 'dom.iterable', 'webworker.importscripts'],
     };
     ts.typescriptDefaults.setCompilerOptions(baseOptions);
     ts.javascriptDefaults.setCompilerOptions(baseOptions);
