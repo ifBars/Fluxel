@@ -1,14 +1,410 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tauri + React + Typescript</title>
-  </head>
 
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fluxel</title>
+  <script>
+    // Track if app successfully loaded
+    window.__appLoadFailed = false;
+
+    // Global error handler for debugging production startup issues
+    window.onerror = function (msg, url, lineNo, columnNo, error) {
+      window.__appLoadFailed = true;
+
+      // Update loading screen to show error
+      const loading = document.getElementById('initial-loading');
+      const statusText = loading && loading.querySelector('.boot-status-text');
+      const spinner = loading && loading.querySelector('.boot-spinner');
+
+      if (statusText) {
+        statusText.textContent = 'Failed to load app';
+        statusText.style.color = '#ff5555';
+      }
+      if (spinner) {
+        spinner.style.borderTopColor = '#ff5555';
+      }
+
+      // Create detailed error display
+      const errorDiv = document.createElement('div');
+      errorDiv.style.position = 'fixed';
+      errorDiv.style.top = '0';
+      errorDiv.style.left = '0';
+      errorDiv.style.width = '100%';
+      errorDiv.style.padding = '20px';
+      errorDiv.style.background = '#ff0000';
+      errorDiv.style.color = '#ffffff';
+      errorDiv.style.zIndex = '100001';
+      errorDiv.style.fontFamily = 'monospace';
+      errorDiv.style.fontSize = '12px';
+      errorDiv.style.whiteSpace = 'pre-wrap';
+      errorDiv.style.maxHeight = '40vh';
+      errorDiv.style.overflow = 'auto';
+
+      const errorMessage = 'Startup Error:\n' + msg + '\n\nFile: ' + url + '\nLine: ' + lineNo + ':' + columnNo;
+      if (error && error.stack) {
+        errorDiv.textContent = errorMessage + '\n\nStack trace:\n' + error.stack;
+      } else {
+        errorDiv.textContent = errorMessage;
+      }
+
+      document.body.appendChild(errorDiv);
+      return false;
+    };
+
+    // Catch unhandled promise rejections
+    window.onunhandledrejection = function (event) {
+      window.__appLoadFailed = true;
+
+      // Update loading screen to show error
+      const loading = document.getElementById('initial-loading');
+      const statusText = loading && loading.querySelector('.boot-status-text');
+      const spinner = loading && loading.querySelector('.boot-spinner');
+
+      if (statusText) {
+        statusText.textContent = 'Failed to load app';
+        statusText.style.color = '#ff5555';
+      }
+      if (spinner) {
+        spinner.style.borderTopColor = '#ff5555';
+      }
+
+      // Create detailed error display
+      const errorDiv = document.createElement('div');
+      errorDiv.style.position = 'fixed';
+      errorDiv.style.bottom = '0';
+      errorDiv.style.left = '0';
+      errorDiv.style.width = '100%';
+      errorDiv.style.padding = '20px';
+      errorDiv.style.background = '#aa0000';
+      errorDiv.style.color = '#ffffff';
+      errorDiv.style.zIndex = '100001';
+      errorDiv.style.fontFamily = 'monospace';
+      errorDiv.style.fontSize = '12px';
+      errorDiv.style.whiteSpace = 'pre-wrap';
+      errorDiv.style.maxHeight = '40vh';
+      errorDiv.style.overflow = 'auto';
+
+      const reason = event.reason;
+      errorDiv.textContent = 'Unhandled Promise Rejection:\n' +
+        (reason && reason.stack ? reason.stack : String(reason));
+
+      document.body.appendChild(errorDiv);
+    };
+  </script>
+  <script>
+    // Apply saved appearance ASAP to prevent theme flash (runs before React/CSS hydrate)
+    (function () {
+      try {
+        const raw = localStorage.getItem("fluxel-settings");
+        const parsed = raw ? JSON.parse(raw) : null;
+        const state = parsed && typeof parsed === "object" ? parsed.state : null;
+
+        const theme = state?.theme === "light" ? "light" : "dark";
+        const accent = typeof state?.accentColor === "string" ? state.accentColor : "orange";
+        const density = typeof state?.uiDensity === "string" ? state.uiDensity : "comfortable";
+
+        const root = document.documentElement;
+        root.setAttribute("data-theme", theme);
+        root.setAttribute("data-accent", accent);
+        root.setAttribute("data-density", density);
+
+        // Minimal density variables for early paint (mirrors src/stores/workbench/useSettingsStore.ts)
+        const densityMap = {
+          compact: {
+            radius: "0.5rem",
+            radiusSm: "0.4rem",
+            radiusLg: "0.8rem",
+          },
+          comfortable: {
+            radius: "0.75rem",
+            radiusSm: "0.5rem",
+            radiusLg: "0.9rem",
+          },
+          spacious: {
+            radius: "1rem",
+            radiusSm: "0.75rem",
+            radiusLg: "1rem",
+          },
+        };
+
+        const cfg = densityMap[density] || densityMap.comfortable;
+        root.style.setProperty("--radius", cfg.radius);
+        root.style.setProperty("--radius-sm", cfg.radiusSm);
+        root.style.setProperty("--radius-lg", cfg.radiusLg);
+
+        // Tailwind's dark mode class is used throughout the app.
+        if (theme === "dark") root.classList.add("dark");
+        else root.classList.remove("dark");
+      } catch (_e) {
+        // Ignore invalid storage; defaults below handle safe fallback.
+      }
+    })();
+  </script>
+  <style>
+    /* --------------------------------------------------------------------------
+         Boot-time theme tokens (kept tiny; mirrors src/styles/index.css)
+         -------------------------------------------------------------------------- */
+    :root {
+      --background: oklch(99% 0 0);
+      --foreground: oklch(15% 0 0);
+      --card: oklch(100% 0 0);
+      --card-foreground: oklch(15% 0 0);
+      --primary: oklch(62% 0.22 50);
+      --muted: oklch(96% 0.005 0);
+      --muted-foreground: oklch(45% 0.01 0);
+      --border: oklch(92% 0.005 0);
+
+      --radius: 0.75rem;
+      --radius-sm: 0.5rem;
+      --radius-lg: 1rem;
+    }
+
+    [data-theme="dark"] {
+      --background: oklch(18% 0.01 0);
+      --foreground: oklch(95% 0 0);
+      --card: oklch(22% 0.01 0);
+      --card-foreground: oklch(95% 0 0);
+      --primary: oklch(68% 0.22 50);
+      --muted: oklch(25% 0.01 0);
+      --muted-foreground: oklch(65% 0.01 0);
+      --border: oklch(30% 0.01 0);
+    }
+
+    [data-accent="orange"] {
+      --primary: oklch(62% 0.22 50);
+    }
+
+    [data-theme="dark"][data-accent="orange"] {
+      --primary: oklch(68% 0.22 50);
+    }
+
+    [data-accent="blue"] {
+      --primary: oklch(62% 0.22 240);
+    }
+
+    [data-theme="dark"][data-accent="blue"] {
+      --primary: oklch(68% 0.22 240);
+    }
+
+    [data-accent="green"] {
+      --primary: oklch(62% 0.22 140);
+    }
+
+    [data-theme="dark"][data-accent="green"] {
+      --primary: oklch(68% 0.22 140);
+    }
+
+    [data-accent="purple"] {
+      --primary: oklch(62% 0.22 280);
+    }
+
+    [data-theme="dark"][data-accent="purple"] {
+      --primary: oklch(68% 0.22 280);
+    }
+
+    [data-accent="red"] {
+      --primary: oklch(62% 0.22 25);
+    }
+
+    [data-theme="dark"][data-accent="red"] {
+      --primary: oklch(68% 0.22 25);
+    }
+
+    /* Immediate background paint to avoid transparent blank window during startup */
+    html,
+    body,
+    #root {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      background: var(--background);
+    }
+
+    /* Prevent flash of unstyled content */
+    body {
+      font-family: "Inter", system-ui, -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* Initial loading screen - shown before React hydrates */
+    #initial-loading {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: var(--background);
+      z-index: 9999;
+      will-change: opacity, transform;
+      transition: opacity 220ms ease, transform 220ms ease;
+    }
+
+    /* Subtle background glow similar to landing page or just clean */
+    #initial-loading::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at 50% 30%, color-mix(in oklch, var(--primary) 3%, transparent) 0%, transparent 50%);
+      pointer-events: none;
+      opacity: 0.8;
+    }
+
+    #initial-loading.is-hidden {
+      opacity: 0;
+      transform: scale(0.98);
+      pointer-events: none;
+    }
+
+    .boot-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2rem;
+      z-index: 1;
+      /* Slight fade in for content on load if we wanted, but static is fine */
+    }
+
+    .boot-branding {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .boot-logo-row {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 0.5rem;
+    }
+
+    /* Logo removed as per user request */
+
+    .boot-title {
+      font-size: 3rem;
+      /* text-5xl equivalent */
+      line-height: 1;
+      letter-spacing: -0.025em;
+      /* tracking-tight */
+      font-weight: 700;
+      color: var(--primary);
+      font-family: sans-serif;
+      /* fallback */
+    }
+
+
+
+    .boot-tag {
+      color: color-mix(in oklch, var(--primary) 90%, transparent);
+    }
+
+    .boot-dot {
+      color: color-mix(in oklch, var(--muted-foreground) 40%, transparent);
+    }
+
+    .boot-status-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-top: 1rem;
+      padding: 0.5rem 1rem;
+      border-radius: 999px;
+      background: color-mix(in oklch, var(--muted) 50%, transparent);
+    }
+
+    .boot-spinner {
+      width: 1rem;
+      height: 1rem;
+      border-radius: 999px;
+      border: 2px solid color-mix(in oklch, var(--primary) 22%, transparent);
+      border-top-color: var(--primary);
+      animation: bootSpin 0.85s linear infinite;
+    }
+
+    .boot-status-text {
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--muted-foreground);
+    }
+
+    @keyframes bootSpin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* Hide loading screen once React has mounted (CSS fast-path) */
+    #root:not(:empty)~#initial-loading {
+      opacity: 0;
+      pointer-events: none;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="root"></div>
+  <!-- Initial loading screen - shown before React hydrates -->
+  <div id="initial-loading">
+    <div class="boot-content">
+      <div class="boot-branding">
+        <div class="boot-logo-row">
+          <div class="boot-title">FLUXEL</div>
+        </div>
+      </div>
+
+      <div class="boot-status-row">
+        <div class="boot-spinner"></div>
+        <div class="boot-status-text">Loading workspace</div>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="/src/main.tsx"></script>
+  <script>
+    // Hide initial loading screen once React has mounted (fade + remove)
+    (function () {
+      const root = document.getElementById('root');
+      const loading = document.getElementById('initial-loading');
+      if (!root || !loading) return;
+
+      let hidden = false;
+      const hide = () => {
+        // Don't hide if app failed to load - keep error visible
+        if (hidden || window.__appLoadFailed) return;
+        hidden = true;
+        loading.classList.add('is-hidden');
+        setTimeout(() => {
+          loading.remove();
+        }, 260);
+      };
+
+      // Check for App signaling it's ready via data attribute
+      // This is more reliable than checking children.length since React may mount
+      // an empty tree or Suspense boundary before actual content is painted
+      const observer = new MutationObserver(function () {
+        if (root.hasAttribute('data-app-ready')) {
+          hide();
+          observer.disconnect();
+        }
+      });
+
+      observer.observe(root, { attributes: true, attributeFilter: ['data-app-ready'] });
+
+      // Fallback: hide after timeout for slower production load
+      // but only if no errors occurred
+      setTimeout(function () {
+        if (!window.__appLoadFailed) {
+          hide();
+          observer.disconnect();
+        }
+      }, 5000);
+    })();
+  </script>
+</body>
+
 </html>

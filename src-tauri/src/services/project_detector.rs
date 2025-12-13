@@ -119,6 +119,9 @@ fn build_system_hint(kind: &ProjectKind, node: &NodeInfo) -> Option<String> {
 
 #[tauri::command]
 pub async fn detect_project_profile(workspace_root: String) -> Result<ProjectProfile, String> {
+    #[cfg(feature = "profiling")]
+    let _span = tracing::span!(tracing::Level::INFO, "detect_project_profile", workspace_root = %workspace_root).entered();
+    
     let root = PathBuf::from(&workspace_root);
     if !root.is_dir() {
         return Err(format!(
@@ -128,8 +131,21 @@ pub async fn detect_project_profile(workspace_root: String) -> Result<ProjectPro
     }
 
     spawn_blocking(move || {
+        #[cfg(feature = "profiling")]
+        let _blocking_span = tracing::span!(tracing::Level::INFO, "project_detection_blocking").entered();
+        
+        #[cfg(feature = "profiling")]
+        let _dotnet_span = tracing::span!(tracing::Level::DEBUG, "detect_dotnet_info").entered();
         let dotnet = detect_dotnet_info(&root);
+        #[cfg(feature = "profiling")]
+        drop(_dotnet_span);
+        
+        #[cfg(feature = "profiling")]
+        let _node_span = tracing::span!(tracing::Level::DEBUG, "detect_node_info").entered();
         let node = detect_node_info(&root);
+        #[cfg(feature = "profiling")]
+        drop(_node_span);
+        
         let kind = project_kind(&dotnet, &node);
         let hint = build_system_hint(&kind, &node);
 

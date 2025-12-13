@@ -5,11 +5,6 @@ import { usePreviewStore, useProjectStore, useInspectorStore } from '@/stores';
 import { isInspectorMessage } from '@/lib/inspector/inspectorMessages';
 import type { IframeToParentMessage } from '@/lib/inspector/inspectorMessages';
 
-import inspectorBridgeScript from '@/lib/inspector/inspectorBridgeInline.js?raw';
-
-
-console.log('[WebPreview] Module initializing, inspectorBridgeScript length:', inspectorBridgeScript?.length);
-
 export default function WebPreview() {
     const { currentProject } = useProjectStore();
     const {
@@ -37,6 +32,7 @@ export default function WebPreview() {
 
     const [showSettings, setShowSettings] = useState(false);
     const [srcDoc, setSrcDoc] = useState<string | null>(null);
+    const [inspectorBridgeScript, setInspectorBridgeScript] = useState<string | null>(null);
     const iframeRef = useRef<HTMLIFrameElement>(null);
 
     // Store iframe ref in inspector store so InspectorPanel can access it
@@ -45,14 +41,16 @@ export default function WebPreview() {
         return () => setIframeRef(null);
     }, [setIframeRef]);
 
-    console.log('[WebPreview] Render state:', { previewUrl, isServerRunning, isLoading, isInspectorMode });
+    if (import.meta.env.DEV) {
+      console.log('[WebPreview] Render state:', { previewUrl, isServerRunning, isLoading, isInspectorMode });
+    }
 
 
     // Handle messages from iframe
     useEffect(() => {
         const handleMessage = (event: MessageEvent) => {
             // Log all messages from inspector prefix to debug flow
-            if (event.data && typeof event.data === 'object' && event.data.__source === 'fluxel-inspector:') {
+            if (import.meta.env.DEV && event.data && typeof event.data === 'object' && event.data.__source === 'fluxel-inspector:') {
                 console.log('[WebPreview] Received inspector message:', event.data.type, event.data);
             }
 
@@ -82,10 +80,14 @@ export default function WebPreview() {
                     setComponentTree(message.payload);
                     break;
                 case 'style:changed':
-                    console.log('[WebPreview] Style applied successfully:', message.payload);
+                    if (import.meta.env.DEV) {
+                        console.log('[WebPreview] Style applied successfully:', message.payload);
+                    }
                     break;
                 case 'text:changed':
-                    console.log('[WebPreview] Text changed successfully:', message.payload);
+                    if (import.meta.env.DEV) {
+                        console.log('[WebPreview] Text changed successfully:', message.payload);
+                    }
                     break;
             }
         };
@@ -94,13 +96,33 @@ export default function WebPreview() {
         return () => window.removeEventListener('message', handleMessage);
     }, [isInspectorMode, selectElement, setHoveredElement, setComponentTree]);
 
-    // Cleanup and Auto-start
+    // Load inspector bridge script lazily when preview is running or inspector is enabled
+    useEffect(() => {
+        if ((isServerRunning || isInspectorOpen) && !inspectorBridgeScript) {
+            // Dynamically import the inspector bridge script only when needed
+            import('@/lib/inspector/inspectorBridgeInline.js?raw')
+                .then((module) => {
+                    setInspectorBridgeScript(module.default);
+                    if (import.meta.env.DEV) {
+                        console.log('[WebPreview] Inspector bridge script loaded, length:', module.default?.length);
+                    }
+                })
+                .catch((error) => {
+                    console.error('[WebPreview] Failed to load inspector bridge script:', error);
+                });
+        }
+    }, [isServerRunning, isInspectorOpen, inspectorBridgeScript]);
+
     // Cleanup and Auto-start
     useEffect(() => {
         const initPreview = async () => {
-            console.log('[WebPreview] initPreview check:', { rootPath: currentProject?.rootPath, isServerRunning, isLoading, previewUrl });
+            if (import.meta.env.DEV) {
+                console.log('[WebPreview] initPreview check:', { rootPath: currentProject?.rootPath, isServerRunning, isLoading, previewUrl });
+            }
             if (currentProject?.rootPath && !isServerRunning && !isLoading && !previewUrl) {
-                console.log('[WebPreview] Triggering startPreview for:', currentProject.rootPath);
+                if (import.meta.env.DEV) {
+                    console.log('[WebPreview] Triggering startPreview for:', currentProject.rootPath);
+                }
                 // Determine if we should auto-start. 
                 // For now, we auto-start if there's no error and we're just mounting.
                 // We pass true for auto-start logic (which attempts to spawn bun run dev if needed)
@@ -125,7 +147,9 @@ export default function WebPreview() {
 
         const fetchContent = async () => {
             try {
-                console.log('[WebPreview] Fetching content via bun for:', previewUrl);
+                if (import.meta.env.DEV) {
+                    console.log('[WebPreview] Fetching content via bun for:', previewUrl);
+                }
                 // Use bun to fetch the page content -> bypasses CORS
                 const cmd = Command.create('bun', [
                     '-e',
@@ -145,16 +169,19 @@ export default function WebPreview() {
                         html = `${baseTag}${html}`;
                     }
 
-                    // Inject inspector script
-                    // We put it at the end of body to ensure DOM is present
-                    const scriptTag = `<script>${inspectorBridgeScript}</script>`;
-                    if (html.includes('</body>')) {
-                        html = html.replace('</body>', `${scriptTag}</body>`);
-                    } else {
-                        html += scriptTag;
+                    // Inject inspector script only if it's loaded and inspector is enabled
+                    if (inspectorBridgeScript && (isInspectorOpen || isInspectorMode)) {
+                        const scriptTag = `<script>${inspectorBridgeScript}</script>`;
+                        if (html.includes('</body>')) {
+                            html = html.replace('</body>', `${scriptTag}</body>`);
+                        } else {
+                            html += scriptTag;
+                        }
                     }
 
-                    console.log('[WebPreview] Content fetched and transformed, setting srcDoc');
+                    if (import.meta.env.DEV) {
+                        console.log('[WebPreview] Content fetched and transformed, setting srcDoc');
+                    }
                     setSrcDoc(html);
                 } else {
                     console.error('[WebPreview] Failed to fetch content via bun:', output.stderr);
@@ -165,7 +192,7 @@ export default function WebPreview() {
         };
 
         fetchContent();
-    }, [previewUrl, isServerRunning]);
+    }, [previewUrl, isServerRunning, inspectorBridgeScript, isInspectorOpen, isInspectorMode]);
 
 
 

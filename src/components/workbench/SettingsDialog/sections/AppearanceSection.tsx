@@ -74,10 +74,40 @@ export function AppearanceSection({ settings }: { settings: SettingsState }) {
         <label className="text-sm font-medium text-foreground">Icon Pack</label>
         <div className="grid grid-cols-2 gap-2">
           <IconPackOption
-            value="react-icons"
+            value="material-design"
             current={settings.iconPack}
-            onClick={() => settings.setIconPack("react-icons")}
-            label="React Icons"
+            onClick={() => settings.setIconPack("material-design")}
+            label="Material Design"
+          />
+          <IconPackOption
+            value="feather"
+            current={settings.iconPack}
+            onClick={() => settings.setIconPack("feather")}
+            label="Feather"
+          />
+          <IconPackOption
+            value="heroicons"
+            current={settings.iconPack}
+            onClick={() => settings.setIconPack("heroicons")}
+            label="Heroicons"
+          />
+          <IconPackOption
+            value="bootstrap"
+            current={settings.iconPack}
+            onClick={() => settings.setIconPack("bootstrap")}
+            label="Bootstrap"
+          />
+          <IconPackOption
+            value="tabler"
+            current={settings.iconPack}
+            onClick={() => settings.setIconPack("tabler")}
+            label="Tabler"
+          />
+          <IconPackOption
+            value="phosphor"
+            current={settings.iconPack}
+            onClick={() => settings.setIconPack("phosphor")}
+            label="Phosphor"
           />
           <IconPackOption
             value="lucide"

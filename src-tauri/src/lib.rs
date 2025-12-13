@@ -23,14 +23,21 @@ pub fn run() {
         .manage(LaunchState::new())
         .manage(ProcessManager::new())
         .setup(|app| {
+            #[cfg(feature = "profiling")]
+            let _setup_span = tracing::span!(tracing::Level::INFO, "tauri_setup").entered();
+
             // Initialize profiling subsystem (feature-gated)
             #[cfg(feature = "profiling")]
             {
+                let _profiler_span = tracing::span!(tracing::Level::INFO, "profiler_init").entered();
                 let profiler = profiling::init();
                 app.manage(profiler);
             }
 
             // Check for CLI args (e.g. context menu launch)
+            #[cfg(feature = "profiling")]
+            let _launch_args_span = tracing::span!(tracing::Level::INFO, "check_launch_args").entered();
+            
             if let Some(raw_arg) = std::env::args().nth(1) {
                 let mut path = PathBuf::from(&raw_arg);
 

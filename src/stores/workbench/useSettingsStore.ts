@@ -6,7 +6,17 @@ import { EditorMode } from './useWorkbenchStore';
 export type Theme = 'light' | 'dark';
 export type AccentColor = 'orange' | 'blue' | 'green' | 'purple' | 'red';
 export type UIDensity = 'compact' | 'comfortable' | 'spacious';
-export type IconPack = 'react-icons' | 'lucide' | 'react-file-icon' | 'exuanbo' | 'material';
+export type IconPack =
+    | 'material-design'  // Material Design + Simple Icons from react-icons
+    | 'feather'          // Feather Icons from react-icons
+    | 'heroicons'        // Heroicons 2 from react-icons
+    | 'bootstrap'        // Bootstrap Icons from react-icons
+    | 'tabler'           // Tabler Icons from react-icons
+    | 'phosphor'         // Phosphor Icons from react-icons
+    | 'lucide'           // Lucide icons (standalone)
+    | 'react-file-icon'  // React File Icon (standalone)
+    | 'exuanbo'          // Exuanbo file icons
+    | 'material';        // Material file icons
 export type BuildSystem = 'auto' | 'dotnet' | 'bun' | 'npm' | 'manual';
 
 // Editor customization types

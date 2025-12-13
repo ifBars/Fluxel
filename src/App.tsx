@@ -1,13 +1,15 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, Suspense, lazy } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import AuthPage from "./components/auth/AuthPage";
-import LandingPage from "./components/landing/LandingPage";
-import EditorPage from "./components/editor/EditorPage";
 import { TitleBar } from "./components/ui/titlebar";
 import { useSettingsStore, usePreviewStore } from "@/stores";
 import { openWorkspace, closeWorkspace } from "@/lib/services/ProjectManager";
 import "./styles/index.css";
+
+// Lazy-load all views to minimize initial bundle size
+const AuthPage = lazy(() => import("./components/auth/AuthPage"));
+const LandingPage = lazy(() => import("./components/landing/LandingPage"));
+const EditorPage = lazy(() => import("./components/editor/EditorPage"));
 
 type AppView = "auth" | "landing" | "editor";
 
@@ -19,6 +21,17 @@ function App() {
   useEffect(() => {
     initAppearance();
   }, [initAppearance]);
+
+  // Signal to HTML loading screen that app content is ready
+  // Uses requestAnimationFrame for immediate signal after first paint
+  useLayoutEffect(() => {
+    requestAnimationFrame(() => {
+      const root = document.getElementById('root');
+      if (root) {
+        root.setAttribute('data-app-ready', 'true');
+      }
+    });
+  }, []);
 
   const handleLogin = () => {
     setCurrentView("landing");
@@ -93,11 +106,23 @@ function App() {
   const renderView = () => {
     switch (currentView) {
       case "auth":
-        return <AuthPage onLogin={handleLogin} />;
+        return (
+          <Suspense fallback={null}>
+            <AuthPage onLogin={handleLogin} />
+          </Suspense>
+        );
       case "landing":
-        return <LandingPage onProjectOpen={handleProjectOpen} />;
+        return (
+          <Suspense fallback={null}>
+            <LandingPage onProjectOpen={handleProjectOpen} />
+          </Suspense>
+        );
       case "editor":
-        return <EditorPage />;
+        return (
+          <Suspense fallback={null}>
+            <EditorPage />
+          </Suspense>
+        );
     }
   };
 

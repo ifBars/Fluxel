@@ -1,14 +1,32 @@
-import {
-    MdChevronRight,
-    MdExpandMore,
-    MdFolder,
-    MdFolderOpen
-} from 'react-icons/md';
-
 import { useFileSystemStore, useEditorStore } from '@/stores';
 import type { FileEntry } from '@/types/fs';
 import { getFileExtension } from '@/types/fs';
 import { useFileIcon } from '@/lib/icons';
+
+// Inline SVG icons to avoid eager loading react-icons during app initialization
+const ChevronRight = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} style={style}>
+        <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
+    </svg>
+);
+
+const ExpandMore = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} style={style}>
+        <path d="M16.59 8.59L12 13.17 7.41 8.59 6 10l6 6 6-6z"/>
+    </svg>
+);
+
+const Folder = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} style={style}>
+        <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+    </svg>
+);
+
+const FolderOpen = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} style={style}>
+        <path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z"/>
+    </svg>
+);
 
 interface FileTreeNodeProps {
     entry: FileEntry;
@@ -59,9 +77,9 @@ function FileTreeNode({ entry, depth }: FileTreeNodeProps) {
                 {entry.isDirectory ? (
                     <span className="w-4 h-4 flex items-center justify-center shrink-0">
                         {isExpanded ? (
-                            <MdExpandMore style={{ width: 'var(--file-tree-icon-size, 1rem)', height: 'var(--file-tree-icon-size, 1rem)' }} className="text-muted-foreground" />
+                            <ExpandMore style={{ width: 'var(--file-tree-icon-size, 1rem)', height: 'var(--file-tree-icon-size, 1rem)' }} className="text-muted-foreground" />
                         ) : (
-                            <MdChevronRight style={{ width: 'var(--file-tree-icon-size, 1rem)', height: 'var(--file-tree-icon-size, 1rem)' }} className="text-muted-foreground" />
+                            <ChevronRight style={{ width: 'var(--file-tree-icon-size, 1rem)', height: 'var(--file-tree-icon-size, 1rem)' }} className="text-muted-foreground" />
                         )}
                     </span>
                 ) : (
@@ -72,9 +90,9 @@ function FileTreeNode({ entry, depth }: FileTreeNodeProps) {
                 <span className="shrink-0">
                     {entry.isDirectory ? (
                         isExpanded ? (
-                            <MdFolderOpen style={{ width: 'var(--file-tree-icon-size, 1rem)', height: 'var(--file-tree-icon-size, 1rem)' }} className="text-primary" />
+                            <FolderOpen style={{ width: 'var(--file-tree-icon-size, 1rem)', height: 'var(--file-tree-icon-size, 1rem)' }} className="text-primary" />
                         ) : (
-                            <MdFolder style={{ width: 'var(--file-tree-icon-size, 1rem)', height: 'var(--file-tree-icon-size, 1rem)' }} className="text-primary/70" />
+                            <Folder style={{ width: 'var(--file-tree-icon-size, 1rem)', height: 'var(--file-tree-icon-size, 1rem)' }} className="text-primary/70" />
                         )
                     ) : (
                         fileIcon

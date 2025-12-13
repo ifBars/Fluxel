@@ -1,3 +1,10 @@
+/**
+ * Material Design Icons Pack
+ *
+ * This pack combines Material Design Icons (md) and Simple Icons (si) from react-icons.
+ * Material Design provides general UI icons, while Simple Icons offers brand/technology logos.
+ */
+
 import {
     MdInsertDriveFile,
     MdCode,

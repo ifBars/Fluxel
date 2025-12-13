@@ -1,7 +1,10 @@
+import { Suspense, lazy } from 'react';
 import { Eye } from 'lucide-react';
 import { useEditorStore } from '@/stores';
-import WebPreview from './previews/WebPreview';
-import MarkdownPreview from './previews/MarkdownPreview';
+
+// Lazy-load preview components to avoid loading them until needed
+const WebPreview = lazy(() => import('./previews/WebPreview'));
+const MarkdownPreview = lazy(() => import('./previews/MarkdownPreview'));
 
 /**
  * Determine the preview type based on file extension
@@ -42,16 +45,22 @@ export default function VisualEditor() {
     // Determine which preview to show based on file type
     const previewType = getPreviewType(activeTab.filename);
 
-    // Render the appropriate preview component
+    // Render the appropriate preview component with Suspense fallback
     if (previewType === 'markdown') {
         return (
-            <MarkdownPreview
-                content={activeTab.content}
-                filename={activeTab.filename}
-            />
+            <Suspense fallback={null}>
+                <MarkdownPreview
+                    content={activeTab.content}
+                    filename={activeTab.filename}
+                />
+            </Suspense>
         );
     }
 
     // Default to web preview for all other files
-    return <WebPreview />;
+    return (
+        <Suspense fallback={null}>
+            <WebPreview />
+        </Suspense>
+    );
 }
