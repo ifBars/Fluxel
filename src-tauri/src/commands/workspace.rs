@@ -2,12 +2,84 @@
 //!
 //! Commands for directory listing and file search operations.
 
-use ignore::gitignore::GitignoreBuilder;
+use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
+use std::sync::Arc;
 use tauri::async_runtime::spawn_blocking;
+use tokio::sync::RwLock;
+
+/// Cache for gitignore matchers to avoid rebuilding on every directory listing.
+/// Keyed by workspace root path.
+#[derive(Clone, Default)]
+pub struct GitignoreCache {
+    cache: Arc<RwLock<HashMap<String, Arc<Gitignore>>>>,
+}
+
+impl GitignoreCache {
+    pub fn new() -> Self {
+        Self {
+            cache: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Get a cached gitignore matcher for a workspace, or build and cache a new one.
+    pub async fn get_or_build(&self, workspace_root: &str) -> Option<Arc<Gitignore>> {
+        // Check cache first
+        {
+            let cache = self.cache.read().await;
+            if let Some(gitignore) = cache.get(workspace_root) {
+                return Some(Arc::clone(gitignore));
+            }
+        }
+
+        // Build a new gitignore matcher
+        let root = PathBuf::from(workspace_root);
+        let mut builder = GitignoreBuilder::new(&root);
+
+        // Add root .gitignore
+        let _ = builder.add(root.join(".gitignore"));
+
+        // Walk up to find parent .gitignore files (for mono-repo support)
+        let mut current = root.clone();
+        while let Some(parent) = current.parent() {
+            if parent == current {
+                break;
+            }
+            let parent_gitignore = parent.join(".gitignore");
+            if parent_gitignore.exists() {
+                let _ = builder.add(parent_gitignore);
+            }
+            current = parent.to_path_buf();
+        }
+
+        if let Ok(gitignore) = builder.build() {
+            let gitignore = Arc::new(gitignore);
+            let mut cache = self.cache.write().await;
+            cache.insert(workspace_root.to_string(), Arc::clone(&gitignore));
+            Some(gitignore)
+        } else {
+            None
+        }
+    }
+
+    /// Clear cache for a specific workspace
+    #[allow(dead_code)]
+    pub async fn clear(&self, workspace_root: &str) {
+        let mut cache = self.cache.write().await;
+        cache.remove(workspace_root);
+    }
+
+    /// Clear entire cache
+    #[allow(dead_code)]
+    pub async fn clear_all(&self) {
+        let mut cache = self.cache.write().await;
+        cache.clear();
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SearchMatch {
@@ -37,9 +109,10 @@ pub struct DirEntry {
 
 /// List the immediate children of a directory without blocking the UI thread.
 /// Runs on a blocking thread pool and applies .gitignore rules (from the provided workspace root) when available.
+/// Uses cached gitignore matchers for improved performance on repeated calls.
 #[cfg_attr(
     feature = "profiling",
-    tracing::instrument(skip(path, workspace_root), fields(category = "workspace"))
+    tracing::instrument(skip(path, workspace_root, cache), fields(category = "workspace"))
 )]
 #[tauri::command]
 pub async fn list_directory_entries(
@@ -47,6 +120,7 @@ pub async fn list_directory_entries(
     workspace_root: Option<String>,
     max_entries: Option<usize>,
     parent_is_ignored: Option<bool>,
+    cache: tauri::State<'_, GitignoreCache>,
 ) -> Result<Vec<DirEntry>, String> {
     let max_entries = max_entries.unwrap_or(10_000);
     let path_buf = PathBuf::from(&path);
@@ -57,36 +131,22 @@ pub async fn list_directory_entries(
     }
 
     // Resolve workspace root for gitignore matching; default to the requested path.
-    let workspace_root = workspace_root
-        .map(PathBuf::from)
-        .filter(|p| p.is_dir())
-        .unwrap_or_else(|| path_buf.clone());
+    let workspace_root_str = workspace_root
+        .as_ref()
+        .filter(|p| PathBuf::from(p).is_dir())
+        .cloned()
+        .unwrap_or_else(|| path.clone());
+
+    // Get cached gitignore matcher (or build and cache a new one)
+    let cached_gitignore = if skip_gitignore {
+        None
+    } else {
+        cache.get_or_build(&workspace_root_str).await
+    };
 
     let entries = spawn_blocking(move || -> Result<Vec<DirEntry>, String> {
-        // If parent is ignored, all children are ignored - skip expensive gitignore checking
-        let gitignore = if skip_gitignore {
-            None
-        } else {
-            // Build a gitignore matcher that includes parent patterns up to the workspace root.
-            let mut builder = GitignoreBuilder::new(&workspace_root);
-            let mut current = path_buf.clone();
-            loop {
-                let gitignore_path = current.join(".gitignore");
-                let _ = builder.add(gitignore_path);
-
-                if current == workspace_root {
-                    break;
-                }
-                if let Some(parent) = current.parent() {
-                    current = parent.to_path_buf();
-                } else {
-                    break;
-                }
-            }
-            builder.build().ok()
-        };
-
-        let mut collected: Vec<DirEntry> = Vec::new();
+        // Pre-allocate with a reasonable capacity to reduce allocations
+        let mut collected: Vec<DirEntry> = Vec::with_capacity(256);
 
         for dir_entry in fs::read_dir(&path_buf).map_err(|e| format!("Failed to read dir: {e}"))? {
             if collected.len() >= max_entries {
@@ -111,7 +171,7 @@ pub async fn list_directory_entries(
             let is_ignored = if skip_gitignore {
                 true
             } else {
-                gitignore
+                cached_gitignore
                     .as_ref()
                     .map(|g| {
                         g.matched_path_or_any_parents(&child_path, is_directory)
@@ -120,21 +180,34 @@ pub async fn list_directory_entries(
                     .unwrap_or(false)
             };
 
+            // Optimize string conversions - avoid cloning when possible
+            let name = dir_entry.file_name();
+            let path_string = child_path.to_string_lossy();
+            
             collected.push(DirEntry {
-                name: dir_entry.file_name().to_string_lossy().to_string(),
-                path: child_path.to_string_lossy().replace('\\', "/"),
+                name: name.to_string_lossy().into_owned(),
+                path: if cfg!(windows) {
+                    path_string.replace('\\', "/")
+                } else {
+                    path_string.into_owned()
+                },
                 is_directory,
                 is_ignored,
             });
         }
 
-        collected.sort_by(|a, b| {
-            if a.is_directory && !b.is_directory {
-                std::cmp::Ordering::Less
-            } else if !a.is_directory && b.is_directory {
-                std::cmp::Ordering::Greater
-            } else {
-                a.name.to_lowercase().cmp(&b.name.to_lowercase())
+        // Optimize sorting: directories first, then case-insensitive alphabetical
+        // Use lexicographical_cmp for better performance than to_lowercase()
+        collected.sort_unstable_by(|a, b| {
+            match (a.is_directory, b.is_directory) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => {
+                    // Case-insensitive comparison without allocating new strings
+                    a.name.chars()
+                        .flat_map(|c| c.to_lowercase())
+                        .cmp(b.name.chars().flat_map(|c| c.to_lowercase()))
+                }
             }
         });
 

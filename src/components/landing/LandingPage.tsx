@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { motion } from "framer-motion";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useProjectStore } from "@/stores";
 import { openWorkspace } from "@/lib/services/ProjectManager";
 import SettingsDialog from "@/components/workbench/SettingsDialog";
 import { Button } from "@/components/ui/button";
+import { FrontendProfiler } from "@/lib/services/FrontendProfiler";
 import logo from "@/assets/logo.png";
 
 // Inline SVG icons to avoid eager loading lucide-react during app initialization
@@ -33,8 +34,11 @@ interface LandingPageProps {
 export default function LandingPage({ onProjectOpen }: LandingPageProps) {
     const { recentProjects } = useProjectStore();
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [isPending, startTransition] = useTransition();
+    const [openingProjectPath, setOpeningProjectPath] = useState<string | null>(null);
 
     const handleOpenProject = async () => {
+        await FrontendProfiler.profileAsync('handleOpenProject', 'frontend_interaction', async () => {
         try {
             const selected = await open({
                 directory: true,
@@ -43,23 +47,46 @@ export default function LandingPage({ onProjectOpen }: LandingPageProps) {
             });
 
             if (selected && typeof selected === "string") {
-                await openWorkspace(selected);
-
-                onProjectOpen();
+                setOpeningProjectPath(selected);
+                startTransition(async () => {
+                    try {
+                        await openWorkspace(selected);
+                        onProjectOpen();
+                    } catch (error) {
+                        console.error("Failed to open project:", error);
+                    } finally {
+                        setOpeningProjectPath(null);
+                    }
+                });
             }
         } catch (error) {
             console.error("Failed to open project:", error);
         }
+        });
     };
 
     const handleOpenRecentProject = async (rootPath: string) => {
+        await FrontendProfiler.profileAsync('handleOpenRecentProject', 'frontend_interaction', async () => {
         try {
-            await openWorkspace(rootPath);
-
-            onProjectOpen();
+            // Show loading state immediately
+            setOpeningProjectPath(rootPath);
+            
+            // Use startTransition to keep UI responsive during workspace opening
+            startTransition(async () => {
+                try {
+                    await openWorkspace(rootPath);
+                    onProjectOpen();
+                } catch (error) {
+                    console.error("Failed to open recent project:", error);
+                } finally {
+                    setOpeningProjectPath(null);
+                }
+            });
         } catch (error) {
             console.error("Failed to open recent project:", error);
+            setOpeningProjectPath(null);
         }
+        }, { rootPath });
     };
 
     // Truncate path from the left for display
@@ -133,20 +160,46 @@ export default function LandingPage({ onProjectOpen }: LandingPageProps) {
                         </div>
                     ) : (
                         <div className="space-y-1">
-                            {recentProjects.slice(0, 5).map((project) => (
-                                <button
-                                    key={project.rootPath}
-                                    onClick={() => handleOpenRecentProject(project.rootPath)}
-                                    className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-muted/50 transition-colors text-left group"
-                                >
-                                    <span className="text-sm font-medium text-foreground group-hover:text-primary transition-colors">
-                                        {project.name}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground font-mono">
-                                        {truncatePath(project.rootPath)}
-                                    </span>
-                                </button>
-                            ))}
+                            {recentProjects.slice(0, 5).map((project) => {
+                                const isOpening = openingProjectPath === project.rootPath;
+                                return (
+                                    <button
+                                        key={project.rootPath}
+                                        onClick={() => handleOpenRecentProject(project.rootPath)}
+                                        disabled={isPending}
+                                        className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-muted/50 transition-colors text-left group disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        <span className="text-sm font-medium text-foreground group-hover:text-primary transition-colors flex items-center gap-2">
+                                            {isOpening && (
+                                                <svg
+                                                    className="animate-spin h-3 w-3"
+                                                    xmlns="http://www.w3.org/2000/svg"
+                                                    fill="none"
+                                                    viewBox="0 0 24 24"
+                                                >
+                                                    <circle
+                                                        className="opacity-25"
+                                                        cx="12"
+                                                        cy="12"
+                                                        r="10"
+                                                        stroke="currentColor"
+                                                        strokeWidth="4"
+                                                    />
+                                                    <path
+                                                        className="opacity-75"
+                                                        fill="currentColor"
+                                                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                                    />
+                                                </svg>
+                                            )}
+                                            {project.name}
+                                        </span>
+                                        <span className="text-xs text-muted-foreground font-mono">
+                                            {truncatePath(project.rootPath)}
+                                        </span>
+                                    </button>
+                                );
+                            })}
                         </div>
                     )}
                 </div>

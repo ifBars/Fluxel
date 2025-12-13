@@ -20,6 +20,12 @@ pub enum SpanCategory {
     LspRequest,
     Search,
     Workspace,
+    /// React component renders tracked via useProfiler hook
+    FrontendRender,
+    /// User interactions (clicks, inputs) tracked from frontend
+    FrontendInteraction,
+    /// Frontend network/API calls
+    FrontendNetwork,
     Other,
 }
 
@@ -35,6 +41,9 @@ impl SpanCategory {
                     "search" => SpanCategory::Search,
                     "workspace" => SpanCategory::Workspace,
                     "file_io" => SpanCategory::FileIo,
+                    "frontend_render" => SpanCategory::FrontendRender,
+                    "frontend_interaction" => SpanCategory::FrontendInteraction,
+                    "frontend_network" => SpanCategory::FrontendNetwork,
                     _ => SpanCategory::Other,
                 };
             }

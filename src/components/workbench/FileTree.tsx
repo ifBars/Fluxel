@@ -1,7 +1,9 @@
+import { memo, useCallback, useState, useEffect } from 'react';
 import { useFileSystemStore, useEditorStore } from '@/stores';
 import type { FileEntry } from '@/types/fs';
 import { getFileExtension } from '@/types/fs';
 import { useFileIcon } from '@/lib/icons';
+import { useProfiler } from '@/hooks/useProfiler';
 
 // Inline SVG icons to avoid eager loading react-icons during app initialization
 const ChevronRight = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
@@ -33,31 +35,31 @@ interface FileTreeNodeProps {
     depth: number;
 }
 
+const FileTreeNode = memo(function FileTreeNode({ entry, depth }: FileTreeNodeProps) {
+    // Optimize store selectors - only subscribe to what we need
+    const isExpanded = useFileSystemStore((state) => state.expandedPaths.has(entry.path));
+    const toggleFolder = useFileSystemStore((state) => state.toggleFolder);
+    const loadFolderChildren = useFileSystemStore((state) => state.loadFolderChildren);
+    const openFile = useEditorStore((state) => state.openFile);
 
-function FileTreeNode({ entry, depth }: FileTreeNodeProps) {
-    const { expandedPaths, toggleFolder, loadFolderChildren } = useFileSystemStore();
-    const { openFile } = useEditorStore();
-
-    // Use the hook for dynamic icon resolution
-    const fileIcon = useFileIcon(entry.name, getFileExtension(entry.name));
-
-    const isExpanded = expandedPaths.has(entry.path);
     const paddingLeft = 8 + depth * 16; // Base padding + indentation
     const isIgnored = entry.isIgnored;
 
-    const handleClick = () => {
+    // Optimize icon resolution - only compute extension once and memoize
+    const extension = entry.isDirectory ? '' : getFileExtension(entry.name);
+    const fileIcon = useFileIcon(entry.name, extension);
+
+    const handleClick = useCallback(() => {
         if (entry.isDirectory) {
-            const willExpand = !isExpanded;
-            // Expand/collapse immediately; load children lazily without blocking UI.
             toggleFolder(entry.path);
-            if (willExpand && !entry.children) {
+            // Load children if expanding and not already loaded
+            if (!entry.children) {
                 void loadFolderChildren(entry.path);
             }
         } else {
-            // Open file in editor
             void openFile(entry.path);
         }
-    };
+    }, [entry.isDirectory, entry.path, entry.children, toggleFolder, loadFolderChildren, openFile]);
 
     return (
         <div>
@@ -117,43 +119,107 @@ function FileTreeNode({ entry, depth }: FileTreeNodeProps) {
             )}
         </div>
     );
+});
+
+/**
+ * Chunked file tree renderer that progressively renders items
+ * to avoid blocking the UI thread with thousands of files.
+ */
+function ChunkedFileTree({ children }: { children: FileEntry[] }) {
+    const [visibleCount, setVisibleCount] = useState(() => {
+        // Initial render: show a reasonable number of items
+        // More items for better UX, but not so many that it blocks the UI
+        return Math.min(children.length, 200);
+    });
+
+    useEffect(() => {
+        // Reset visible count when children change
+        setVisibleCount(Math.min(children.length, 200));
+    }, [children]);
+
+    useEffect(() => {
+        if (visibleCount < children.length) {
+            // Schedule the next batch of items to render
+            // Use requestIdleCallback for better performance, with fallback to setTimeout
+            const scheduleNextBatch = () => {
+                const nextCount = Math.min(visibleCount + 100, children.length);
+                setVisibleCount(nextCount);
+            };
+
+            const timeoutId = setTimeout(scheduleNextBatch, 0);
+            return () => clearTimeout(timeoutId);
+        }
+    }, [visibleCount, children.length]);
+
+    const visibleChildren = children.slice(0, visibleCount);
+    const remainingCount = children.length - visibleCount;
+
+    return (
+        <>
+            {visibleChildren.map((entry) => (
+                <FileTreeNode key={entry.path} entry={entry} depth={0} />
+            ))}
+            {remainingCount > 0 && (
+                <div className="px-4 py-2 text-xs text-muted-foreground">
+                    Loading {remainingCount} more items...
+                </div>
+            )}
+        </>
+    );
 }
 
-export default function FileTree() {
-    const { rootEntry, isLoading, error } = useFileSystemStore();
+function FileTree() {
+    const rootEntry = useFileSystemStore((state) => state.rootEntry);
+    const isLoading = useFileSystemStore((state) => state.isLoading);
+    const error = useFileSystemStore((state) => state.error);
+    const { ProfilerWrapper } = useProfiler('FileTree');
 
     if (isLoading) {
         return (
-            <div className="p-4 text-sm text-muted-foreground">
-                Loading...
-            </div>
+            <ProfilerWrapper>
+                <div className="p-4 text-sm text-muted-foreground">
+                    Loading...
+                </div>
+            </ProfilerWrapper>
         );
     }
 
     if (error) {
         return (
-            <div className="p-4 text-sm text-destructive">
-                Error: {error}
-            </div>
+            <ProfilerWrapper>
+                <div className="p-4 text-sm text-destructive">
+                    Error: {error}
+                </div>
+            </ProfilerWrapper>
         );
     }
 
     if (!rootEntry) {
         return (
-            <div className="p-4 text-sm text-muted-foreground text-center">
-                <p>No folder open</p>
-                <p className="text-xs mt-2 opacity-70">
-                    Use File → Open Folder to get started
-                </p>
-            </div>
+            <ProfilerWrapper>
+                <div className="p-4 text-sm text-muted-foreground text-center">
+                    <p>No folder open</p>
+                    <p className="text-xs mt-2 opacity-70">
+                        Use File → Open Folder to get started
+                    </p>
+                </div>
+            </ProfilerWrapper>
         );
     }
 
     return (
-        <div className="py-1">
-            {rootEntry.children?.map((entry) => (
-                <FileTreeNode key={entry.path} entry={entry} depth={0} />
-            ))}
-        </div>
+        <ProfilerWrapper>
+            <div className="py-1">
+                {rootEntry.children && rootEntry.children.length > 0 ? (
+                    <ChunkedFileTree children={rootEntry.children} />
+                ) : (
+                    <div className="p-4 text-sm text-muted-foreground text-center">
+                        <p>Empty directory</p>
+                    </div>
+                )}
+            </div>
+        </ProfilerWrapper>
     );
 }
+
+export default memo(FileTree);

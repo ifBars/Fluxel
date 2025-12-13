@@ -13,4 +13,6 @@ pub mod launch;
 pub mod workspace;
 
 // Re-export commonly used types
+pub use build::ProjectConfigCache;
 pub use launch::LaunchState;
+pub use workspace::GitignoreCache;

@@ -14,6 +14,7 @@ use tracing_subscriber::layer::{Context, Layer};
 use tracing_subscriber::registry::LookupSpan;
 
 use crate::profiling::buffer::{CompletedSpan, RingBuffer, SpanCategory, SpanId, SpanSummary};
+use crate::profiling::sessions::{SessionManager, SessionReport};
 
 /// In-flight span data stored in the registry.
 struct SpanData {
@@ -35,6 +36,8 @@ pub struct FluxelProfiler {
 struct ProfilerInner {
     /// Ring buffer for completed spans.
     buffer: RwLock<RingBuffer>,
+    /// Session manager for profiling sessions.
+    sessions: RwLock<SessionManager>,
     /// Whether profiling is enabled.
     enabled: AtomicBool,
     /// Counter for generating sequential span IDs.
@@ -51,6 +54,7 @@ impl FluxelProfiler {
         Self {
             inner: Arc::new(ProfilerInner {
                 buffer: RwLock::new(RingBuffer::new(capacity)),
+                sessions: RwLock::new(SessionManager::new()),
                 enabled: AtomicBool::new(true), // Enabled by default when feature is on
                 next_id: AtomicU64::new(1),
                 id_map: RwLock::new(HashMap::new()),
@@ -102,6 +106,113 @@ impl FluxelProfiler {
         self.inner.id_map.write().unwrap().clear();
         self.inner.span_data.write().unwrap().clear();
     }
+
+    // =========================================================================
+    // Session Management
+    // =========================================================================
+
+    /// Start a new profiling session.
+    pub fn start_session(&self, name: String) -> String {
+        let span_count = self.span_count();
+        self.inner
+            .sessions
+            .write()
+            .unwrap()
+            .start_session(name, span_count)
+    }
+
+    /// End a profiling session and get the report.
+    pub fn end_session(&self, session_id: &str) -> Option<SessionReport> {
+        let buffer = self.inner.buffer.read().unwrap();
+        let reference = buffer.reference_time().unwrap_or_else(Instant::now);
+        let spans = buffer.recent(buffer.len());
+        drop(buffer);
+
+        self.inner
+            .sessions
+            .write()
+            .unwrap()
+            .end_session(session_id, &spans, reference)
+    }
+
+    /// Check if a session is active.
+    #[allow(dead_code)] // Public API method for future use
+    pub fn is_session_active(&self, session_id: &str) -> bool {
+        self.inner.sessions.read().unwrap().is_active(session_id)
+    }
+
+    /// Get the active session ID, if any.
+    pub fn active_session_id(&self) -> Option<String> {
+        self.inner
+            .sessions
+            .read()
+            .unwrap()
+            .active_session_id()
+            .map(|s| s.to_string())
+    }
+
+    /// Export spans as JSON.
+    pub fn export_json(&self, limit: Option<usize>) -> String {
+        let spans = self.recent_spans(limit.unwrap_or(10000));
+        crate::profiling::sessions::export_json(&spans)
+    }
+
+    /// Export spans as Chrome Trace format.
+    pub fn export_chrome_trace(&self, session_name: &str, limit: Option<usize>) -> String {
+        let spans = self.recent_spans(limit.unwrap_or(10000));
+        crate::profiling::sessions::export_chrome_trace(&spans, session_name)
+    }
+
+    // =========================================================================
+    // Frontend Span Recording
+    // =========================================================================
+
+    /// Record a span from the frontend.
+    /// This allows React/TypeScript code to record profiling data.
+    pub fn record_frontend_span(
+        &self,
+        name: String,
+        category: SpanCategory,
+        duration_ms: f64,
+        parent_id: Option<String>,
+        fields: Vec<(String, String)>,
+    ) {
+        if !self.is_enabled() {
+            return;
+        }
+
+        let our_id = self.next_span_id();
+        let now = Instant::now();
+
+        // Calculate approximate start time based on duration
+        let start_time = now - std::time::Duration::from_secs_f64(duration_ms / 1000.0);
+
+        let parent_span_id = parent_id.and_then(|id| id.parse().ok());
+
+        let completed = CompletedSpan {
+            id: our_id,
+            parent_id: parent_span_id,
+            name,
+            target: "frontend".to_string(),
+            category,
+            start_time,
+            end_time: now,
+            duration_ns: (duration_ms * 1_000_000.0) as u64,
+            fields,
+        };
+
+        self.inner.buffer.write().unwrap().push(completed);
+    }
+
+    /// Get the buffer's reference time for relative timestamps.
+    #[allow(dead_code)] // Public API method for future use
+    pub fn reference_time(&self) -> Option<Instant> {
+        self.inner.buffer.read().unwrap().reference_time()
+    }
+
+    // =========================================================================
+    // Internal Helpers
+    // =========================================================================
 
     /// Generate a new sequential span ID.
     fn next_span_id(&self) -> SpanId {

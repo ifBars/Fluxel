@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { Project } from '@/types/fs';
 import type { ProjectProfile } from '@/types/project';
 import { getCSharpLSPClient } from '@/lib/languages/csharp';
+import { FrontendProfiler } from '@/lib/services/FrontendProfiler';
 
 interface ProjectState {
     /** Currently open project */
@@ -56,6 +57,7 @@ export const useProjectStore = create<ProjectState>()(
             csharpLspStatus: 'stopped',
 
             openProject: (rootPath: string) => {
+                FrontendProfiler.profileSync('openProject', 'workspace', () => {
                 // If switching workspaces, stop any running C# server first to avoid MSBuild conflicts.
                 const lspClient = getCSharpLSPClient();
                 const previousWorkspace = lspClient.getWorkspaceRoot();
@@ -95,6 +97,7 @@ export const useProjectStore = create<ProjectState>()(
 
                 // Kick off detection/services in the background; never block folder opening UX.
                 void get().refreshProjectProfile();
+                }, { rootPath });
             },
 
             closeProject: () => {
@@ -122,6 +125,7 @@ export const useProjectStore = create<ProjectState>()(
             },
 
             refreshProjectProfile: async () => {
+                await FrontendProfiler.profileAsync('refreshProjectProfile', 'workspace', async () => {
                 const project = get().currentProject;
                 if (!project?.rootPath) {
                     set({
@@ -173,10 +177,13 @@ export const useProjectStore = create<ProjectState>()(
                         projectProfile: null,
                     });
                 }
+                });
             },
 
             ensureCSharpLspReady: async () => {
                 const project = get().currentProject;
+                const rootPath = project?.rootPath;
+                await FrontendProfiler.profileAsync('ensureCSharpLspReady', 'lsp_request', async () => {
                 if (!project?.rootPath) return;
                 if (get().csharpLspStatus === 'starting' || get().csharpLspStatus === 'ready') return;
 
@@ -210,6 +217,7 @@ export const useProjectStore = create<ProjectState>()(
                         csharpLspError: msg,
                     });
                 }
+                }, { ...(rootPath && { rootPath }) });
             },
 
             clearRecentProjects: () => {

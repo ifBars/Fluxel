@@ -1,16 +1,22 @@
 //! Tauri commands for the profiling subsystem.
 //!
-//! Exposes 4 commands to the frontend:
+//! Exposes commands to the frontend:
 //! - `profiler_set_enabled` - Enable/disable span collection
 //! - `profiler_get_status` - Get profiler status
 //! - `profiler_get_recent_spans` - Get recent span summaries
 //! - `profiler_get_attribution` - Get attribution report for a span tree
+//! - `profiler_clear` - Clear all stored spans
+//! - `profiler_start_session` - Start a named profiling session
+//! - `profiler_end_session` - End a session and get report
+//! - `profiler_record_frontend_span` - Record a span from the frontend
+//! - `profiler_export` - Export spans as JSON or Chrome Trace format
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::profiling::attribution::{AttributionEngine, AttributionReport};
-use crate::profiling::buffer::{SpanId, SpanSummary};
+use crate::profiling::buffer::{SpanCategory, SpanId, SpanSummary};
+use crate::profiling::sessions::SessionReport;
 use crate::profiling::FluxelProfiler;
 
 /// Profiler status response.
@@ -23,7 +29,37 @@ pub struct ProfilerStatus {
     pub span_count: usize,
     /// Maximum buffer capacity.
     pub buffer_capacity: usize,
+    /// Active session ID, if any.
+    pub active_session_id: Option<String>,
 }
+
+/// Frontend span input for recording.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrontendSpanInput {
+    /// Span name (e.g., "MyComponent:render").
+    pub name: String,
+    /// Category of the span.
+    pub category: String,
+    /// Duration in milliseconds.
+    pub duration_ms: f64,
+    /// Optional parent span ID.
+    pub parent_id: Option<String>,
+    /// Optional metadata as key-value pairs.
+    pub metadata: Option<Vec<(String, String)>>,
+}
+
+/// Export format for profiling data.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExportFormat {
+    Json,
+    ChromeTrace,
+}
+
+// =============================================================================
+// Basic Commands
+// =============================================================================
 
 /// Enable or disable span collection.
 #[tauri::command]
@@ -42,6 +78,7 @@ pub fn profiler_get_status(state: State<'_, FluxelProfiler>) -> ProfilerStatus {
         enabled: state.is_enabled(),
         span_count: state.span_count(),
         buffer_capacity: state.capacity(),
+        active_session_id: state.active_session_id(),
     }
 }
 
@@ -96,4 +133,97 @@ pub fn profiler_get_attribution(
 pub fn profiler_clear(state: State<'_, FluxelProfiler>) {
     state.clear();
     println!("[Profiling] Buffer cleared");
+}
+
+// =============================================================================
+// Session Commands
+// =============================================================================
+
+/// Start a named profiling session.
+///
+/// # Arguments
+/// * `name` - Human-readable session name
+///
+/// # Returns
+/// The session ID to use when ending the session
+#[tauri::command]
+pub fn profiler_start_session(state: State<'_, FluxelProfiler>, name: String) -> String {
+    let session_id = state.start_session(name.clone());
+    println!(
+        "[Profiling] Started session '{}' (ID: {})",
+        name, session_id
+    );
+    session_id
+}
+
+/// End a profiling session and get the report.
+///
+/// # Arguments
+/// * `session_id` - The session ID returned from `profiler_start_session`
+#[tauri::command]
+pub fn profiler_end_session(
+    state: State<'_, FluxelProfiler>,
+    session_id: String,
+) -> Result<SessionReport, String> {
+    state
+        .end_session(&session_id)
+        .ok_or_else(|| format!("Session not found or already ended: {}", session_id))
+}
+
+// =============================================================================
+// Frontend Span Recording
+// =============================================================================
+
+/// Record a span from the frontend.
+///
+/// This allows React/TypeScript code to record profiling data that will be
+/// merged with backend spans for unified analysis.
+#[tauri::command]
+pub fn profiler_record_frontend_span(state: State<'_, FluxelProfiler>, span: FrontendSpanInput) {
+    // Parse category
+    let category = match span.category.as_str() {
+        "frontend_render" => SpanCategory::FrontendRender,
+        "frontend_interaction" => SpanCategory::FrontendInteraction,
+        "frontend_network" => SpanCategory::FrontendNetwork,
+        "tauri_command" => SpanCategory::TauriCommand,
+        "file_io" => SpanCategory::FileIo,
+        "git_operation" => SpanCategory::GitOperation,
+        "lsp_request" => SpanCategory::LspRequest,
+        "search" => SpanCategory::Search,
+        "workspace" => SpanCategory::Workspace,
+        _ => SpanCategory::Other,
+    };
+
+    state.record_frontend_span(
+        span.name,
+        category,
+        span.duration_ms,
+        span.parent_id,
+        span.metadata.unwrap_or_default(),
+    );
+}
+
+// =============================================================================
+// Export Commands
+// =============================================================================
+
+/// Export profiling data in the specified format.
+///
+/// # Arguments
+/// * `format` - Export format: "json" or "chrome_trace"
+/// * `session_name` - Name to include in the export (for Chrome Trace)
+/// * `limit` - Maximum number of spans to export (default: 10000)
+#[tauri::command]
+pub fn profiler_export(
+    state: State<'_, FluxelProfiler>,
+    format: ExportFormat,
+    session_name: Option<String>,
+    limit: Option<usize>,
+) -> String {
+    match format {
+        ExportFormat::Json => state.export_json(limit),
+        ExportFormat::ChromeTrace => {
+            state.export_chrome_trace(&session_name.unwrap_or_else(|| "fluxel".to_string()), limit)
+        }
+    }
 }

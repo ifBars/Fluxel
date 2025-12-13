@@ -5,7 +5,7 @@ mod languages;
 mod profiling;
 mod services;
 
-use commands::LaunchState;
+use commands::{GitignoreCache, LaunchState, ProjectConfigCache};
 use languages::LSPState;
 use services::ProcessManager;
 
@@ -22,6 +22,8 @@ pub fn run() {
         .manage(LSPState::new())
         .manage(LaunchState::new())
         .manage(ProcessManager::new())
+        .manage(ProjectConfigCache::new())
+        .manage(GitignoreCache::new())
         .setup(|app| {
             #[cfg(feature = "profiling")]
             let _setup_span = tracing::span!(tracing::Level::INFO, "tauri_setup").entered();
@@ -29,15 +31,17 @@ pub fn run() {
             // Initialize profiling subsystem (feature-gated)
             #[cfg(feature = "profiling")]
             {
-                let _profiler_span = tracing::span!(tracing::Level::INFO, "profiler_init").entered();
+                let _profiler_span =
+                    tracing::span!(tracing::Level::INFO, "profiler_init").entered();
                 let profiler = profiling::init();
                 app.manage(profiler);
             }
 
             // Check for CLI args (e.g. context menu launch)
             #[cfg(feature = "profiling")]
-            let _launch_args_span = tracing::span!(tracing::Level::INFO, "check_launch_args").entered();
-            
+            let _launch_args_span =
+                tracing::span!(tracing::Level::INFO, "check_launch_args").entered();
+
             if let Some(raw_arg) = std::env::args().nth(1) {
                 let mut path = PathBuf::from(&raw_arg);
 
@@ -100,6 +104,14 @@ pub fn run() {
             profiling::commands::profiler_get_attribution,
             #[cfg(feature = "profiling")]
             profiling::commands::profiler_clear,
+            #[cfg(feature = "profiling")]
+            profiling::commands::profiler_start_session,
+            #[cfg(feature = "profiling")]
+            profiling::commands::profiler_end_session,
+            #[cfg(feature = "profiling")]
+            profiling::commands::profiler_record_frontend_span,
+            #[cfg(feature = "profiling")]
+            profiling::commands::profiler_export,
             // Process Manager Commands
             services::process_manager::register_child_process,
             services::process_manager::unregister_child_process,

@@ -914,11 +914,15 @@ export async function loadProjectTypes(
     isLoadingTypes = true;
     console.log('[TypeLoader] Loading project types from:', projectRoot);
 
-    // Get the store for status updates
-    const store = useTypeLoadingStore.getState();
-    store.startLoading('Initializing TypeScript...');
+    // Import FrontendProfiler dynamically to avoid circular dependencies
+    const { FrontendProfiler } = await import('@/lib/services/FrontendProfiler');
+    
+    await FrontendProfiler.profileAsync('loadProjectTypes', 'workspace', async () => {
+        // Get the store for status updates
+        const store = useTypeLoadingStore.getState();
+        store.startLoading('Initializing TypeScript...');
 
-    try {
+        try {
         // Clear previously loaded types if switching projects
         if (currentLoadedProject !== projectRoot) {
             loadedTypeUris.clear();
@@ -1031,19 +1035,20 @@ export async function loadProjectTypes(
             }
         }
 
-        console.log(`[TypeLoader] Loaded ${loadedTypeUris.size} type definition files`);
+            console.log(`[TypeLoader] Loaded ${loadedTypeUris.size} type definition files`);
 
-        // DIAGNOSTIC: Show URI format being used for types
-        if (loadedTypeUris.size > 0) {
-            const sampleUris = Array.from(loadedTypeUris).slice(0, 3);
-            console.log('[TypeLoader] Sample type definition URIs:', sampleUris);
+            // DIAGNOSTIC: Show URI format being used for types
+            if (loadedTypeUris.size > 0) {
+                const sampleUris = Array.from(loadedTypeUris).slice(0, 3);
+                console.log('[TypeLoader] Sample type definition URIs:', sampleUris);
+            }
+        } catch (error) {
+            console.error('[TypeLoader] Failed to load project types:', error);
+        } finally {
+            isLoadingTypes = false;
+            store.finishLoading();
         }
-    } catch (error) {
-        console.error('[TypeLoader] Failed to load project types:', error);
-    } finally {
-        isLoadingTypes = false;
-        store.finishLoading();
-    }
+    }, { projectRoot, typeCount: loadedTypeUris.size.toString() });
 }
 
 /**

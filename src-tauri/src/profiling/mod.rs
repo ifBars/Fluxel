@@ -8,6 +8,7 @@
 //! - `subscriber`: Custom tracing Layer that captures span lifecycle events
 //! - `buffer`: Bounded ring buffer for span storage (no heap allocation on push)
 //! - `attribution`: Latency analysis and "Why was this slow?" reports
+//! - `sessions`: Session management for before/after comparisons and export
 //! - `commands`: Tauri commands exposing profiler data to the frontend
 //!
 //! # Usage
@@ -27,6 +28,8 @@ mod attribution;
 mod buffer;
 #[cfg(feature = "profiling")]
 pub mod commands;
+#[cfg(feature = "profiling")]
+mod sessions;
 #[cfg(feature = "profiling")]
 mod subscriber;
 

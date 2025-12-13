@@ -91,14 +91,12 @@ export function TitleBarShell({ leftContent, centerContent }: TitleBarShellProps
       </div>
 
       {/* Center - Optional editor-specific content */}
-      {centerContent && (
-        <div
-          data-tauri-drag-region
-          className="flex-1 flex items-center justify-center h-full"
-        >
-          {centerContent}
-        </div>
-      )}
+      <div
+        data-tauri-drag-region
+        className="flex-1 flex items-center justify-center h-full"
+      >
+        {centerContent}
+      </div>
 
       {/* Window Controls */}
       <div className="flex items-center h-full">

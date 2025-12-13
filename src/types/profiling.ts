@@ -5,6 +5,10 @@
  * These types mirror the Rust structs in src-tauri/src/profiling/.
  */
 
+// =============================================================================
+// Span Categories
+// =============================================================================
+
 /**
  * Category of a span for attribution grouping.
  */
@@ -15,7 +19,22 @@ export type SpanCategory =
     | 'lsp_request'
     | 'search'
     | 'workspace'
+    | 'frontend_render'
+    | 'frontend_interaction'
+    | 'frontend_network'
     | 'other';
+
+/**
+ * Frontend-specific span categories.
+ */
+export type FrontendCategory =
+    | 'frontend_render'
+    | 'frontend_interaction'
+    | 'frontend_network';
+
+// =============================================================================
+// Span Types
+// =============================================================================
 
 /**
  * Summary of a completed span.
@@ -40,6 +59,26 @@ export interface SpanSummary {
 }
 
 /**
+ * Input for recording a frontend span.
+ */
+export interface FrontendSpanInput {
+    /** Span name (e.g., "MyComponent:render") */
+    name: string;
+    /** Category of the span */
+    category: FrontendCategory | SpanCategory;
+    /** Duration in milliseconds */
+    durationMs: number;
+    /** Optional parent span ID */
+    parentId?: string;
+    /** Optional metadata as key-value pairs */
+    metadata?: [string, string][];
+}
+
+// =============================================================================
+// Status & Reports
+// =============================================================================
+
+/**
  * Profiler status information.
  */
 export interface ProfilerStatus {
@@ -49,6 +88,8 @@ export interface ProfilerStatus {
     spanCount: number;
     /** Maximum buffer capacity */
     bufferCapacity: number;
+    /** Active session ID, if any */
+    activeSessionId: string | null;
 }
 
 /**
@@ -83,12 +124,70 @@ export interface AttributionReport {
     hotspots: SpanSummary[];
 }
 
+// =============================================================================
+// Session Types
+// =============================================================================
+
+/**
+ * A profiling session that groups spans for analysis.
+ */
+export interface ProfilingSession {
+    /** Unique session identifier */
+    id: string;
+    /** Human-readable session name */
+    name: string;
+    /** Session start time in milliseconds (from profiler reference time) */
+    startTimeMs: number;
+    /** Session end time in milliseconds (null if still active) */
+    endTimeMs: number | null;
+    /** Number of spans captured in this session */
+    spanCount: number;
+}
+
+/**
+ * Category breakdown within a session.
+ */
+export interface CategorySessionBreakdown {
+    category: SpanCategory;
+    totalTimeMs: number;
+    spanCount: number;
+    percentage: number;
+}
+
+/**
+ * Summary report when a session ends.
+ */
+export interface SessionReport {
+    /** The session details */
+    session: ProfilingSession;
+    /** Time breakdown by category */
+    breakdowns: CategorySessionBreakdown[];
+    /** Top spans by duration */
+    topSpans: SpanSummary[];
+    /** Total duration of all spans (may exceed session duration due to overlap) */
+    totalSpanTimeMs: number;
+}
+
+// =============================================================================
+// Export Types
+// =============================================================================
+
+/**
+ * Export format for profiling data.
+ */
+export type ExportFormat = 'json' | 'chrome_trace';
+
+// =============================================================================
+// API Interface
+// =============================================================================
+
 /**
  * Profiler API functions.
  * 
  * These map to the Tauri commands in src-tauri/src/profiling/commands.rs
  */
 export interface ProfilerApi {
+    // Basic commands
     /** Enable or disable profiling */
     setEnabled: (enabled: boolean) => Promise<void>;
     /** Get current profiler status */
@@ -99,4 +198,19 @@ export interface ProfilerApi {
     getAttribution: (rootSpanId: string) => Promise<AttributionReport>;
     /** Clear all stored spans */
     clear: () => Promise<void>;
+
+    // Session commands
+    /** Start a named profiling session */
+    startSession: (name: string) => Promise<string>;
+    /** End a session and get the report */
+    endSession: (sessionId: string) => Promise<SessionReport>;
+
+    // Frontend span recording
+    /** Record a span from the frontend */
+    recordFrontendSpan: (span: FrontendSpanInput) => Promise<void>;
+
+    // Export
+    /** Export spans in the specified format */
+    export: (format: ExportFormat, sessionName?: string, limit?: number) => Promise<string>;
 }
+

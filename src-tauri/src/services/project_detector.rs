@@ -130,6 +130,9 @@ pub async fn detect_project_profile(workspace_root: String) -> Result<ProjectPro
         ));
     }
 
+    #[cfg(feature = "profiling")]
+    drop(_span); // Drop span before await to ensure Send trait
+
     spawn_blocking(move || {
         #[cfg(feature = "profiling")]
         let _blocking_span = tracing::span!(tracing::Level::INFO, "project_detection_blocking").entered();

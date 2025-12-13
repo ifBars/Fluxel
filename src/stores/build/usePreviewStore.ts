@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { getConfigMetadata } from '@/lib/config/loader';
 import { Command, Child } from '@tauri-apps/plugin-shell';
 import { registerProcess, unregisterProcess } from '@/lib/services/processManager';
+import { FrontendProfiler } from '@/lib/services/FrontendProfiler';
 
 interface PreviewState {
     // Preview URL for the iframe
@@ -42,9 +43,10 @@ export const usePreviewStore = create<PreviewState>((set, get) => ({
     setPort: (port) => set({ port }),
 
     startPreview: async (projectPath: string, autoStart = true) => {
-        set({ isLoading: true, error: null });
+        await FrontendProfiler.profileAsync('startPreview', 'tauri_command', async () => {
+            set({ isLoading: true, error: null });
 
-        try {
+            try {
             // Load config metadata to get the configured dev server port
             const metadata = await getConfigMetadata(projectPath);
             const configuredPort = metadata?.devServer?.port ?? get().port;
@@ -144,41 +146,44 @@ export const usePreviewStore = create<PreviewState>((set, get) => ({
                 }
             }
 
-            // No server found
-            set({
-                error: `No dev server found. Please start your dev server (e.g., "bun run dev" or "npm run dev") and try again.`,
-                isLoading: false,
-                isServerRunning: false,
-                previewUrl: null
-            });
-        } catch (error) {
-            set({
-                error: `Failed to connect to dev server: ${error}`,
-                isLoading: false
-            });
-        }
+                // No server found
+                set({
+                    error: `No dev server found. Please start your dev server (e.g., "bun run dev" or "npm run dev") and try again.`,
+                    isLoading: false,
+                    isServerRunning: false,
+                    previewUrl: null
+                });
+            } catch (error) {
+                set({
+                    error: `Failed to connect to dev server: ${error}`,
+                    isLoading: false
+                });
+            }
+        }, { projectPath, autoStart: autoStart.toString() });
     },
 
     stopPreview: async () => {
-        const { devServerChild } = get();
-        if (devServerChild) {
-            // Unregister from process manager first
-            if (devServerChild.pid) {
-                await unregisterProcess(devServerChild.pid).catch(console.error);
+        await FrontendProfiler.profileAsync('stopPreview', 'tauri_command', async () => {
+            const { devServerChild } = get();
+            if (devServerChild) {
+                // Unregister from process manager first
+                if (devServerChild.pid) {
+                    await unregisterProcess(devServerChild.pid).catch(console.error);
+                }
+
+                try {
+                    await devServerChild.kill();
+                } catch (e) {
+                    console.error('Failed to stop dev server:', e);
+                }
             }
 
-            try {
-                await devServerChild.kill();
-            } catch (e) {
-                console.error('Failed to stop dev server:', e);
-            }
-        }
-
-        set({
-            previewUrl: null,
-            isServerRunning: false,
-            error: null,
-            devServerChild: null
+            set({
+                previewUrl: null,
+                isServerRunning: false,
+                error: null,
+                devServerChild: null
+            });
         });
     },
 

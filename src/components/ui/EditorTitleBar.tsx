@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback, memo } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   useProjectStore,
@@ -28,43 +28,51 @@ interface EditorTitleBarProps {
  * Editor-specific titlebar menus and project info.
  * This component is lazy-loaded and only rendered when showMenu is true.
  */
-export function EditorTitleBar({ onCloseProject }: EditorTitleBarProps) {
+function EditorTitleBar({ onCloseProject }: EditorTitleBarProps) {
   const [isBuilding, setIsBuilding] = useState(false);
+  const lastProjectPathRef = useRef<string | null>(null);
 
   // Menu state management
   const { activeMenu, menuRef, toggleMenu, openMenuOnHover, closeMenu } = useTitlebarMenu();
 
-  const { currentProject } = useProjectStore();
-  const { saveAllFiles, triggerAction } = useEditorStore();
+  const currentProject = useProjectStore((state) => state.currentProject);
+  const saveAllFiles = useEditorStore((state) => state.saveAllFiles);
+  const triggerAction = useEditorStore((state) => state.triggerAction);
 
   // Settings and Workbench stores for View menu
-  const {
-    setSidebarOpen,
-    isSidebarOpen,
-  } = useWorkbenchStore();
+  const setSidebarOpen = useWorkbenchStore((state) => state.setSidebarOpen);
+  const isSidebarOpen = useWorkbenchStore((state) => state.isSidebarOpen);
 
-  const {
-    fontSize, setFontSize,
-    wordWrap, setWordWrap,
-    showMinimap, setShowMinimap,
-    showLineNumbers, setShowLineNumbers,
-    uiDensity, setUIDensity,
-    buildSystem, customBuildCommand
-  } = useSettingsStore();
+  const fontSize = useSettingsStore((state) => state.fontSize);
+  const setFontSize = useSettingsStore((state) => state.setFontSize);
+  const wordWrap = useSettingsStore((state) => state.wordWrap);
+  const setWordWrap = useSettingsStore((state) => state.setWordWrap);
+  const showMinimap = useSettingsStore((state) => state.showMinimap);
+  const setShowMinimap = useSettingsStore((state) => state.setShowMinimap);
+  const showLineNumbers = useSettingsStore((state) => state.showLineNumbers);
+  const setShowLineNumbers = useSettingsStore((state) => state.setShowLineNumbers);
+  const uiDensity = useSettingsStore((state) => state.uiDensity);
+  const setUIDensity = useSettingsStore((state) => state.setUIDensity);
+  const buildSystem = useSettingsStore((state) => state.buildSystem);
+  const customBuildCommand = useSettingsStore((state) => state.customBuildCommand);
 
-  // Load C# configurations when project changes
+  // Load C# configurations when project changes (only if path actually changed)
   useEffect(() => {
-    if (currentProject?.rootPath) {
+    const currentPath = currentProject?.rootPath;
+    if (currentPath && currentPath !== lastProjectPathRef.current) {
+      lastProjectPathRef.current = currentPath;
       if (import.meta.env.DEV) {
-        console.log('[EditorTitleBar] Project changed, loading C# configurations for:', currentProject.rootPath);
+        console.log('[EditorTitleBar] Project changed, loading C# configurations for:', currentPath);
       }
-      useCSharpStore.getState().loadProjectConfigurations(currentProject.rootPath);
+      useCSharpStore.getState().loadProjectConfigurations(currentPath);
+    } else if (!currentPath) {
+      lastProjectPathRef.current = null;
     }
     // Note: We don't reset here on unmount/no project - that's handled by the project store lifecycle
   }, [currentProject?.rootPath]);
 
   // File Menu Actions
-  const handleOpenFolder = async () => {
+  const handleOpenFolder = useCallback(async () => {
     closeMenu();
     try {
       const selected = await open({
@@ -79,17 +87,20 @@ export function EditorTitleBar({ onCloseProject }: EditorTitleBarProps) {
     } catch (error) {
       console.error("Failed to open folder:", error);
     }
-  };
+  }, [closeMenu]);
 
-  const handleSaveAll = async () => {
+  const handleSaveAll = useCallback(async () => {
     closeMenu();
     await saveAllFiles();
-  };
+  }, [closeMenu, saveAllFiles]);
 
   // Build Panel Store
-  const { startBuild, finishBuild, setOutput, appendOutput } = useBuildPanelStore();
+  const startBuild = useBuildPanelStore((state) => state.startBuild);
+  const finishBuild = useBuildPanelStore((state) => state.finishBuild);
+  const setOutput = useBuildPanelStore((state) => state.setOutput);
+  const appendOutput = useBuildPanelStore((state) => state.appendOutput);
 
-  const handleBuildProject = async () => {
+  const handleBuildProject = useCallback(async () => {
     if (!currentProject) return;
     closeMenu();
     setIsBuilding(true);
@@ -113,9 +124,9 @@ export function EditorTitleBar({ onCloseProject }: EditorTitleBarProps) {
     } finally {
       setIsBuilding(false);
     }
-  };
+  }, [currentProject, buildSystem, customBuildCommand, closeMenu, startBuild, setOutput, appendOutput, finishBuild]);
 
-  const handleTypeCheck = async () => {
+  const handleTypeCheck = useCallback(async () => {
     if (!currentProject) return;
     closeMenu();
     setIsBuilding(true);
@@ -134,188 +145,193 @@ export function EditorTitleBar({ onCloseProject }: EditorTitleBarProps) {
     } finally {
       setIsBuilding(false);
     }
-  };
+  }, [currentProject, closeMenu, startBuild, setOutput, appendOutput, finishBuild]);
 
-  const handleCloseProject = async () => {
+  const handleCloseProject = useCallback(async () => {
     closeMenu();
     await closeWorkspace();
     onCloseProject?.();
-  };
+  }, [closeMenu, onCloseProject]);
 
   // View Menu Actions
-  const handleZoomIn = () => setFontSize(Math.min(fontSize + 1, 32));
-  const handleZoomOut = () => setFontSize(Math.max(fontSize - 1, 8));
-  const handleResetZoom = () => setFontSize(14);
-  const cycleDensity = () => {
+  const handleZoomIn = useCallback(() => setFontSize(Math.min(fontSize + 1, 32)), [fontSize, setFontSize]);
+  const handleZoomOut = useCallback(() => setFontSize(Math.max(fontSize - 1, 8)), [fontSize, setFontSize]);
+  const handleResetZoom = useCallback(() => setFontSize(14), [setFontSize]);
+  const cycleDensity = useCallback(() => {
     const densities: UIDensity[] = ['compact', 'comfortable', 'spacious'];
     const nextIndex = (densities.indexOf(uiDensity) + 1) % densities.length;
     setUIDensity(densities[nextIndex]);
-  };
+  }, [uiDensity, setUIDensity]);
 
   // Helper for triggering editor actions
-  const action = (act: import("@/stores").EditorAction) => {
+  const action = useCallback((act: import("@/stores").EditorAction) => {
     triggerAction(act);
     closeMenu();
-  };
+  }, [triggerAction, closeMenu]);
 
   return (
     <div className="flex items-center h-full" ref={menuRef}>
-        {/* File Menu */}
-        <div className="relative h-full">
-          <TitlebarMenuButton
-            label="File"
-            isOpen={activeMenu === 'file'}
-            onClick={() => toggleMenu('file')}
-            onMouseEnter={() => openMenuOnHover('file')}
-          />
-          {activeMenu === 'file' && (
-            <TitlebarMenuDropdown>
-              <TitlebarMenuItem label="Open Folder..." shortcut="Ctrl+O" onClick={handleOpenFolder} />
-              <TitlebarMenuDivider />
-              <TitlebarMenuItem label="Save All" shortcut="Ctrl+Shift+S" onClick={handleSaveAll} />
-              <TitlebarMenuDivider />
-              <TitlebarMenuItem label="Close Folder" onClick={handleCloseProject} disabled={!currentProject} />
-            </TitlebarMenuDropdown>
-          )}
-        </div>
+      {/* File Menu */}
+      <div className="relative h-full">
+        <TitlebarMenuButton
+          label="File"
+          isOpen={activeMenu === 'file'}
+          onClick={() => toggleMenu('file')}
+          onMouseEnter={() => openMenuOnHover('file')}
+        />
+        {activeMenu === 'file' && (
+          <TitlebarMenuDropdown>
+            <TitlebarMenuItem label="Open Folder..." shortcut="Ctrl+O" onClick={handleOpenFolder} />
+            <TitlebarMenuDivider />
+            <TitlebarMenuItem label="Save All" shortcut="Ctrl+Shift+S" onClick={handleSaveAll} />
+            <TitlebarMenuDivider />
+            <TitlebarMenuItem label="Close Folder" onClick={handleCloseProject} disabled={!currentProject} />
+          </TitlebarMenuDropdown>
+        )}
+      </div>
 
-        {/* Edit Menu */}
-        <div className="relative h-full">
-          <TitlebarMenuButton
-            label="Edit"
-            isOpen={activeMenu === 'edit'}
-            onClick={() => toggleMenu('edit')}
-            onMouseEnter={() => openMenuOnHover('edit')}
-          />
-          {activeMenu === 'edit' && (
-            <TitlebarMenuDropdown>
-              <TitlebarMenuItem label="Undo" shortcut="Ctrl+Z" onClick={() => action('undo')} />
-              <TitlebarMenuItem label="Redo" shortcut="Ctrl+Y" onClick={() => action('redo')} />
-              <TitlebarMenuDivider />
-              <TitlebarMenuItem label="Cut" shortcut="Ctrl+X" onClick={() => action('cut')} />
-              <TitlebarMenuItem label="Copy" shortcut="Ctrl+C" onClick={() => action('copy')} />
-              <TitlebarMenuItem label="Paste" shortcut="Ctrl+V" onClick={() => action('paste')} />
-              <TitlebarMenuDivider />
-              <TitlebarMenuItem label="Find" shortcut="Ctrl+F" onClick={() => action('find')} />
-              <TitlebarMenuItem label="Replace" shortcut="Ctrl+H" onClick={() => action('replace')} />
-            </TitlebarMenuDropdown>
-          )}
-        </div>
+      {/* Edit Menu */}
+      <div className="relative h-full">
+        <TitlebarMenuButton
+          label="Edit"
+          isOpen={activeMenu === 'edit'}
+          onClick={() => toggleMenu('edit')}
+          onMouseEnter={() => openMenuOnHover('edit')}
+        />
+        {activeMenu === 'edit' && (
+          <TitlebarMenuDropdown>
+            <TitlebarMenuItem label="Undo" shortcut="Ctrl+Z" onClick={() => action('undo')} />
+            <TitlebarMenuItem label="Redo" shortcut="Ctrl+Y" onClick={() => action('redo')} />
+            <TitlebarMenuDivider />
+            <TitlebarMenuItem label="Cut" shortcut="Ctrl+X" onClick={() => action('cut')} />
+            <TitlebarMenuItem label="Copy" shortcut="Ctrl+C" onClick={() => action('copy')} />
+            <TitlebarMenuItem label="Paste" shortcut="Ctrl+V" onClick={() => action('paste')} />
+            <TitlebarMenuDivider />
+            <TitlebarMenuItem label="Find" shortcut="Ctrl+F" onClick={() => action('find')} />
+            <TitlebarMenuItem label="Replace" shortcut="Ctrl+H" onClick={() => action('replace')} />
+          </TitlebarMenuDropdown>
+        )}
+      </div>
 
-        {/* Selection Menu */}
-        <div className="relative h-full">
-          <TitlebarMenuButton
-            label="Selection"
-            isOpen={activeMenu === 'selection'}
-            onClick={() => toggleMenu('selection')}
-            onMouseEnter={() => openMenuOnHover('selection')}
-          />
-          {activeMenu === 'selection' && (
-            <TitlebarMenuDropdown>
-              <TitlebarMenuItem label="Select All" shortcut="Ctrl+A" onClick={() => action('selectAll')} />
-              <TitlebarMenuDivider />
-              <TitlebarMenuItem label="Expand Selection" shortcut="Shift+Alt+Right" onClick={() => { }} disabled />
-              <TitlebarMenuItem label="Shrink Selection" shortcut="Shift+Alt+Left" onClick={() => { }} disabled />
-              <TitlebarMenuDivider />
-              <TitlebarMenuItem label="Add Cursor Above" shortcut="Ctrl+Alt+Up" onClick={() => { }} disabled />
-              <TitlebarMenuItem label="Add Cursor Below" shortcut="Ctrl+Alt+Down" onClick={() => { }} disabled />
-            </TitlebarMenuDropdown>
-          )}
-        </div>
+      {/* Selection Menu */}
+      <div className="relative h-full">
+        <TitlebarMenuButton
+          label="Selection"
+          isOpen={activeMenu === 'selection'}
+          onClick={() => toggleMenu('selection')}
+          onMouseEnter={() => openMenuOnHover('selection')}
+        />
+        {activeMenu === 'selection' && (
+          <TitlebarMenuDropdown>
+            <TitlebarMenuItem label="Select All" shortcut="Ctrl+A" onClick={() => action('selectAll')} />
+            <TitlebarMenuDivider />
+            <TitlebarMenuItem label="Expand Selection" shortcut="Shift+Alt+Right" onClick={() => { }} disabled />
+            <TitlebarMenuItem label="Shrink Selection" shortcut="Shift+Alt+Left" onClick={() => { }} disabled />
+            <TitlebarMenuDivider />
+            <TitlebarMenuItem label="Add Cursor Above" shortcut="Ctrl+Alt+Up" onClick={() => { }} disabled />
+            <TitlebarMenuItem label="Add Cursor Below" shortcut="Ctrl+Alt+Down" onClick={() => { }} disabled />
+          </TitlebarMenuDropdown>
+        )}
+      </div>
 
-        {/* View Menu */}
-        <div className="relative h-full">
-          <TitlebarMenuButton
-            label="View"
-            isOpen={activeMenu === 'view'}
-            onClick={() => toggleMenu('view')}
-            onMouseEnter={() => openMenuOnHover('view')}
-          />
-          {activeMenu === 'view' && (
-            <TitlebarMenuDropdown>
-              <TitlebarMenuItem
-                label="Command Palette..."
-                shortcut="F1"
-                onClick={() => { closeMenu(); /* TODO: Implement Command Palette */ }}
-                disabled
-              />
-              <TitlebarMenuDivider />
-              <TitlebarMenuItem
-                label={isSidebarOpen ? "Hide Side Bar" : "Show Side Bar"}
-                shortcut="Ctrl+B"
-                onClick={() => { setSidebarOpen(!isSidebarOpen); closeMenu(); }}
-              />
-              <TitlebarMenuItem
-                label="Toggle Build Panel"
-                shortcut="Ctrl+`"
-                onClick={() => { useBuildPanelStore.getState().togglePanel(); closeMenu(); }}
-                checked={useBuildPanelStore.getState().isOpen}
-              />
-              <TitlebarMenuItem
-                label="Toggle Minimap"
-                onClick={() => { setShowMinimap(!showMinimap); closeMenu(); }}
-                checked={showMinimap}
-              />
-              <TitlebarMenuItem
-                label="Toggle Line Numbers"
-                onClick={() => { setShowLineNumbers(!showLineNumbers); closeMenu(); }}
-                checked={showLineNumbers}
-              />
-              <TitlebarMenuItem
-                label="Toggle Word Wrap"
-                shortcut="Alt+Z"
-                onClick={() => { setWordWrap(wordWrap === 'off' ? 'on' : 'off'); closeMenu(); }}
-                checked={wordWrap !== 'off'}
-              />
-              <TitlebarMenuDivider />
-              <TitlebarMenuItem label="Zoom In" shortcut="Ctrl+=" onClick={handleZoomIn} />
-              <TitlebarMenuItem label="Zoom Out" shortcut="Ctrl+-" onClick={handleZoomOut} />
-              <TitlebarMenuItem label="Reset Zoom" shortcut="Ctrl+0" onClick={handleResetZoom} />
-              <TitlebarMenuDivider />
-              <TitlebarMenuItem
-                label={`UI Density: ${uiDensity.charAt(0).toUpperCase() + uiDensity.slice(1)}`}
-                onClick={() => { cycleDensity(); closeMenu(); }}
-              />
-            </TitlebarMenuDropdown>
-          )}
-        </div>
+      {/* View Menu */}
+      <div className="relative h-full">
+        <TitlebarMenuButton
+          label="View"
+          isOpen={activeMenu === 'view'}
+          onClick={() => toggleMenu('view')}
+          onMouseEnter={() => openMenuOnHover('view')}
+        />
+        {activeMenu === 'view' && (
+          <TitlebarMenuDropdown>
+            <TitlebarMenuItem
+              label="Command Palette..."
+              shortcut="F1"
+              onClick={() => { closeMenu(); /* TODO: Implement Command Palette */ }}
+              disabled
+            />
+            <TitlebarMenuDivider />
+            <TitlebarMenuItem
+              label={isSidebarOpen ? "Hide Side Bar" : "Show Side Bar"}
+              shortcut="Ctrl+B"
+              onClick={() => { setSidebarOpen(!isSidebarOpen); closeMenu(); }}
+            />
+            <TitlebarMenuItem
+              label="Toggle Build Panel"
+              shortcut="Ctrl+`"
+              onClick={() => { useBuildPanelStore.getState().togglePanel(); closeMenu(); }}
+              checked={useBuildPanelStore.getState().isOpen}
+            />
+            <TitlebarMenuItem
+              label="Toggle Minimap"
+              onClick={() => { setShowMinimap(!showMinimap); closeMenu(); }}
+              checked={showMinimap}
+            />
+            <TitlebarMenuItem
+              label="Toggle Line Numbers"
+              onClick={() => { setShowLineNumbers(!showLineNumbers); closeMenu(); }}
+              checked={showLineNumbers}
+            />
+            <TitlebarMenuItem
+              label="Toggle Word Wrap"
+              shortcut="Alt+Z"
+              onClick={() => { setWordWrap(wordWrap === 'off' ? 'on' : 'off'); closeMenu(); }}
+              checked={wordWrap !== 'off'}
+            />
+            <TitlebarMenuDivider />
+            <TitlebarMenuItem label="Zoom In" shortcut="Ctrl+=" onClick={handleZoomIn} />
+            <TitlebarMenuItem label="Zoom Out" shortcut="Ctrl+-" onClick={handleZoomOut} />
+            <TitlebarMenuItem label="Reset Zoom" shortcut="Ctrl+0" onClick={handleResetZoom} />
+            <TitlebarMenuDivider />
+            <TitlebarMenuItem
+              label={`UI Density: ${uiDensity.charAt(0).toUpperCase() + uiDensity.slice(1)}`}
+              onClick={() => { cycleDensity(); closeMenu(); }}
+            />
+          </TitlebarMenuDropdown>
+        )}
+      </div>
 
-        {/* Build Menu */}
-        <div className="relative h-full">
-          <TitlebarMenuButton
-            label="Build"
-            isOpen={activeMenu === 'build'}
-            onClick={() => toggleMenu('build')}
-            onMouseEnter={() => openMenuOnHover('build')}
-          />
-          {activeMenu === 'build' && (
-            <TitlebarMenuDropdown>
-              <TitlebarMenuItem
-                label="Build Project"
-                shortcut="Ctrl+Shift+B"
-                onClick={handleBuildProject}
-                disabled={!currentProject || isBuilding}
-              />
-              <TitlebarMenuItem
-                label="Type Check"
-                shortcut="Ctrl+Shift+T"
-                onClick={handleTypeCheck}
-                disabled={!currentProject || isBuilding}
-              />
-            </TitlebarMenuDropdown>
-          )}
-        </div>
+      {/* Build Menu */}
+      <div className="relative h-full">
+        <TitlebarMenuButton
+          label="Build"
+          isOpen={activeMenu === 'build'}
+          onClick={() => toggleMenu('build')}
+          onMouseEnter={() => openMenuOnHover('build')}
+        />
+        {activeMenu === 'build' && (
+          <TitlebarMenuDropdown>
+            <TitlebarMenuItem
+              label="Build Project"
+              shortcut="Ctrl+Shift+B"
+              onClick={handleBuildProject}
+              disabled={!currentProject || isBuilding}
+            />
+            <TitlebarMenuItem
+              label="Type Check"
+              shortcut="Ctrl+Shift+T"
+              onClick={handleTypeCheck}
+              disabled={!currentProject || isBuilding}
+            />
+          </TitlebarMenuDropdown>
+        )}
+      </div>
     </div>
   );
 }
+
+const EditorTitleBarMemo = memo(EditorTitleBar);
 
 /**
  * Center content component for editor titlebar (project name + C# config).
  * Separated to allow lazy loading of the center content independently.
  */
-export function EditorTitleBarCenter() {
-  const { currentProject } = useProjectStore();
-  const { configurations, selectedConfiguration, setSelectedConfiguration } = useCSharpStore();
+function EditorTitleBarCenter() {
+  const currentProject = useProjectStore((state) => state.currentProject);
+  const configurations = useCSharpStore((state) => state.configurations);
+  const selectedConfiguration = useCSharpStore((state) => state.selectedConfiguration);
+  const setSelectedConfiguration = useCSharpStore((state) => state.setSelectedConfiguration);
+  const isLoadingConfigs = useCSharpStore((state) => state.isLoadingConfigs);
 
   if (!currentProject) {
     return null;
@@ -327,7 +343,13 @@ export function EditorTitleBarCenter() {
         {currentProject.name}
       </span>
       {/* C# Build Configuration Selector */}
-      {configurations.length > 0 && (
+      {isLoadingConfigs && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground/70">|</span>
+          <span className="text-xs text-muted-foreground/50 italic">Loading configs...</span>
+        </div>
+      )}
+      {!isLoadingConfigs && configurations.length > 0 && (
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground/70">|</span>
           <TitlebarDropdown
@@ -346,3 +368,8 @@ export function EditorTitleBarCenter() {
     </>
   );
 }
+
+const EditorTitleBarCenterMemo = memo(EditorTitleBarCenter);
+
+// Export memoized versions
+export { EditorTitleBarMemo as EditorTitleBar, EditorTitleBarCenterMemo as EditorTitleBarCenter };

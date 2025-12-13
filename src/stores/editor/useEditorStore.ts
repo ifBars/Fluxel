@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import { getFileExtension, getFileName, getLanguageFromExtension } from '@/types/fs';
+import { FrontendProfiler } from '@/lib/services/FrontendProfiler';
 
 export interface EditorTab {
     /** Unique identifier for the tab */
@@ -122,6 +123,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     pendingAction: null,
 
     openFile: async (path: string, position?: EditorPosition) => {
+        await FrontendProfiler.profileAsync('openFile', 'file_io', async () => {
         const { tabs, setActiveTab } = get();
         const normalizedPath = path.replace(/\\/g, '/');
         const targetLine = position?.line ?? 1;
@@ -130,7 +132,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         // Check if file is already open
         const existingTab = tabs.find((t) => t.path === normalizedPath && t.type === 'code');
         if (existingTab) {
+                FrontendProfiler.profileSync('setActiveTab', 'frontend_render', () => {
             setActiveTab(existingTab.id);
+                });
             set({
                 pendingReveal: position
                     ? { tabId: existingTab.id, line: targetLine, column: targetColumn }
@@ -140,7 +144,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         }
 
         try {
-            const content = await readTextFile(normalizedPath);
+                const content = await FrontendProfiler.profileAsync('readTextFile', 'file_io', async () => {
+                    return await readTextFile(normalizedPath);
+                }, { path: normalizedPath });
+
             const filename = getFileName(normalizedPath);
             const extension = getFileExtension(normalizedPath);
             const language = getLanguageFromExtension(extension);
@@ -155,6 +162,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
                 type: 'code',
             };
 
+                FrontendProfiler.profileSync('addTab', 'frontend_render', () => {
             set((state) => ({
                 tabs: [...state.tabs, newTab],
                 activeTabId: newTab.id,
@@ -162,12 +170,21 @@ export const useEditorStore = create<EditorState>((set, get) => ({
                     ? { tabId: newTab.id, line: targetLine, column: targetColumn }
                     : null,
             }));
+                });
+
+                FrontendProfiler.trackInteraction('file_opened', {
+                    path: normalizedPath,
+                    size: content.length.toString(),
+                    language,
+                });
         } catch (error) {
             console.error('Failed to open file:', path, error);
         }
+        }, { path });
     },
 
     openDiff: async (path: string, originalContent?: string, modifiedContent?: string) => {
+        await FrontendProfiler.profileAsync('openDiff', 'file_io', async () => {
         const { tabs, setActiveTab } = get();
         const normalizedPath = path.replace(/\\/g, '/');
 
@@ -176,7 +193,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         // A user might want both the code editor and the diff view open.
         const existingTab = tabs.find((t) => t.path === normalizedPath && t.type === 'diff');
         if (existingTab) {
+                FrontendProfiler.profileSync('setActiveTab', 'frontend_render', () => {
             setActiveTab(existingTab.id);
+                });
             // Verify if content needs update?
             // For now, assume if it's open, it's fine.
             return;
@@ -190,7 +209,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         let currentContent = modifiedContent;
         if (currentContent === undefined) {
             try {
-                currentContent = await readTextFile(normalizedPath);
+                    currentContent = await FrontendProfiler.profileAsync('readTextFile', 'file_io', async () => {
+                        return await readTextFile(normalizedPath);
+                    }, { path: normalizedPath });
             } catch (e) {
                 console.error('Failed to read file for diff:', e);
                 throw new Error(`Failed to read file ${normalizedPath}: ${e}`);
@@ -208,13 +229,17 @@ export const useEditorStore = create<EditorState>((set, get) => ({
             type: 'diff',
         };
 
+            FrontendProfiler.profileSync('addTab', 'frontend_render', () => {
         set((state) => ({
             tabs: [...state.tabs, newTab],
             activeTabId: newTab.id,
         }));
+            });
+        }, { path });
     },
 
     closeTab: (id: string) => {
+        FrontendProfiler.profileSync('closeTab', 'frontend_render', () => {
         const { tabs, activeTabId } = get();
         const tabIndex = tabs.findIndex((t) => t.id === id);
 
@@ -233,6 +258,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         }
 
         set({ tabs: newTabs, activeTabId: newActiveId });
+        }, { tabId: id });
     },
 
     closeOtherTabs: (id: string) => {
@@ -263,7 +289,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     },
 
     setActiveTab: (id: string) => {
+        FrontendProfiler.profileSync('setActiveTab', 'frontend_render', () => {
         set({ activeTabId: id });
+        }, { tabId: id });
     },
 
     updateContent: (id: string, content: string) => {
@@ -277,11 +305,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     saveFile: async (id: string) => {
         const { tabs } = get();
         const tab = tabs.find((t) => t.id === id);
+        const tabPath = tab?.path;
 
+        await FrontendProfiler.profileAsync('saveFile', 'file_io', async () => {
         if (!tab) return;
 
         try {
+                await FrontendProfiler.profileAsync('writeTextFile', 'file_io', async () => {
             await writeTextFile(tab.path, tab.content);
+                }, { path: tab.path, size: tab.content.length.toString() });
 
             // Update originalContent to match saved content
             set((state) => ({
@@ -304,6 +336,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         } catch (error) {
             console.error('Failed to save file:', tab.path, error);
         }
+        }, { tabId: id, ...(tabPath && { path: tabPath }) });
     },
 
     saveAllFiles: async () => {

@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type { LSPMessage, LSPRequestHandler, LSPClientConfig } from './types';
+import { FrontendProfiler } from '@/lib/services/FrontendProfiler';
 
 /**
  * Generic LSP client for communicating with language servers via Tauri IPC
@@ -36,35 +37,37 @@ export class BaseLSPClient {
      * Start the LSP client and language server
      */
     async start(workspaceRoot?: string): Promise<void> {
-        // Restart if workspace changes
-        if (this.isStarted && workspaceRoot && this.workspaceRoot && workspaceRoot !== this.workspaceRoot) {
-            await this.stop();
-        }
+        await FrontendProfiler.profileAsync('lsp_start', 'lsp_request', async () => {
+            // Restart if workspace changes
+            if (this.isStarted && workspaceRoot && this.workspaceRoot && workspaceRoot !== this.workspaceRoot) {
+                await this.stop();
+            }
 
-        if (this.isStarted) {
-            console.log(`[LSPClient:${this.config.languageId}] Already started`);
-            return;
-        }
+            if (this.isStarted) {
+                console.log(`[LSPClient:${this.config.languageId}] Already started`);
+                return;
+            }
 
-        this.workspaceRoot = workspaceRoot;
+            this.workspaceRoot = workspaceRoot;
 
-        try {
-            console.log(`[LSPClient:${this.config.languageId}] Starting language server...`);
+            try {
+                console.log(`[LSPClient:${this.config.languageId}] Starting language server...`);
 
-            // Listen for LSP messages from Rust backend
-            this.unlisten = await listen<LSPMessage>('lsp-message', (event) => {
-                this.handleMessage(event.payload);
-            });
+                // Listen for LSP messages from Rust backend
+                this.unlisten = await listen<LSPMessage>('lsp-message', (event) => {
+                    this.handleMessage(event.payload);
+                });
 
-            // Start the language server process
-            await invoke(this.config.startCommand, { workspace_root: workspaceRoot });
+                // Start the language server process
+                await invoke(this.config.startCommand, { workspace_root: workspaceRoot });
 
-            this.isStarted = true;
-            console.log(`[LSPClient:${this.config.languageId}] Language server started`);
-        } catch (error) {
-            console.error(`[LSPClient:${this.config.languageId}] Failed to start:`, error);
-            throw error;
-        }
+                this.isStarted = true;
+                console.log(`[LSPClient:${this.config.languageId}] Language server started`);
+            } catch (error) {
+                console.error(`[LSPClient:${this.config.languageId}] Failed to start:`, error);
+                throw error;
+            }
+        }, { languageId: this.config.languageId, ...(workspaceRoot && { workspaceRoot }) });
     }
 
     /**
@@ -120,29 +123,31 @@ export class BaseLSPClient {
      * Send a request to the language server and wait for response
      */
     async sendRequest<T = any>(method: string, params: any): Promise<T> {
-        if (!this.isStarted) {
-            throw new Error('LSP client not started');
-        }
+        return await FrontendProfiler.profileAsync('lsp_request', 'lsp_request', async () => {
+            if (!this.isStarted) {
+                throw new Error('LSP client not started');
+            }
 
-        const id = ++this.messageId;
-        const message: LSPMessage = {
-            jsonrpc: '2.0',
-            id,
-            method,
-            params,
-        };
+            const id = ++this.messageId;
+            const message: LSPMessage = {
+                jsonrpc: '2.0',
+                id,
+                method,
+                params,
+            };
 
-        const sendCommand = this.config.sendMessageCommand || 'send_lsp_message';
+            const sendCommand = this.config.sendMessageCommand || 'send_lsp_message';
 
-        return new Promise<T>((resolve, reject) => {
-            this.pendingRequests.set(id, { resolve, reject });
+            return new Promise<T>((resolve, reject) => {
+                this.pendingRequests.set(id, { resolve, reject });
 
-            invoke(sendCommand, { message: JSON.stringify(message) })
-                .catch((error) => {
-                    this.pendingRequests.delete(id);
-                    reject(error);
-                });
-        });
+                invoke(sendCommand, { message: JSON.stringify(message) })
+                    .catch((error) => {
+                        this.pendingRequests.delete(id);
+                        reject(error);
+                    });
+            });
+        }, { languageId: this.config.languageId, method });
     }
 
     /**
