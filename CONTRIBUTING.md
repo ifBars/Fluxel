@@ -61,13 +61,13 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 2. **Clone your fork**:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/fluxel.git
+   git clone https://github.com/ifBars/Fluxel.git
    cd fluxel
    ```
 
 3. **Add upstream remote**:
    ```bash
-   git remote add upstream https://github.com/ORIGINAL_OWNER/fluxel.git
+   git remote add upstream https://github.com/ifBars/Fluxel.git
    ```
 
 4. **Install dependencies**:
