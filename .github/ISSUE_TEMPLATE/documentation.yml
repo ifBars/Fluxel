@@ -1,0 +1,106 @@
+name: Documentation Improvement
+description: Suggest improvements to documentation, guides, or comments
+title: "[Docs]: "
+labels: ["documentation", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Fluxel's documentation! Clear documentation helps everyone.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Documentation Issue Summary
+      description: What documentation needs to be improved?
+      placeholder: Briefly describe the documentation issue...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: doc-type
+    attributes:
+      label: Documentation Type
+      description: What type of documentation needs improvement?
+      options:
+        - README - Main project README
+        - CONTRIBUTING.md - Contributing guidelines
+        - CODING_STANDARDS.md - Coding standards
+        - CLAUDE.md - Project context for AI
+        - Code Comments - In-code documentation
+        - API Documentation - Function/method documentation
+        - User Guide - End-user documentation
+        - Setup/Installation - Getting started guides
+        - Architecture - Technical architecture docs
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: issue-type
+    attributes:
+      label: Issue Type
+      description: What kind of documentation issue is this?
+      options:
+        - Missing - Documentation doesn't exist
+        - Incomplete - Documentation exists but is incomplete
+        - Outdated - Documentation is out of sync with code
+        - Unclear - Documentation is confusing or hard to understand
+        - Incorrect - Documentation contains errors
+        - Improvement - Documentation could be better organized or written
+    validations:
+      required: true
+
+  - type: textarea
+    id: location
+    attributes:
+      label: Location
+      description: Where is the documentation issue? (file path, URL, section name)
+      placeholder: e.g., README.md line 45, or src/components/editor/CodeEditor.tsx
+    validations:
+      required: true
+
+  - type: textarea
+    id: current
+    attributes:
+      label: Current Documentation
+      description: What does the current documentation say? (copy/paste if applicable)
+      placeholder: Quote the current documentation or describe what's missing...
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggested
+    attributes:
+      label: Suggested Improvement
+      description: How should the documentation be improved?
+      placeholder: Provide your suggested changes, additions, or clarifications...
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Why is this improvement needed? Who would benefit?
+      placeholder: This would help users who... / I was confused when...
+
+  - type: checkboxes
+    id: implementation
+    attributes:
+      label: Implementation
+      description: Are you interested in making these documentation changes?
+      options:
+        - label: I am willing to submit a PR to improve this documentation
+          required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      description: Please verify the following before submitting
+      options:
+        - label: I have checked that this documentation issue hasn't already been reported
+          required: true
+        - label: I have verified this documentation is actually incorrect/missing (not my misunderstanding)
+          required: true

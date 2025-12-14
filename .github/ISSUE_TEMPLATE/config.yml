@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or Discussion
+    url: https://github.com/OWNER/fluxel/discussions
+    about: Ask questions or start a discussion about Fluxel
+  - name: Security Vulnerability
+    url: https://github.com/OWNER/fluxel/security/advisories/new
+    about: Report a security vulnerability (private disclosure)
