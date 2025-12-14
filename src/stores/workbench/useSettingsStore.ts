@@ -11,10 +11,8 @@ export type IconPack =
     | 'feather'          // Feather Icons from react-icons
     | 'heroicons'        // Heroicons 2 from react-icons
     | 'bootstrap'        // Bootstrap Icons from react-icons
-    | 'tabler'           // Tabler Icons from react-icons
     | 'phosphor'         // Phosphor Icons from react-icons
     | 'lucide'           // Lucide icons (standalone)
-    | 'react-file-icon'  // React File Icon (standalone)
     | 'exuanbo'          // Exuanbo file icons
     | 'material';        // Material file icons
 export type BuildSystem = 'auto' | 'dotnet' | 'bun' | 'npm' | 'manual';

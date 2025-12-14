@@ -34,7 +34,7 @@ export function configureTypeScriptLanguage(monaco: MonacoInstance): void {
         skipLibCheck: true,
         noEmit: true,
         noLib: false, // Ensure default libs are loaded
-        lib: ['es2015', 'es2020', 'dom', 'dom.iterable', 'webworker.importscripts'],
+        lib: ['es2015', 'es2020', 'dom', 'dom.iterable'],
     };
     ts.typescriptDefaults.setCompilerOptions(baseOptions);
     ts.javascriptDefaults.setCompilerOptions(baseOptions);

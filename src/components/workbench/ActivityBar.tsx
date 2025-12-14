@@ -1,4 +1,4 @@
-import { RefObject } from "react";
+import { RefObject, useEffect } from "react";
 import { Files, Search, GitBranch, Settings, Activity } from "lucide-react";
 import { ImperativePanelHandle } from "react-resizable-panels";
 import { useWorkbenchStore, type ActivityItem, useProfilerStore } from "@/stores";
@@ -10,7 +10,12 @@ interface ActivityBarProps {
 
 export default function ActivityBar({ onSettingsClick, sidebarPanelRef }: ActivityBarProps) {
     const { activeActivity, setActiveActivity, isSidebarOpen } = useWorkbenchStore();
-    const { isPanelOpen: isProfilerOpen, togglePanel: toggleProfiler } = useProfilerStore();
+    const { isPanelOpen: isProfilerOpen, togglePanel: toggleProfiler, isAvailable: isProfilerAvailable, initialize } = useProfilerStore();
+
+    // Initialize profiler store to check availability
+    useEffect(() => {
+        initialize();
+    }, [initialize]);
 
     const handleActivityClick = (activity: ActivityItem) => {
         const panel = sidebarPanelRef.current;
@@ -69,12 +74,14 @@ export default function ActivityBar({ onSettingsClick, sidebarPanelRef }: Activi
                     marginBottom: 'var(--density-padding-md, 0.75rem)',
                 }}
             >
-                <ActivityButton
-                    icon={<Activity style={{ width: 'var(--activity-bar-icon-size, 1.25rem)', height: 'var(--activity-bar-icon-size, 1.25rem)' }} />}
-                    label="Profiler"
-                    isActive={isProfilerOpen}
-                    onClick={() => toggleProfiler()}
-                />
+                {isProfilerAvailable && (
+                    <ActivityButton
+                        icon={<Activity style={{ width: 'var(--activity-bar-icon-size, 1.25rem)', height: 'var(--activity-bar-icon-size, 1.25rem)' }} />}
+                        label="Profiler"
+                        isActive={isProfilerOpen}
+                        onClick={() => toggleProfiler()}
+                    />
+                )}
                 <ActivityButton
                     icon={<Settings style={{ width: 'var(--activity-bar-icon-size, 1.25rem)', height: 'var(--activity-bar-icon-size, 1.25rem)' }} />}
                     label="Settings"

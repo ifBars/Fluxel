@@ -115,7 +115,10 @@ pub fn run() {
             // Process Manager Commands
             services::process_manager::register_child_process,
             services::process_manager::unregister_child_process,
-            services::process_manager::kill_all_child_processes
+            services::process_manager::kill_all_child_processes,
+            // Terminal Commands
+            commands::terminal::execute_shell_command,
+            commands::terminal::kill_shell_process
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

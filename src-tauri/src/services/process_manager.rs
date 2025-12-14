@@ -51,6 +51,12 @@ impl ProcessManager {
             kill_process_tree(pid);
         }
     }
+
+    /// Kill a specific process by PID
+    pub fn kill_pid(&self, pid: u32) {
+        kill_process_tree(pid);
+        self.unregister(pid);
+    }
 }
 
 impl Default for ProcessManager {

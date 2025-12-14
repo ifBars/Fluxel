@@ -1,6 +1,6 @@
 import { useEffect, RefObject } from 'react';
 import { ImperativePanelHandle } from 'react-resizable-panels';
-import { useWorkbenchStore } from '@/stores';
+import { useWorkbenchStore, useBuildPanelStore } from '@/stores';
 
 export function useKeyboardShortcuts(sidebarPanelRef: RefObject<ImperativePanelHandle | null>) {
     const { setActiveActivity } = useWorkbenchStore();
@@ -42,6 +42,20 @@ export function useKeyboardShortcuts(sidebarPanelRef: RefObject<ImperativePanelH
             if (modifier && event.shiftKey && event.key === 'G') {
                 event.preventDefault();
                 setActiveActivity('git');
+                return;
+            }
+
+            // Ctrl/Cmd + ` : Toggle Build/Terminal Panel
+            if (modifier && event.key === '`') {
+                event.preventDefault();
+                useBuildPanelStore.getState().togglePanel();
+                return;
+            }
+
+            // Ctrl/Cmd + Shift + P: Command Palette (mapped to Search for now)
+            if (modifier && event.shiftKey && (event.key === 'p' || event.key === 'P')) {
+                event.preventDefault();
+                setActiveActivity('search');
                 return;
             }
         };

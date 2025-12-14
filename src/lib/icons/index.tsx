@@ -14,19 +14,15 @@ const iconPackLoaders = {
     'feather': () => import('./packs/featherPack').then(m => m.getFeatherFileIcon),
     'heroicons': () => import('./packs/heroiconsPack').then(m => m.getHeroiconsFileIcon),
     'bootstrap': () => import('./packs/bootstrapPack').then(m => m.getBootstrapFileIcon),
-    'tabler': () => import('./packs/tablerPack').then(m => m.getTablerFileIcon),
     'phosphor': () => import('./packs/phosphorPack').then(m => m.getPhosphorFileIcon),
     'lucide': () => import('./packs/lucidePack').then(m => m.getLucideFileIcon),
-    'react-file-icon': () => import('./packs/others').then(m => m.getReactFileIcon),
     'exuanbo': () => import('./packs/others').then(m => m.getExuanboFileIcon),
     'material': () => import('./packs/others').then(m => m.getMaterialFileIcon),
 } as const;
 
 // Helper to call icon function with correct arguments based on pack type
 function callIconFunction(packKey: string, getIcon: IconPackFn, name: string, extension: string): ReactNode {
-    if (packKey === 'react-file-icon') {
-        return (getIcon as IconPackFnExtOnly)(extension);
-    } else if (packKey === 'exuanbo' || packKey === 'material') {
+    if (packKey === 'exuanbo' || packKey === 'material') {
         return (getIcon as IconPackFnNameOnly)(name);
     } else {
         return (getIcon as IconPackFn2Args)(name, extension);

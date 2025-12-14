@@ -49,11 +49,6 @@ export default defineConfig(async () => ({
             if (id.includes("monaco") || id.includes("vscode")) {
               return "monaco";
             }
-            // Keep three.js separate from @react-three
-            // @react-three must load after React (vendor chunk)
-            if (id.includes("three") && !id.includes("@react-three")) {
-              return "three";
-            }
             if (id.includes("framer-motion")) {
               return "framer";
             }
@@ -65,7 +60,7 @@ export default defineConfig(async () => ({
             ) {
               return "icons";
             }
-            // Group React and other core vendors (includes @react-three)
+            // Group React and other core vendors
             if (
               id.includes("react") ||
               id.includes("react-dom") ||

@@ -30,8 +30,8 @@ function App() {
   // Preload icon pack to avoid lazy loading overhead during file tree rendering
   useEffect(() => {
     const iconPack = useSettingsStore.getState().iconPack;
-    const packKey = iconPack in { 'material-design': true, 'feather': true, 'heroicons': true, 'bootstrap': true, 'tabler': true, 'phosphor': true, 'lucide': true, 'react-file-icon': true, 'exuanbo': true, 'material': true } 
-      ? iconPack as 'material-design' | 'feather' | 'heroicons' | 'bootstrap' | 'tabler' | 'phosphor' | 'lucide' | 'react-file-icon' | 'exuanbo' | 'material'
+    const packKey = iconPack in { 'material-design': true, 'feather': true, 'heroicons': true, 'bootstrap': true, 'phosphor': true, 'lucide': true, 'exuanbo': true, 'material': true } 
+      ? iconPack as 'material-design' | 'feather' | 'heroicons' | 'bootstrap' | 'phosphor' | 'lucide' | 'exuanbo' | 'material'
       : 'material-design';
     void preloadIconPack(packKey);
   }, []);

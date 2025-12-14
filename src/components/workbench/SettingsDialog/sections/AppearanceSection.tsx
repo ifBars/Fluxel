@@ -98,12 +98,6 @@ export function AppearanceSection({ settings }: { settings: SettingsState }) {
             label="Bootstrap"
           />
           <IconPackOption
-            value="tabler"
-            current={settings.iconPack}
-            onClick={() => settings.setIconPack("tabler")}
-            label="Tabler"
-          />
-          <IconPackOption
             value="phosphor"
             current={settings.iconPack}
             onClick={() => settings.setIconPack("phosphor")}
@@ -114,12 +108,6 @@ export function AppearanceSection({ settings }: { settings: SettingsState }) {
             current={settings.iconPack}
             onClick={() => settings.setIconPack("lucide")}
             label="Lucide"
-          />
-          <IconPackOption
-            value="react-file-icon"
-            current={settings.iconPack}
-            onClick={() => settings.setIconPack("react-file-icon")}
-            label="React File Icon"
           />
           <IconPackOption
             value="material"

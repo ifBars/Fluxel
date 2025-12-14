@@ -1,7 +1,7 @@
-import { useState, useRef, useEffect, Suspense } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { AuthShader } from "./AuthShader";
+import { AuthAuroraBackdrop } from "./AuthAuroraBackdrop";
 import { useSettingsStore, type AccentColor } from "@/stores";
 
 // Inline SVG icons to avoid eager loading lucide-react during app initialization
@@ -245,12 +245,10 @@ export default function AuthPage({
                 </motion.div>
             </div>
 
-            {/* Right Panel - Visual Shader */}
-            <div className="hidden lg:block lg:w-1/2 relative bg-[#050506]">
+            {/* Right Panel - Visual Aurora */}
+            <div className="hidden lg:block lg:w-1/2 relative">
                 <div className="absolute inset-0 z-0">
-                    <Suspense fallback={<div className="w-full h-full bg-[#050506]" />}>
-                        <AuthShader />
-                    </Suspense>
+                    <AuthAuroraBackdrop />
                 </div>
             </div>
         </div>

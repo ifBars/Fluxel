@@ -10,6 +10,7 @@
 
 pub mod build;
 pub mod launch;
+pub mod terminal;
 pub mod workspace;
 
 // Re-export commonly used types

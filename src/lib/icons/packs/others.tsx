@@ -1,18 +1,5 @@
 import { ReactNode } from 'react';
-import { FileIcon, defaultStyles } from 'react-file-icon';
 import * as MaterialFileIcons from 'material-file-icons';
-
-export function getReactFileIcon(extension: string): ReactNode {
-    // defaultStyles is a big object map
-    // We can try to match extension to keys in defaultStyles
-    const style = defaultStyles[extension as keyof typeof defaultStyles] || {};
-
-    return (
-        <div className="w-4 h-4 shrink-0">
-            <FileIcon extension={extension} {...style} />
-        </div>
-    );
-}
 
 export function getExuanboFileIcon(name: string): ReactNode {
     // This library typically adds classes to elements. 

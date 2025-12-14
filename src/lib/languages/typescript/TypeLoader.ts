@@ -62,9 +62,11 @@ let isLoadingTypes = false;
 /**
  * Memory management constants to prevent Monaco worker crashes
  */
-const MAX_FILE_SIZE_BYTES = 500_000; // Skip files larger than 500KB (e.g., lib.dom.d.ts is 1.4MB)
-const MAX_TOTAL_TYPES_BYTES = 20_000_000; // Stop loading after 20MB total
-const MAX_FILES_PER_PACKAGE = 50; // Limit files per package to prevent runaway loading
+// Note: many real-world packages ship large `*.d.ts` bundles (e.g. icon packs),
+// so these limits must be high enough to keep IntelliSense accurate.
+const MAX_FILE_SIZE_BYTES = 2_500_000; // Skip files larger than ~2.5MB
+const MAX_TOTAL_TYPES_BYTES = 50_000_000; // Stop loading after ~50MB total
+const MAX_FILES_PER_PACKAGE = 200; // Limit files per package to prevent runaway loading
 const BATCH_DELAY_MS = 50; // Small delay between batches to let the worker process
 
 let totalLoadedBytes = 0;
@@ -174,7 +176,9 @@ export function toFileUri(path: string): string {
         return `file:///${driveLetter}%3A${restOfPath}`;
     }
     // Unix paths like /home/... need file:///home/...
-    return `file://${normalized}`;
+    return normalized.startsWith('/')
+        ? `file:///${normalized.slice(1)}`
+        : `file:///${normalized}`;
 }
 
 /**
@@ -541,14 +545,26 @@ async function loadViteTypes(
     if (await fileExists(viteEnvPath)) {
         await addExtraLibFromFile(viteEnvPath, monaco, 'vite-env');
     }
+
+    // Monaco doesn't automatically resolve `/// <reference types="vite/client" />`
+    // unless the referenced d.ts files are present in its virtual FS.
+    const viteClientPath = normalizePath(`${projectRoot}/node_modules/vite/client.d.ts`);
+    if (await fileExists(viteClientPath)) {
+        await addExtraLibFromFile(viteClientPath, monaco, 'vite/client');
+    }
+
+    const viteImportMetaPath = normalizePath(`${projectRoot}/node_modules/vite/types/importMeta.d.ts`);
+    if (await fileExists(viteImportMetaPath)) {
+        await addExtraLibFromFile(viteImportMetaPath, monaco, 'vite/importMeta');
+    }
 }
 /**
  * Load TypeScript default lib files from node_modules/typescript/lib
  * This is necessary because Monaco's bundled libs may not load correctly
  * when using Vite or other modern bundlers.
  * 
- * NOTE: We skip DOM libs as they are very large (~1.4MB) and Monaco should
- * have built-in DOM types. We only load ES libs for Promise, Map, Set, etc.
+ * NOTE: We load ES + DOM libs from the project's `typescript` install to ensure
+ * globals like `setTimeout`, `Window`, and `ImportMeta` exist in the worker.
  */
 async function loadDefaultLibFiles(
     projectRoot: string,
@@ -566,7 +582,7 @@ async function loadDefaultLibFiles(
         }
 
         // Map lib names to their corresponding files
-        // We ONLY load ES libs - DOM libs are too large and Monaco should have built-in DOM types
+        // We load ES libs and a minimal set of DOM libs needed for browser/Vite projects.
         const libFileMap: Record<string, string[]> = {
             'es5': ['lib.es5.d.ts'],
             'es6': ['lib.es2015.d.ts', 'lib.es2015.core.d.ts', 'lib.es2015.collection.d.ts',
@@ -591,10 +607,15 @@ async function loadDefaultLibFiles(
                 'lib.es2021.weakref.d.ts'],
             'es2022': ['lib.es2022.d.ts', 'lib.es2022.array.d.ts', 'lib.es2022.error.d.ts',
                 'lib.es2022.object.d.ts', 'lib.es2022.string.d.ts', 'lib.es2022.regexp.d.ts'],
-            // DOM libs - SKIP lib.dom.d.ts as it's ~1.4MB and causes memory issues
-            // Monaco should have built-in DOM types, and we load dom.iterable which is small
-            'dom': [], // Skip - too large
+            // DOM libs
+            'dom': ['lib.dom.d.ts', 'lib.dom.iterable.d.ts', 'lib.dom.asynciterable.d.ts'],
             'dom.iterable': ['lib.dom.iterable.d.ts'],
+            'dom.asynciterable': ['lib.dom.asynciterable.d.ts'],
+            // WebWorker libs (optional, only if requested via compilerOptions.lib)
+            'webworker': ['lib.webworker.d.ts', 'lib.webworker.iterable.d.ts', 'lib.webworker.asynciterable.d.ts'],
+            'webworker.iterable': ['lib.webworker.iterable.d.ts'],
+            'webworker.asynciterable': ['lib.webworker.asynciterable.d.ts'],
+            'webworker.importscripts': ['lib.webworker.importscripts.d.ts', 'lib.webworker.d.ts'],
         };
 
         // Always load ES5 as the base - it contains fundamental types
@@ -666,7 +687,7 @@ async function loadProjectDeclarationFiles(
         const filePath = normalizePath(`${projectRoot}/${relPath}`);
         try {
             const content = await readTextFile(filePath);
-            const uri = `file:///${filePath.replace(/\\/g, '/')}`;
+            const uri = toFileUri(filePath);
 
             if (!loadedTypeUris.has(uri)) {
                 monaco.typescript.typescriptDefaults.addExtraLib(content, uri);

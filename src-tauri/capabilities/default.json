@@ -45,6 +45,11 @@
           "name": "csharp-ls",
           "cmd": "csharp-ls",
           "args": true
+        },
+        {
+          "name": "echo",
+          "cmd": "echo",
+          "args": true
         }
       ]
     },
@@ -80,9 +85,15 @@
           "name": "csharp-ls",
           "cmd": "csharp-ls",
           "args": true
+        },
+        {
+          "name": "echo",
+          "cmd": "echo",
+          "args": true
         }
       ]
     },
+    "shell:allow-kill",
     "opener:default",
     "dialog:default",
     "dialog:allow-open",

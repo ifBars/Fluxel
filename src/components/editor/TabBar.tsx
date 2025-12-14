@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { useEditorStore } from '@/stores';
+import ScrollableArea from '@/components/ui/scrollable-area';
 
 export default function TabBar() {
     const {
@@ -82,26 +83,29 @@ export default function TabBar() {
     }, []);
 
     return (
-        <div
-            className="flex items-center overflow-x-auto scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
-            style={{
-                gap: 'var(--density-gap-sm, 0.125rem)',
-                height: 'var(--tab-bar-height, 2.25rem)',
-                fontSize: 'var(--tab-bar-font-size, 0.8125rem)',
-            }}
+        <ScrollableArea
+            className="h-full overflow-x-auto overflow-y-hidden"
+            data-scrollbar="tabs"
         >
-            {tabs.map((tab) => {
-                const isActive = tab.id === activeTabId;
-                const dirty = isDirty(tab.id);
+            <div
+                className="flex items-center h-full"
+                style={{
+                    gap: 'var(--density-gap-sm, 0.125rem)',
+                    fontSize: 'var(--tab-bar-font-size, 0.8125rem)',
+                }}
+            >
+                {tabs.map((tab) => {
+                    const isActive = tab.id === activeTabId;
+                    const dirty = isDirty(tab.id);
 
-                return (
-                    <button
-                        key={tab.id}
-                        onClick={() => setActiveTab(tab.id)}
-                        onMouseDown={(e) => handleMiddleClick(e, tab.id)}
-                        onContextMenu={(e) => handleTabContextMenu(e, tab.id)}
-                        title={tab.path}
-                        className={`
+                    return (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id)}
+                            onMouseDown={(e) => handleMiddleClick(e, tab.id)}
+                            onContextMenu={(e) => handleTabContextMenu(e, tab.id)}
+                            title={tab.path}
+                            className={`
               group flex items-center text-xs font-medium
               border-b-2 transition-all shrink-0
               ${isActive
@@ -109,43 +113,44 @@ export default function TabBar() {
                                 : 'bg-transparent text-muted-foreground border-transparent hover:bg-muted/30 hover:text-foreground'
                             }
             `}
-                        style={{
-                            gap: 'var(--density-gap-md, 0.75rem)',
-                            paddingLeft: 'var(--density-padding-md, 0.75rem)',
-                            paddingRight: 'var(--density-padding-md, 0.75rem)',
-                            paddingTop: 'var(--density-padding-sm, 0.5rem)',
-                            paddingBottom: 'var(--density-padding-sm, 0.5rem)',
-                        }}
-                    >
-                        {/* Dirty indicator */}
-                        {dirty && (
-                            <span className="w-2 h-2 rounded-full bg-primary shrink-0" />
-                        )}
-
-                        {/* Filename */}
-                        <span className="truncate max-w-[120px]">
-                            {tab.filename}
-                        </span>
-
-                        {/* Close button */}
-                        <span
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                closeTab(tab.id);
+                            style={{
+                                gap: 'var(--density-gap-md, 0.75rem)',
+                                paddingLeft: 'var(--density-padding-md, 0.75rem)',
+                                paddingRight: 'var(--density-padding-md, 0.75rem)',
+                                paddingTop: 'calc(var(--density-padding-sm, 0.5rem) * 0.625)',
+                                paddingBottom: 'calc(var(--density-padding-sm, 0.5rem) * 0.625)',
                             }}
-                            className={`
+                        >
+                            {/* Dirty indicator */}
+                            {dirty && (
+                                <span className="w-2 h-2 rounded-full bg-primary shrink-0" />
+                            )}
+
+                            {/* Filename */}
+                            <span className="truncate max-w-[120px]">
+                                {tab.filename}
+                            </span>
+
+                            {/* Close button */}
+                            <span
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    closeTab(tab.id);
+                                }}
+                                className={`
                 rounded hover:bg-muted transition-colors
                 ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}
               `}
-                            style={{
-                                padding: 'var(--density-gap-sm, 0.125rem)',
-                            }}
-                        >
-                            <X className="w-3 h-3" />
-                        </span>
-                    </button>
-                );
-            })}
+                                style={{
+                                    padding: 'var(--density-gap-sm, 0.125rem)',
+                                }}
+                            >
+                                <X className="w-3 h-3" />
+                            </span>
+                        </button>
+                    );
+                })}
+            </div>
             {contextMenu && (
                 <div
                     className="fixed z-50 bg-popover text-popover-foreground border border-border shadow-lg rounded-md min-w-[180px] py-1"
@@ -178,6 +183,6 @@ export default function TabBar() {
                     </button>
                 </div>
             )}
-        </div>
+        </ScrollableArea>
     );
 }

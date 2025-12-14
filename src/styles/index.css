@@ -319,6 +319,28 @@
     background-clip: padding-box;
   }
 
+  /* Tabs: thinner + more subtle horizontal scrollbar */
+  .custom-scrollbar[data-scrollbar="tabs"]::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  .custom-scrollbar[data-scrollbar="tabs"]::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--muted-foreground) 35%, transparent);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  .custom-scrollbar[data-scrollbar="tabs"]:hover::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
+    background-clip: padding-box;
+  }
+
+  .custom-scrollbar[data-scrollbar="tabs"]::-webkit-scrollbar-thumb:active {
+    background: color-mix(in oklab, var(--primary) 70%, transparent);
+    background-clip: padding-box;
+  }
+
   /* Dark mode adjustments */
   [data-theme="dark"] .custom-scrollbar::-webkit-scrollbar-thumb {
     opacity: 0.4;
@@ -330,5 +352,96 @@
 
   [data-theme="dark"] .custom-scrollbar::-webkit-scrollbar-thumb:active {
     opacity: 0.8;
+  }
+
+  /* Auth Aurora Backdrop Animations */
+  .auth-aurora-backdrop {
+    will-change: opacity;
+  }
+
+  /* Oversize layers so motion never reveals edges */
+  .auth-aurora-layer {
+    position: absolute;
+    inset: -35%;
+    filter: blur(72px);
+    transform: translate3d(0, 0, 0) scale(1.1);
+    will-change: transform, opacity;
+    pointer-events: none;
+  }
+
+  .auth-aurora-layer--one {
+    opacity: 0.42;
+    animation: aurora-float-1 22s ease-in-out infinite;
+  }
+
+  .auth-aurora-layer--two {
+    opacity: 0.32;
+    animation: aurora-float-2 28s ease-in-out infinite;
+  }
+
+  .auth-aurora-layer--three {
+    opacity: 0.22;
+    animation: aurora-spin 36s linear infinite;
+    filter: blur(92px);
+  }
+
+  .auth-aurora-layer--four {
+    opacity: 0.26;
+    animation: aurora-pulse 9s ease-in-out infinite;
+    filter: blur(64px);
+  }
+
+  @keyframes aurora-float-1 {
+    0% {
+      transform: translate3d(-2%, -1%, 0) scale(1.12) rotate(-2deg);
+    }
+    33% {
+      transform: translate3d(3%, -2%, 0) scale(1.16) rotate(1deg);
+    }
+    66% {
+      transform: translate3d(-3%, 2%, 0) scale(1.13) rotate(3deg);
+    }
+    100% {
+      transform: translate3d(-2%, -1%, 0) scale(1.12) rotate(-2deg);
+    }
+  }
+
+  @keyframes aurora-float-2 {
+    0% {
+      transform: translate3d(2%, 1%, 0) scale(1.14) rotate(2deg);
+    }
+    50% {
+      transform: translate3d(-3%, 3%, 0) scale(1.18) rotate(-3deg);
+    }
+    100% {
+      transform: translate3d(2%, 1%, 0) scale(1.14) rotate(2deg);
+    }
+  }
+
+  @keyframes aurora-spin {
+    0% {
+      transform: translate3d(0, 0, 0) scale(1.12) rotate(0deg);
+    }
+    100% {
+      transform: translate3d(0, 0, 0) scale(1.12) rotate(360deg);
+    }
+  }
+
+  @keyframes aurora-pulse {
+    0%, 100% {
+      transform: translate3d(0, 0, 0) scale(1.12);
+      opacity: 0.24;
+    }
+    50% {
+      transform: translate3d(0, 0, 0) scale(1.22);
+      opacity: 0.34;
+    }
+  }
+
+  /* Respect prefers-reduced-motion */
+  @media (prefers-reduced-motion: reduce) {
+    .auth-aurora-layer {
+      animation: none !important;
+    }
   }
 }
