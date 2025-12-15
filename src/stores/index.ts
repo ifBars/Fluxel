@@ -6,3 +6,4 @@ export * from './build';
 export * from './git/useGitStore';
 export * from './profiler';
 export * from './terminal';
+export * from './agent/useAgentStore';

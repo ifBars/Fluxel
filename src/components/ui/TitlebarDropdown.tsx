@@ -17,6 +17,7 @@ interface TitlebarDropdownProps {
     width?: 'auto' | 'sm' | 'md' | 'lg';
     align?: 'left' | 'right' | 'center';
     disabled?: boolean;
+    direction?: 'up' | 'down';
 }
 
 const widthClasses = {
@@ -35,6 +36,7 @@ export function TitlebarDropdown({
     width = 'auto',
     align = 'left',
     disabled = false,
+    direction = 'down',
 }: TitlebarDropdownProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [selectedIndex, setSelectedIndex] = useState(-1);
@@ -146,7 +148,8 @@ export function TitlebarDropdown({
             {isOpen && (
                 <div
                     className={`
-            absolute top-full mt-1 ${alignmentClasses[align]} ${widthClasses[width]}
+            absolute ${direction === 'up' ? 'bottom-full mb-1' : 'top-full mt-1'} 
+            ${alignmentClasses[align]} ${widthClasses[width]}
             bg-card/100 border border-border/50 rounded-md shadow-xl py-1 z-[80]
             backdrop-blur-none
           `}

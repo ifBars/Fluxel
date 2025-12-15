@@ -16,6 +16,7 @@ import { registerInlineCompletionProvider } from "../../lib/ollama";
 import { registerCSharpLanguage, getCSharpLSPClient, registerCSharpLSPFeatures } from "@/lib/languages/csharp";
 import { configureTypeScriptLanguage, hydrateTypeScriptWorkspace, resetTypeScriptWorkspace } from "@/lib/languages/typescript";
 import { getLazyTypeResolver } from "@/lib/languages/typescript/LazyTypeResolver";
+import { shouldHydrateTypeScriptWorkspace } from "@/lib/services/ProjectManager";
 import { File, Save, Circle } from "lucide-react";
 
 // Ensure Monaco workers are resolved by Vite/Tauri instead of the default CDN lookup
@@ -84,13 +85,14 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
         autocompleteEnabled, autocompleteModel, autocompleteEndpoint, autocompleteDebounceMs
     } = useSettingsStore();
     const { updateContent, saveFile, isDirty, pendingReveal, clearPendingReveal, setCursorPosition, openFile } = useEditorStore();
-    const { currentProject, projectProfile, csharpLspStatus, ensureCSharpLspReady } = useProjectStore();
+    const { currentProject, projectProfile, projectInitStatus, csharpLspStatus, ensureCSharpLspReady } = useProjectStore();
     const monaco = useMonaco() as unknown as typeof Monaco;
     const [isSaving, setIsSaving] = useState(false);
     const [editorInstance, setEditorInstance] = useState<Monaco.editor.IStandaloneCodeEditor | null>(null);
     const autocompleteDisposableRef = useRef<{ dispose: () => void } | null>(null);
     const lspClientRef = useRef(getCSharpLSPClient());
     const docVersionsRef = useRef<Record<string, number>>({});
+    const hydratedProjectRootRef = useRef<string | null>(null);
 
     // When switching tabs, wait for the new editor instance before revealing a position.
     useEffect(() => {
@@ -106,23 +108,48 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
     // Hydrate Monaco with project types/models when the workspace changes
     useEffect(() => {
         if (!monaco) return;
-        const projectRoot = currentProject?.rootPath;
-        let cancelled = false;
+        const projectRoot = currentProject?.rootPath ?? null;
 
+        // Always clear stale models when closing or switching projects
+        if (!projectRoot) {
+            resetTypeScriptWorkspace(monaco);
+            hydratedProjectRootRef.current = null;
+            return;
+        }
+
+        if (hydratedProjectRootRef.current && hydratedProjectRootRef.current !== projectRoot) {
+            resetTypeScriptWorkspace(monaco);
+            hydratedProjectRootRef.current = null;
+        }
+
+        // Wait for project profile detection so we don't hydrate irrelevant workspaces
+        if (projectInitStatus === 'error') {
+            hydratedProjectRootRef.current = null;
+            resetTypeScriptWorkspace(monaco);
+            return;
+        }
+
+        if (projectInitStatus !== 'ready') {
+            return;
+        }
+
+        if (!shouldHydrateTypeScriptWorkspace(projectProfile)) {
+            hydratedProjectRootRef.current = null;
+            resetTypeScriptWorkspace(monaco);
+            return;
+        }
+
+        if (hydratedProjectRootRef.current === projectRoot) {
+            return;
+        }
+
+        let cancelled = false;
         const hydrate = async () => {
             try {
-                if (!projectRoot) {
-                    resetTypeScriptWorkspace(monaco);
-                    return;
-                }
-
-                // If we have a profile and it doesn't look like a JS/TS workspace, avoid expensive hydration.
-                if (projectProfile && !projectProfile.node.has_package_json && !projectProfile.node.has_tsconfig && !projectProfile.node.has_jsconfig) {
-                    resetTypeScriptWorkspace(monaco);
-                    return;
-                }
-
                 await hydrateTypeScriptWorkspace(projectRoot, monaco);
+                if (!cancelled) {
+                    hydratedProjectRootRef.current = projectRoot;
+                }
             } catch (error) {
                 if (!cancelled) {
                     console.error('[Monaco] Failed to hydrate TypeScript workspace:', error);
@@ -135,7 +162,7 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
         return () => {
             cancelled = true;
         };
-    }, [monaco, currentProject?.rootPath, projectProfile]);
+    }, [monaco, currentProject?.rootPath, projectProfile, projectInitStatus]);
 
     // Register C# language configuration and LSP features
     useEffect(() => {

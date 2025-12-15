@@ -1,7 +1,7 @@
 import { RefObject, useEffect } from "react";
-import { Files, Search, GitBranch, Settings, Activity } from "lucide-react";
+import { Files, Search, GitBranch, Settings, Activity, Bot } from "lucide-react";
 import { ImperativePanelHandle } from "react-resizable-panels";
-import { useWorkbenchStore, type ActivityItem, useProfilerStore } from "@/stores";
+import { useWorkbenchStore, type ActivityItem, useProfilerStore, useAgentStore } from "@/stores";
 
 interface ActivityBarProps {
     onSettingsClick: () => void;
@@ -11,6 +11,7 @@ interface ActivityBarProps {
 export default function ActivityBar({ onSettingsClick, sidebarPanelRef }: ActivityBarProps) {
     const { activeActivity, setActiveActivity, isSidebarOpen } = useWorkbenchStore();
     const { isPanelOpen: isProfilerOpen, togglePanel: toggleProfiler, isAvailable: isProfilerAvailable, initialize } = useProfilerStore();
+    const { isOpen: isAgentOpen, togglePanel: toggleAgent } = useAgentStore();
 
     // Initialize profiler store to check availability
     useEffect(() => {
@@ -82,6 +83,12 @@ export default function ActivityBar({ onSettingsClick, sidebarPanelRef }: Activi
                         onClick={() => toggleProfiler()}
                     />
                 )}
+                <ActivityButton
+                    icon={<Bot style={{ width: 'var(--activity-bar-icon-size, 1.25rem)', height: 'var(--activity-bar-icon-size, 1.25rem)' }} />}
+                    label="AI Agent"
+                    isActive={isAgentOpen}
+                    onClick={() => toggleAgent()}
+                />
                 <ActivityButton
                     icon={<Settings style={{ width: 'var(--activity-bar-icon-size, 1.25rem)', height: 'var(--activity-bar-icon-size, 1.25rem)' }} />}
                     label="Settings"

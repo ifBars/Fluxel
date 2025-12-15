@@ -1,6 +1,6 @@
 import { useEffect, RefObject } from 'react';
 import { ImperativePanelHandle } from 'react-resizable-panels';
-import { useWorkbenchStore, useBuildPanelStore } from '@/stores';
+import { useWorkbenchStore, useBuildPanelStore, useAgentStore } from '@/stores';
 
 export function useKeyboardShortcuts(sidebarPanelRef: RefObject<ImperativePanelHandle | null>) {
     const { setActiveActivity } = useWorkbenchStore();
@@ -49,6 +49,13 @@ export function useKeyboardShortcuts(sidebarPanelRef: RefObject<ImperativePanelH
             if (modifier && event.key === '`') {
                 event.preventDefault();
                 useBuildPanelStore.getState().togglePanel();
+                return;
+            }
+
+            // Ctrl/Cmd + L: Toggle AI Agent Panel
+            if (modifier && event.key === 'l' && !event.shiftKey) {
+                event.preventDefault();
+                useAgentStore.getState().togglePanel();
                 return;
             }
 

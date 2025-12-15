@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo, useCallback, memo } from "react";
 import { Panel, PanelGroup, PanelResizeHandle, ImperativePanelHandle } from "react-resizable-panels";
-import { useWorkbenchStore, useEditorStore, useSettingsStore, densityConfigs, useBuildPanelStore, useTypeLoadingStore, useInspectorStore, useCSharpStore } from "@/stores";
+import { useWorkbenchStore, useEditorStore, useSettingsStore, densityConfigs, useBuildPanelStore, useTypeLoadingStore, useInspectorStore, useCSharpStore, useAgentStore } from "@/stores";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useProfiler } from "@/hooks/useProfiler";
 import ActivityBar from "./ActivityBar";
@@ -10,6 +10,7 @@ import BuildPanel from "./BuildPanel";
 import EditorGroup from "@/components/editor/EditorGroup";
 import { InspectorPanel } from "@/components/inspector";
 import { ProfilerPanel } from "./ProfilerPanel";
+import { AgentPanel } from "@/components/agent";
 
 function Workbench() {
     // Use shallow selectors to prevent unnecessary re-renders
@@ -31,6 +32,7 @@ function Workbench() {
     const loadingMessage = useTypeLoadingStore((state) => state.loadingMessage);
     const isInspectorOpen = useInspectorStore((state) => state.isInspectorOpen);
     const isLoadingBuildConfigs = useCSharpStore((state) => state.isLoadingConfigs);
+    const isAgentOpen = useAgentStore((state) => state.isOpen);
 
     // Compute activeTab from selected data - only recalculates when tabs or activeTabId changes
     const activeTab = useMemo(() => {
@@ -156,6 +158,28 @@ function Workbench() {
                                     collapsedSize={0}
                                 >
                                     <InspectorPanel />
+                                </Panel>
+                            </>
+                        )}
+
+                        {/* Agent Panel (Right Sidebar) */}
+                        {isAgentOpen && (
+                            <>
+                                <PanelResizeHandle
+                                    className="panel-resize-handle bg-border hover:bg-primary transition-colors cursor-col-resize active:bg-primary z-20 transition-all opacity-60 hover:opacity-100"
+                                    style={{
+                                        width: densityConfig.panelHandleWidth,
+                                        minWidth: densityConfig.panelHandleWidth,
+                                    }}
+                                />
+                                <Panel
+                                    defaultSize={25}
+                                    minSize={20}
+                                    maxSize={40}
+                                    collapsible
+                                    collapsedSize={0}
+                                >
+                                    <AgentPanel />
                                 </Panel>
                             </>
                         )}

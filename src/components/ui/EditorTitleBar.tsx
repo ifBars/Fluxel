@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, memo } from "react";
+import { useState, useCallback, memo } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   useProjectStore,
@@ -30,7 +30,6 @@ interface EditorTitleBarProps {
  */
 function EditorTitleBar({ onCloseProject }: EditorTitleBarProps) {
   const [isBuilding, setIsBuilding] = useState(false);
-  const lastProjectPathRef = useRef<string | null>(null);
 
   // Menu state management
   const { activeMenu, menuRef, toggleMenu, openMenuOnHover, closeMenu } = useTitlebarMenu();
@@ -55,21 +54,6 @@ function EditorTitleBar({ onCloseProject }: EditorTitleBarProps) {
   const setUIDensity = useSettingsStore((state) => state.setUIDensity);
   const buildSystem = useSettingsStore((state) => state.buildSystem);
   const customBuildCommand = useSettingsStore((state) => state.customBuildCommand);
-
-  // Load C# configurations when project changes (only if path actually changed)
-  useEffect(() => {
-    const currentPath = currentProject?.rootPath;
-    if (currentPath && currentPath !== lastProjectPathRef.current) {
-      lastProjectPathRef.current = currentPath;
-      if (import.meta.env.DEV) {
-        console.log('[EditorTitleBar] Project changed, loading C# configurations for:', currentPath);
-      }
-      useCSharpStore.getState().loadProjectConfigurations(currentPath);
-    } else if (!currentPath) {
-      lastProjectPathRef.current = null;
-    }
-    // Note: We don't reset here on unmount/no project - that's handled by the project store lifecycle
-  }, [currentProject?.rootPath]);
 
   // File Menu Actions
   const handleOpenFolder = useCallback(async () => {
