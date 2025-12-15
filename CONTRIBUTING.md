@@ -61,7 +61,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 2. **Clone your fork**:
    ```bash
-   git clone https://github.com/ifBars/Fluxel.git
+   git clone https://github.com/yourUsername/Fluxel.git
    cd fluxel
    ```
 
