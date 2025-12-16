@@ -46,6 +46,8 @@ export interface TsConfig {
     };
     include?: string[];
     exclude?: string[];
+    references?: Array<{ path: string }>;
+    extends?: string;
 }
 
 /**
@@ -195,12 +197,47 @@ async function readPackageJson(projectRoot: string): Promise<PackageJson | null>
 }
 
 /**
- * Read and parse tsconfig.json
+ * Read and parse tsconfig.json, resolving references and extends
  */
 export async function readTsConfig(projectRoot: string): Promise<TsConfig | null> {
     try {
-        const content = await readTextFile(normalizePath(`${projectRoot}/tsconfig.json`));
-        return JSON.parse(content) as TsConfig;
+        const rootConfigPath = normalizePath(`${projectRoot}/tsconfig.json`);
+        const content = await readTextFile(rootConfigPath);
+        const rootConfig = JSON.parse(content) as TsConfig;
+        
+        // If the root config has references, try to merge compilerOptions from referenced configs
+        // This handles cases where paths are defined in tsconfig.app.json but referenced from root
+        if (rootConfig.references && rootConfig.references.length > 0) {
+            const mergedConfig: TsConfig = { ...rootConfig };
+            
+            // Try to read and merge compilerOptions from referenced configs
+            for (const ref of rootConfig.references) {
+                try {
+                    const refPath = normalizePath(`${projectRoot}/${ref.path}`);
+                    const refContent = await readTextFile(refPath);
+                    const refConfig = JSON.parse(refContent) as TsConfig;
+                    
+                    // Merge compilerOptions, with root config taking precedence
+                    if (refConfig.compilerOptions) {
+                        mergedConfig.compilerOptions = {
+                            ...refConfig.compilerOptions,
+                            ...mergedConfig.compilerOptions,
+                            // Merge paths specifically (don't override, merge)
+                            paths: {
+                                ...refConfig.compilerOptions.paths,
+                                ...mergedConfig.compilerOptions?.paths,
+                            },
+                        };
+                    }
+                } catch {
+                    // Silently skip if referenced config doesn't exist or can't be read
+                }
+            }
+            
+            return mergedConfig;
+        }
+        
+        return rootConfig;
     } catch (error) {
         // Silent failure is expected for non-TS projects
         return null;
@@ -214,6 +251,28 @@ export async function fileExists(path: string): Promise<boolean> {
     try {
         await readTextFile(path);
         return true;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Check if a project root appears to be a TypeScript/JavaScript project
+ * by checking for common indicators (tsconfig.json, package.json, jsconfig.json)
+ * This allows type loading to happen even before project detection completes.
+ */
+export async function hasTypeScriptIndicators(projectRoot: string): Promise<boolean> {
+    if (!projectRoot) return false;
+    
+    try {
+        const normalizedRoot = normalizePath(projectRoot);
+        const checks = await Promise.all([
+            fileExists(`${normalizedRoot}/tsconfig.json`),
+            fileExists(`${normalizedRoot}/package.json`),
+            fileExists(`${normalizedRoot}/jsconfig.json`),
+        ]);
+        
+        return checks.some(exists => exists);
     } catch {
         return false;
     }
@@ -849,15 +908,25 @@ function configureCompilerOptions(
     monaco.typescript.javascriptDefaults.setCompilerOptions(monacoOptions);
 
     // Configure path mappings if present
+    // NOTE: Path mappings are handled by SourceManager.configurePathAliases()
+    // This is kept for backwards compatibility but SourceManager takes precedence
     if (compilerOptions.baseUrl && compilerOptions.paths) {
         const paths: Record<string, string[]> = {};
         for (const [pattern, replacements] of Object.entries(compilerOptions.paths)) {
-            paths[pattern] = replacements.map(r =>
-                // Convert each replacement to a Monaco-style file URI
-                toFileUri(
-                    normalizePath(`${projectRoot}/${compilerOptions.baseUrl}/${r}`)
-                )
-            );
+            paths[pattern] = replacements.map(r => {
+                // Preserve wildcard patterns - Monaco resolves them relative to baseUrl
+                if (r.includes('*')) {
+                    return r;
+                }
+                // For non-wildcard paths, ensure they're relative
+                if (r.startsWith('/')) {
+                    const absPath = normalizePath(r);
+                    const basePath = normalizePath(`${projectRoot}/${compilerOptions.baseUrl}`);
+                    const relPath = absPath.replace(basePath, '').replace(/^\//, '');
+                    return `./${relPath}`;
+                }
+                return r.startsWith('./') ? r : `./${r}`;
+            });
         }
         const hydratedWithPaths = {
             ...monacoOptions,

@@ -47,6 +47,3 @@ git2 = "0.19"
 regex = "1"
 rayon = "1.10"
 
-[patch.crates-io]
-napi = { git = "https://github.com/napi-rs/napi-rs", branch = "main", default-features = false, features = ["serde-json", "napi6"] }
-

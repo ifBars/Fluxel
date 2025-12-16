@@ -1,12 +1,12 @@
-//! Node-style module resolver and lightweight module analyzer exposed via N-API.
-//! The core logic is also reusable from the Tauri crate for IPC commands.
+//! Node-style module resolver and lightweight module analyzer for Fluxel.
+//! Provides Rust-native functions for resolving Node.js modules, discovering package typings,
+//! and analyzing module dependency graphs.
 
 use std::collections::HashSet;
 use std::fs;
 
 use anyhow::{Context, Result};
 use camino::{Utf8Path, Utf8PathBuf};
-use napi_derive::napi;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use swc_core::common::{sync::Lrc, FileName, SourceMap};
@@ -29,7 +29,6 @@ enum ResolveError {
     PackageJson(String),
 }
 
-#[napi(object)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResolveOptions {
     pub conditions: Vec<String>,
@@ -53,7 +52,6 @@ impl Default for ResolveOptions {
     }
 }
 
-#[napi(object)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResolveRequest {
     pub specifier: String,
@@ -61,7 +59,6 @@ pub struct ResolveRequest {
     pub project_root: Option<String>,
 }
 
-#[napi]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ModuleFormat {
     Esm,
@@ -70,7 +67,6 @@ pub enum ModuleFormat {
     Unknown,
 }
 
-#[napi(object)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResolveResponse {
     pub resolved_path: Option<String>,
@@ -80,7 +76,6 @@ pub struct ResolveResponse {
     pub warnings: Vec<String>,
 }
 
-#[napi(object)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TypingsResponse {
     pub package_name: String,
@@ -88,7 +83,6 @@ pub struct TypingsResponse {
     pub package_json: Option<String>,
 }
 
-#[napi(object)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnalyzeResponse {
     pub imports: Vec<String>,
@@ -764,29 +758,6 @@ fn detect_format(path: &Utf8Path) -> ModuleFormat {
     }
 }
 
-#[napi]
-pub fn resolve_module(
-    request: ResolveRequest,
-    options: Option<ResolveOptions>,
-) -> napi::Result<ResolveResponse> {
-    resolve_module_native(request, options).map_err(to_napi_err)
-}
-
-#[napi]
-pub fn discover_package_typings(
-    package_name: String,
-    project_root: String,
-) -> napi::Result<TypingsResponse> {
-    let root = Utf8PathBuf::from(project_root);
-    discover_typings_native(&package_name, &root).map_err(to_napi_err)
-}
-
-#[napi]
-pub fn analyze_module(path: String) -> napi::Result<AnalyzeResponse> {
-    let module_path = Utf8PathBuf::from(path);
-    analyze_module_native(&module_path).map_err(to_napi_err)
-}
-
 fn read_package_json(dir: &Utf8Path) -> Result<Value> {
     let pkg_path = dir.join("package.json");
     let content =
@@ -794,8 +765,4 @@ fn read_package_json(dir: &Utf8Path) -> Result<Value> {
     let parsed: Value =
         serde_json::from_str(&content).map_err(|e| ResolveError::PackageJson(format!("{e}")))?;
     Ok(parsed)
-}
-
-fn to_napi_err(err: anyhow::Error) -> napi::Error {
-    napi::Error::from_reason(format!("{err:?}"))
 }

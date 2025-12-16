@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useAgentStore } from '@/stores/agent/useAgentStore';
 import { MessageList } from './MessageList';
 import { InputArea } from './InputArea';
@@ -19,14 +19,30 @@ export function AgentPanel() {
     const availableModels = useAgentStore(state => state.availableModels);
     const fetchModels = useAgentStore(state => state.fetchModels);
     const setModel = useAgentStore(state => state.setModel);
+    const [isLoadingModels, setIsLoadingModels] = useState(false);
 
-    // Fetch models when panel opens
+    // Defer model fetching to background - don't block render
     useEffect(() => {
         if (isOpen) {
-            const span = startSpan('fetch_models', 'frontend_network');
-            fetchModels()
-                .then(() => span.end({ count: availableModels.length.toString() }))
-                .catch((e) => span.end({ error: e.message }));
+            // Models are already loaded from cache if available (instant)
+            // Fetch fresh models in background with low priority
+            setIsLoadingModels(true);
+            
+            // Use setTimeout to defer to next tick, allowing UI to render first
+            const timeoutId = setTimeout(() => {
+                const span = startSpan('fetch_models', 'frontend_network');
+                fetchModels()
+                    .then(() => {
+                        span.end({ count: availableModels.length.toString() });
+                        setIsLoadingModels(false);
+                    })
+                    .catch((e) => {
+                        span.end({ error: e.message });
+                        setIsLoadingModels(false);
+                    });
+            }, 0);
+
+            return () => clearTimeout(timeoutId);
         }
     }, [isOpen, fetchModels, startSpan, availableModels.length]);
 
@@ -78,8 +94,9 @@ export function AgentPanel() {
                         />
                         <button
                             onClick={handleRefreshModels}
-                            className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground"
+                            className={`p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground ${isLoadingModels ? 'animate-spin' : ''}`}
                             title="Refresh models"
+                            disabled={isLoadingModels}
                         >
                             <RefreshCw className="w-3.5 h-3.5" />
                         </button>
