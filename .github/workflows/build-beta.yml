@@ -74,7 +74,9 @@ jobs:
       - name: Install dependencies (macOS)
         if: matrix.platform == 'macos-latest'
         run: |
-          brew install libappindicator
+          # macOS dependencies are typically handled by Xcode command line tools
+          # which are pre-installed on GitHub Actions macOS runners
+          echo "macOS dependencies ready"
 
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
