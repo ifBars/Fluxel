@@ -196,14 +196,14 @@ function ChunkedFileTree({ children }: { children: FileEntry[] }) {
             // Use requestIdleCallback if available for better performance, fallback to setTimeout
             const scheduleFn = typeof requestIdleCallback !== 'undefined' 
                 ? requestIdleCallback 
-                : (fn: () => void) => setTimeout(fn, 0);
+                : (fn: () => void) => window.setTimeout(fn, 0) as number;
             
             const timeoutId = scheduleFn(scheduleNextBatch);
             return () => {
                 if (typeof timeoutId === 'number') {
                     clearTimeout(timeoutId);
                 } else {
-                    cancelIdleCallback(timeoutId);
+                    cancelIdleCallback(timeoutId as number);
                 }
             };
         }
