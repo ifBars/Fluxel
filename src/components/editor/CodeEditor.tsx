@@ -16,6 +16,7 @@ import { toFileUri } from "@/lib/languages/typescript";
 import { registerInlineCompletionProvider } from "../../lib/ollama";
 import { registerCSharpLanguage, getCSharpLSPClient, registerCSharpLSPFeatures } from "@/lib/languages/csharp";
 import { configureTypeScriptLanguage, hydrateTypeScriptWorkspace, resetTypeScriptWorkspace } from "@/lib/languages/typescript";
+import { hasTypeScriptIndicators } from "@/lib/languages/typescript/TypeLoader";
 import { getLazyTypeResolver } from "@/lib/languages/typescript/LazyTypeResolver";
 import { shouldHydrateTypeScriptWorkspace } from "@/lib/services/ProjectManager";
 import { fsPathToLspUri } from "@/lib/languages/base/fileUris";
@@ -134,6 +135,8 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
             return;
         }
 
+        // If project detection hasn't completed yet, don't hydrate yet
+        // (we'll handle proactive loading in the file-opened effect below)
         if (projectInitStatus !== 'ready') {
             return;
         }
@@ -168,6 +171,108 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
             cancelled = true;
         };
     }, [monaco, currentProject?.rootPath, projectProfile, projectInitStatus]);
+
+    // Proactively trigger type loading when a TypeScript/JavaScript file is opened
+    // This ensures types are loaded even if project detection hasn't completed yet
+    useEffect(() => {
+        if (!monaco || !activeTab) return;
+        const projectRoot = currentProject?.rootPath ?? null;
+        if (!projectRoot) return;
+
+        // Only trigger for TypeScript/JavaScript files
+        const isTypeScriptFile = activeTab.language === 'typescript' || activeTab.language === 'javascript';
+        if (!isTypeScriptFile) return;
+
+        // Skip if types are already loaded for this project
+        if (hydratedProjectRootRef.current === projectRoot) return;
+
+        // Even if project detection failed, try to load types if we have a TS/JS file open
+        // This handles cases where detection fails but the project is still valid
+        if (projectInitStatus === 'error') {
+            let cancelled = false;
+            const loadTypesOnError = async () => {
+                try {
+                    const hasIndicators = await hasTypeScriptIndicators(projectRoot);
+                    if (!cancelled && hasIndicators && hydratedProjectRootRef.current !== projectRoot) {
+                        await hydrateTypeScriptWorkspace(projectRoot, monaco);
+                        if (!cancelled) {
+                            hydratedProjectRootRef.current = projectRoot;
+                        }
+                    }
+                } catch (error) {
+                    if (!cancelled) {
+                        console.error('[Monaco] Failed to load types after detection error:', error);
+                    }
+                }
+            };
+
+            loadTypesOnError();
+
+            return () => {
+                cancelled = true;
+            };
+        }
+
+        // If project detection is ready, check if types should be loaded
+        if (projectInitStatus === 'ready') {
+            // If the main effect already determined types should be loaded, it will handle it
+            if (shouldHydrateTypeScriptWorkspace(projectProfile)) {
+                // The main hydration effect will handle loading (or already has)
+                return;
+            }
+            
+            // If we reach here, the project profile says it's not a TypeScript project,
+            // but the user just opened a TypeScript file. Load types on-demand anyway.
+            // This handles cases where tsconfig.json is missing but .ts files exist.
+            let cancelled = false;
+            const loadTypesOnDemand = async () => {
+                try {
+                    const hasIndicators = await hasTypeScriptIndicators(projectRoot);
+                    if (!cancelled && hasIndicators && hydratedProjectRootRef.current !== projectRoot) {
+                        await hydrateTypeScriptWorkspace(projectRoot, monaco);
+                        if (!cancelled) {
+                            hydratedProjectRootRef.current = projectRoot;
+                        }
+                    }
+                } catch (error) {
+                    if (!cancelled) {
+                        console.error('[Monaco] Failed to load types on-demand:', error);
+                    }
+                }
+            };
+
+            loadTypesOnDemand();
+
+            return () => {
+                cancelled = true;
+            };
+        }
+
+        // If project detection hasn't completed yet (status is 'detecting' or 'idle'),
+        // check for TypeScript indicators proactively and load types if found
+        let cancelled = false;
+        const checkAndLoad = async () => {
+            try {
+                const hasIndicators = await hasTypeScriptIndicators(projectRoot);
+                if (!cancelled && hasIndicators && hydratedProjectRootRef.current !== projectRoot) {
+                    await hydrateTypeScriptWorkspace(projectRoot, monaco);
+                    if (!cancelled) {
+                        hydratedProjectRootRef.current = projectRoot;
+                    }
+                }
+            } catch (error) {
+                if (!cancelled) {
+                    console.error('[Monaco] Failed to proactively load types:', error);
+                }
+            }
+        };
+
+        checkAndLoad();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [monaco, activeTab?.id, activeTab?.language, currentProject?.rootPath, projectInitStatus, projectProfile]);
 
     // Register C# language configuration and LSP features
     useEffect(() => {

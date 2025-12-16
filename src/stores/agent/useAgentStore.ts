@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { AgentState, ChatMessage, FileContext, AgentConversation } from './types';
 import { getAvailableModels } from '@/lib/ollama/ollamaChatClient';
+import { getCachedModels, setCachedModels } from '@/lib/ollama/modelCache';
 
 interface AgentActions {
     // Panel
@@ -47,7 +48,7 @@ export const useAgentStore = create<AgentState & AgentActions>((set, get) => ({
     streamingContent: '',
     attachedContext: [],
     model: 'qwen3:8b',
-    availableModels: [],
+    availableModels: getCachedModels() ?? [], // Load from cache on initialization
     temperature: 0.7,
     maxTurns: 15,
 
@@ -57,8 +58,24 @@ export const useAgentStore = create<AgentState & AgentActions>((set, get) => ({
 
     // Model actions
     fetchModels: async () => {
-        const models = await getAvailableModels();
-        set({ availableModels: models });
+        // Check cache first for instant response
+        const cached = getCachedModels();
+        if (cached && cached.length > 0) {
+            set({ availableModels: cached });
+        }
+
+        // Fetch fresh models in background and update cache
+        try {
+            const models = await getAvailableModels();
+            set({ availableModels: models });
+            setCachedModels(models);
+        } catch (error) {
+            console.error('[AgentStore] Failed to fetch models:', error);
+            // Keep cached models if fetch fails
+            if (!cached || cached.length === 0) {
+                set({ availableModels: [] });
+            }
+        }
     },
 
     // Conversation actions

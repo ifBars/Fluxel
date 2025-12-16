@@ -19,7 +19,12 @@ function Workbench() {
     // Track time from render start to mount completion (captures store hydration)
     const initSpanRef = useRef<ReturnType<typeof FrontendProfiler.startSpan> | null>(null);
     if (!initSpanRef.current) {
-        initSpanRef.current = FrontendProfiler.startSpan('workbench_init', 'frontend_render');
+        // Explicitly capture parent ID to ensure correct parent-child relationship
+        // This ensures workbench_init is a child of EditorPage:mount if it exists
+        const parentId = FrontendProfiler.getCurrentParentId();
+        initSpanRef.current = FrontendProfiler.startSpan('workbench_init', 'frontend_render', {
+            parentId: parentId
+        });
     }
 
     // Use the profiler hook - ProfilerWrapper is extracted on line 57
@@ -77,18 +82,33 @@ function Workbench() {
     useKeyboardShortcuts(sidebarPanelRef);
 
     // End init span after mount effects complete
+    // Use requestIdleCallback to defer non-critical work and improve initial render
     useEffect(() => {
         if (initSpanRef.current) {
-            // Profile store selector evaluations
-            const selectorSpan = FrontendProfiler.startSpan('evaluate:storeSelectors', 'frontend_render');
-            const selectorCount = 10; // Count of store selectors used
-            selectorSpan.end({ count: String(selectorCount) });
-            
-            initSpanRef.current.end({
-                storeSelectorsCount: String(selectorCount),
-                lazyPanelsLoaded: [isBuildPanelOpen, isInspectorOpen, isAgentOpen].filter(Boolean).length.toString()
-            });
-            initSpanRef.current = null;
+            // Use requestIdleCallback to defer selector evaluation profiling
+            // This allows the UI to render first, then profile in idle time
+            const scheduleProfiling = () => {
+                // Profile store selector evaluations
+                const selectorSpan = FrontendProfiler.startSpan('evaluate:storeSelectors', 'frontend_render');
+                const selectorCount = 10; // Count of store selectors used
+                selectorSpan.end({ count: String(selectorCount) });
+                
+                initSpanRef.current?.end({
+                    storeSelectorsCount: String(selectorCount),
+                    lazyPanelsLoaded: [isBuildPanelOpen, isInspectorOpen, isAgentOpen].filter(Boolean).length.toString()
+                });
+                initSpanRef.current = null;
+            };
+
+            // Defer to next idle period for better initial render performance
+            if (typeof requestIdleCallback !== 'undefined') {
+                const idleId = requestIdleCallback(scheduleProfiling, { timeout: 100 });
+                return () => cancelIdleCallback(idleId);
+            } else {
+                // Fallback to setTimeout for browsers without requestIdleCallback
+                const timeoutId = setTimeout(scheduleProfiling, 0);
+                return () => clearTimeout(timeoutId);
+            }
         }
     }, [isBuildPanelOpen, isInspectorOpen, isAgentOpen]);
 

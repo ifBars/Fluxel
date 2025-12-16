@@ -110,19 +110,22 @@ export function startSpan(name: string, category: FrontendCategory | SpanCategor
     // Backwards compatibility handling
     let metadata: Record<string, string> | undefined;
     let explicitParentId: string | undefined;
+    let hasExplicitParentId = false;
 
     if (options) {
         if ('metadata' in options || 'parentId' in options) {
             const opts = options as ProfilerOptions;
             metadata = opts.metadata;
             explicitParentId = opts.parentId;
+            hasExplicitParentId = 'parentId' in opts; // Check if parentId was explicitly provided (even if undefined)
         } else {
             metadata = options as Record<string, string>;
         }
     }
 
     const spanId = generateSpanId();
-    const parentId = explicitParentId || getCurrentParentId();
+    // If parentId was explicitly provided (even if undefined), use it; otherwise use call stack
+    const parentId = hasExplicitParentId ? explicitParentId : getCurrentParentId();
     const startTime = performance.now();
     let cancelled = false;
 
@@ -217,19 +220,22 @@ export function profileSync<T>(
     // Backwards compatibility handling
     let metadata: Record<string, string> | undefined;
     let explicitParentId: string | undefined;
+    let hasExplicitParentId = false;
 
     if (options) {
         if ('metadata' in options || 'parentId' in options) {
             const opts = options as ProfilerOptions;
             metadata = opts.metadata;
             explicitParentId = opts.parentId;
+            hasExplicitParentId = 'parentId' in opts; // Check if parentId was explicitly provided (even if undefined)
         } else {
             metadata = options as Record<string, string>;
         }
     }
 
     const spanId = generateSpanId();
-    const parentId = explicitParentId || getCurrentParentId();
+    // If parentId was explicitly provided (even if undefined), use it; otherwise use call stack
+    const parentId = hasExplicitParentId ? explicitParentId : getCurrentParentId();
     const startTime = performance.now();
     
     // Push this span onto the stack so nested spans can find it
