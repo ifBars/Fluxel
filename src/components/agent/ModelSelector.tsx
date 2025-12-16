@@ -188,7 +188,7 @@ export function ModelSelector({
         setSearch('');
     };
 
-    const renderModelItem = (model: ModelInfo, index: number) => {
+    const renderModelItem = (model: ModelInfo, _index: number) => {
         const isSelected = model.name === value;
         const isHighlighted = flatModels[selectedIndex]?.name === model.name;
 

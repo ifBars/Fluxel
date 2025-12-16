@@ -1,5 +1,7 @@
 import type * as Monaco from 'monaco-editor';
 import { getCSharpLSPClient } from './CSharpLSPClient';
+import { useDiagnosticsStore, type Diagnostic } from '@/stores/diagnostics';
+import { fileUriToFsPath, lspUriToMonacoUri, monacoUriToLspUri } from '../base/fileUris';
 
 // Track if LSP features are already registered to prevent duplicates
 let lspFeaturesRegistered = false;
@@ -20,63 +22,234 @@ export function registerCSharpLSPFeatures(monaco: typeof Monaco): Monaco.IDispos
     const disposables: Monaco.IDisposable[] = [];
     const markerOwner = 'csharp-ls';
 
-    // Helper to get consistent URI
+    // Use standard LSP file URIs (file:///C:/...) when talking to csharp-ls.
+    // Monaco models typically use an encoded drive colon (file:///c%3A/...), so convert.
     const getModelUri = (model: Monaco.editor.ITextModel) => {
-        // We need to match the URI format sent in didOpen: file:///C:/Path/To/File.cs
-        // Monaco may have the file opened with scheme 'C' instead of 'file',
-        // so we use toString() to get the actual path and normalize it
-
-        // Get the raw path from Monaco
-        let rawPath = model.uri.toString();
-
-        // If it doesn't start with file://, add it
-        if (!rawPath.startsWith('file:///')) {
-            // Normalize slashes to forward slashes
-            rawPath = rawPath.replace(/\\/g, '/');
-            // Construct proper file URI
-            return `file:///${rawPath}`;
-        }
-
-        return rawPath;
+        const monacoUri = model.uri.toString();
+        return monacoUri.startsWith('file://') ? monacoUriToLspUri(monacoUri) : monacoUri;
     };
 
     // Register Completion Provider (IntelliSense)
     disposables.push(monaco.languages.registerCompletionItemProvider(languageId, {
         triggerCharacters: ['.', ' ', '(', '<'],
-        provideCompletionItems: async (model, position) => {
+        provideCompletionItems: async (model, position, context) => {
+            const modelLangId = model.getLanguageId();
+            console.log('[LSP] Completion provider called for language:', modelLangId, 'expected:', languageId);
+            
+            // Ensure the model language matches
+            if (modelLangId !== languageId) {
+                console.warn('[LSP] Completion provider called for wrong language:', modelLangId);
+                return { suggestions: [] };
+            }
+            
             try {
-                const uri = getModelUri(model);
+                // Check if LSP client is started
+                if (!lspClient.getIsStarted()) {
+                    console.warn('[LSP] Completion requested but LSP client not started');
+                    return { suggestions: [] };
+                }
 
-                const result = await lspClient.sendRequest('textDocument/completion', {
+                const uri = getModelUri(model);
+                const triggerChar = context.triggerCharacter;
+                const triggerKind = triggerChar ? 2 : 1; // 1 = Invoked, 2 = TriggerCharacter
+                
+                console.log('[LSP] Requesting completion at', uri, `line ${position.lineNumber}, col ${position.column}`, triggerChar ? `(trigger: ${triggerChar})` : '(invoked)');
+                console.log('[LSP] Model URI:', model.uri.toString());
+                console.log('[LSP] LSP URI:', uri);
+
+                const completionParams: any = {
                     textDocument: { uri },
                     position: {
                         line: position.lineNumber - 1, // LSP is 0-indexed
                         character: position.column - 1,
                     },
-                });
+                    context: {
+                        triggerKind,
+                        triggerCharacter: triggerChar,
+                    },
+                };
 
-                if (!result || !result.items) {
+                let result;
+                try {
+                    result = await lspClient.sendRequest('textDocument/completion', completionParams);
+                } catch (error: any) {
+                    console.error('[LSP] Completion request failed:', error);
+                    // Check if it's an LSP error response
+                    if (error?.code) {
+                        console.error('[LSP] LSP error code:', error.code, 'message:', error.message);
+                    }
                     return { suggestions: [] };
                 }
 
-                const suggestions = result.items.map((item: any) => ({
-                    label: item.label,
-                    kind: convertCompletionKind(monaco, item.kind),
-                    insertText: item.insertText || item.label,
-                    detail: item.detail,
-                    documentation: item.documentation?.value || item.documentation,
-                    range: {
-                        startLineNumber: position.lineNumber,
-                        startColumn: position.column,
-                        endLineNumber: position.lineNumber,
-                        endColumn: position.column,
-                    },
-                }));
+                console.log('[LSP] Completion response:', result ? `${result.items?.length || 0} items` : 'null', result?.isIncomplete ? '(incomplete)' : '');
+                if (result) {
+                    console.log('[LSP] Completion response details:', JSON.stringify(result, null, 2));
+                }
 
-                return { suggestions };
+                // If completion returned null, the document might not be open - try sending didOpen and retry once
+                if (!result) {
+                    console.warn('[LSP] Completion returned null - attempting to open document and retry');
+                    
+                    // Send didOpen notification with current document content (only if not already opened)
+                    try {
+                        if (!lspClient.isDocumentOpen(uri)) {
+                        const documentText = model.getValue();
+                        const currentVersion = 1; // Use version 1 for initial open
+                        
+                        await lspClient.sendNotification('textDocument/didOpen', {
+                            textDocument: {
+                                uri,
+                                languageId: 'csharp',
+                                version: currentVersion,
+                                text: documentText,
+                            },
+                        });
+                        }
+                        
+                        // Wait longer for the LSP server to process didOpen and index the document
+                        // csharp-ls may need time to parse and analyze the C# code
+                        await new Promise(resolve => setTimeout(resolve, 300));
+                        
+                        // Retry completion request
+                        result = await lspClient.sendRequest('textDocument/completion', completionParams);
+                        
+                        if (result) {
+                            const items = Array.isArray(result) ? result : (result.items || []);
+                            console.log('[LSP] Completion retry successful:', `${items.length} items`);
+                        } else {
+                            console.warn('[LSP] Completion still returned null after didOpen retry - document may not be indexed yet');
+                            // Return empty suggestions rather than failing completely
+                            return { suggestions: [] };
+                        }
+                    } catch (retryError: any) {
+                        console.error('[LSP] Failed to retry completion after didOpen:', retryError);
+                        // Check if it's an LSP error response
+                        if (retryError?.code) {
+                            console.error('[LSP] LSP error code:', retryError.code, 'message:', retryError.message);
+                        }
+                        return { suggestions: [] };
+                    }
+                }
+
+                // Handle both array and CompletionList formats
+                const items = Array.isArray(result) ? result : (result.items || []);
+                
+                if (items.length === 0) {
+                    return { suggestions: [] };
+                }
+
+                // Compute a stable default replace range based on the current word to avoid
+                // duplicate prefixes like "AbAbstractions" when accepting suggestions.
+                const word = model.getWordUntilPosition(position);
+                const defaultRange: Monaco.IRange = {
+                    startLineNumber: position.lineNumber,
+                    startColumn: word.startColumn,
+                    endLineNumber: position.lineNumber,
+                    endColumn: position.column,
+                };
+
+                const suggestions = items.map((item: any) => {
+                    const textEdit = item.textEdit;
+                    const lspRange = textEdit?.range ?? textEdit?.replace ?? null;
+
+                    const range: Monaco.IRange | Monaco.languages.CompletionItemRanges = lspRange
+                        ? {
+                            insert: new monaco.Range(
+                                lspRange.start.line + 1,
+                                lspRange.start.character + 1,
+                                lspRange.end.line + 1,
+                                lspRange.end.character + 1,
+                            ),
+                            replace: new monaco.Range(
+                                lspRange.start.line + 1,
+                                lspRange.start.character + 1,
+                                lspRange.end.line + 1,
+                                lspRange.end.character + 1,
+                            ),
+                        }
+                        : {
+                            insert: new monaco.Range(
+                                defaultRange.startLineNumber,
+                                defaultRange.startColumn,
+                                defaultRange.endLineNumber,
+                                defaultRange.endColumn,
+                            ),
+                            replace: new monaco.Range(
+                                defaultRange.startLineNumber,
+                                defaultRange.startColumn,
+                                defaultRange.endLineNumber,
+                                defaultRange.endColumn,
+                            ),
+                        };
+
+                    const insertText = textEdit?.newText || item.insertText || item.label;
+
+                    return {
+                        label: item.label,
+                        kind: convertCompletionKind(monaco, item.kind),
+                        insertText,
+                        insertTextRules: item.insertTextFormat === 2 ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet : undefined,
+                        detail: item.detail,
+                        documentation: item.documentation?.value || item.documentation,
+                        filterText: item.filterText,
+                        sortText: item.sortText,
+                        range,
+                        // Store the original LSP item data for resolve
+                        _lspItemData: item,
+                    };
+                });
+
+                console.log('[LSP] Returning', suggestions.length, 'completion suggestions');
+                return { 
+                    suggestions,
+                    incomplete: result.isIncomplete || false,
+                };
             } catch (error) {
-                // Silently return empty if LSP not started yet
+                console.error('[LSP] Completion error:', error);
                 return { suggestions: [] };
+            }
+        },
+        // Resolve completion item to get richer documentation when selected
+        resolveCompletionItem: async (item) => {
+            try {
+                // Check if we have the original LSP item data
+                const lspItemData = (item as any)._lspItemData;
+                if (!lspItemData) {
+                    return item;
+                }
+
+                // Send resolve request to LSP server
+                const resolved = await lspClient.sendRequest('completionItem/resolve', lspItemData);
+
+                if (!resolved) {
+                    return item;
+                }
+
+                // Merge resolved data back into the completion item
+                return {
+                    ...item,
+                    // Update documentation with richer content from resolve
+                    documentation: resolved.documentation?.value || resolved.documentation || item.documentation,
+                    // Update detail with more complete information
+                    detail: resolved.detail || item.detail,
+                    // Update additional text edits if provided (e.g., auto-imports)
+                    additionalTextEdits: resolved.additionalTextEdits?.map((edit: any) => ({
+                        range: new monaco.Range(
+                            edit.range.start.line + 1,
+                            edit.range.start.character + 1,
+                            edit.range.end.line + 1,
+                            edit.range.end.character + 1,
+                        ),
+                        text: edit.newText,
+                    })),
+                };
+            } catch (error) {
+                // If resolve fails, return the original item
+                // This ensures completion still works even if resolve is not supported
+                if (error instanceof Error && !error.message.includes('not started')) {
+                    console.warn('[LSP] Completion resolve error:', error);
+                }
+                return item;
             }
         },
     }));
@@ -133,7 +306,7 @@ export function registerCSharpLSPFeatures(monaco: typeof Monaco): Monaco.IDispos
 
                 const locations = Array.isArray(result) ? result : [result];
                 return locations.map((loc: any) => ({
-                    uri: monaco.Uri.parse(loc.uri),
+                    uri: monaco.Uri.parse(lspUriToMonacoUri(loc.uri)),
                     range: {
                         startLineNumber: loc.range.start.line + 1,
                         startColumn: loc.range.start.character + 1,
@@ -171,7 +344,7 @@ export function registerCSharpLSPFeatures(monaco: typeof Monaco): Monaco.IDispos
 
                 const locations = Array.isArray(result) ? result : [result];
                 return locations.map((loc: any) => ({
-                    uri: monaco.Uri.parse(loc.uri),
+                    uri: monaco.Uri.parse(lspUriToMonacoUri(loc.uri)),
                     range: {
                         startLineNumber: loc.range.start.line + 1,
                         startColumn: loc.range.start.character + 1,
@@ -209,7 +382,7 @@ export function registerCSharpLSPFeatures(monaco: typeof Monaco): Monaco.IDispos
 
                 const locations = Array.isArray(result) ? result : [result];
                 return locations.map((loc: any) => ({
-                    uri: monaco.Uri.parse(loc.uri),
+                    uri: monaco.Uri.parse(lspUriToMonacoUri(loc.uri)),
                     range: {
                         startLineNumber: loc.range.start.line + 1,
                         startColumn: loc.range.start.character + 1,
@@ -250,7 +423,7 @@ export function registerCSharpLSPFeatures(monaco: typeof Monaco): Monaco.IDispos
 
                 // Parse and ensure models exist for all referenced files
                 const mappedReferences = await Promise.all(result.map(async (loc: any) => {
-                    const refUri = monaco.Uri.parse(loc.uri);
+                    const refUri = monaco.Uri.parse(lspUriToMonacoUri(loc.uri));
 
                     // Check if model exists for this file
                     let refModel = monaco.editor.getModel(refUri);
@@ -258,8 +431,7 @@ export function registerCSharpLSPFeatures(monaco: typeof Monaco): Monaco.IDispos
                     // If model doesn't exist, create it with file content
                     if (!refModel) {
                         try {
-                            // Extract file path from URI (file:///C:/path/to/file.cs -> C:/path/to/file.cs)
-                            const filePath = refUri.toString().replace(/^file:\/\/\//, '');
+                            const filePath = fileUriToFsPath(loc.uri);
 
                             // Read file content via Tauri
                             const { readTextFile } = await import('@tauri-apps/plugin-fs');
@@ -412,9 +584,122 @@ export function registerCSharpLSPFeatures(monaco: typeof Monaco): Monaco.IDispos
         },
     }));
 
-    // Register Rename
+    // Register Range Formatting (format selection only)
+    disposables.push(monaco.languages.registerDocumentRangeFormattingEditProvider(languageId, {
+        provideDocumentRangeFormattingEdits: async (model, range, options) => {
+            try {
+                const uri = getModelUri(model);
+                const result = await lspClient.sendRequest('textDocument/rangeFormatting', {
+                    textDocument: { uri },
+                    range: {
+                        start: {
+                            line: range.startLineNumber - 1,
+                            character: range.startColumn - 1,
+                        },
+                        end: {
+                            line: range.endLineNumber - 1,
+                            character: range.endColumn - 1,
+                        },
+                    },
+                    options: {
+                        tabSize: options.tabSize,
+                        insertSpaces: options.insertSpaces,
+                    },
+                });
+
+                if (!Array.isArray(result)) return [];
+
+                return result.map((edit: any) => ({
+                    text: edit.newText,
+                    range: new monaco.Range(
+                        edit.range.start.line + 1,
+                        edit.range.start.character + 1,
+                        edit.range.end.line + 1,
+                        edit.range.end.character + 1,
+                    ),
+                }));
+            } catch (error) {
+                // Silently return empty if LSP not started yet
+                if (error instanceof Error && error.message.includes('not started')) {
+                    return [];
+                }
+                console.error('[LSP] Range formatting error:', error);
+                return [];
+            }
+        },
+    }));
+
+    // Register Rename with resolveRenameLocation (validates before opening dialog)
     disposables.push(monaco.languages.registerRenameProvider(languageId, {
-        provideRenameEdits: async (model, position, newName) => {
+        resolveRenameLocation: async (model: Monaco.editor.ITextModel, position: Monaco.Position) => {
+            try {
+                const uri = getModelUri(model);
+                const result = await lspClient.sendRequest('textDocument/prepareRename', {
+                    textDocument: { uri },
+                    position: {
+                        line: position.lineNumber - 1,
+                        character: position.column - 1,
+                    },
+                });
+
+                // If server returns null/undefined, rename is not allowed at this position
+                if (!result) {
+                    return {
+                        range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column),
+                        text: '',
+                        rejectReason: 'Cannot rename this symbol'
+                    };
+                }
+
+                // LSP can return either a Range or a PrepareRenameResult with range and placeholder
+                if ('range' in result) {
+                    // PrepareRenameResult format: { range, placeholder }
+                    return {
+                        range: new monaco.Range(
+                            result.range.start.line + 1,
+                            result.range.start.character + 1,
+                            result.range.end.line + 1,
+                            result.range.end.character + 1,
+                        ),
+                        text: result.placeholder || ''
+                    };
+                } else if ('start' in result && 'end' in result) {
+                    // Plain Range format
+                    return {
+                        range: new monaco.Range(
+                            result.start.line + 1,
+                            result.start.character + 1,
+                            result.end.line + 1,
+                            result.end.character + 1,
+                        ),
+                        text: ''
+                    };
+                }
+
+                // Unexpected result format
+                return {
+                    range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column),
+                    text: '',
+                    rejectReason: 'Cannot rename this symbol'
+                };
+            } catch (error) {
+                // Silently reject if LSP not started yet
+                if (error instanceof Error && error.message.includes('not started')) {
+                    return {
+                        range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column),
+                        text: '',
+                        rejectReason: 'Language server not ready'
+                    };
+                }
+                console.error('[LSP] Prepare rename error:', error);
+                return {
+                    range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column),
+                    text: '',
+                    rejectReason: 'Cannot rename this symbol'
+                };
+            }
+        },
+        provideRenameEdits: async (model: Monaco.editor.ITextModel, position: Monaco.Position, newName: string) => {
             try {
                 const uri = getModelUri(model);
                 const result = await lspClient.sendRequest('textDocument/rename', {
@@ -432,7 +717,7 @@ export function registerCSharpLSPFeatures(monaco: typeof Monaco): Monaco.IDispos
                 Object.entries(result.changes).forEach(([fileUri, textEdits]: [string, any]) => {
                     textEdits.forEach((edit: any) => {
                         edits.push({
-                            resource: monaco.Uri.parse(fileUri),
+                            resource: monaco.Uri.parse(lspUriToMonacoUri(fileUri)),
                             versionId: undefined,
                             textEdit: {
                                 range: new monaco.Range(
@@ -455,6 +740,43 @@ export function registerCSharpLSPFeatures(monaco: typeof Monaco): Monaco.IDispos
                 }
                 console.error('[LSP] Rename error:', error);
                 return { edits: [] };
+            }
+        },
+    }));
+
+    // Register Document Highlight Provider (Highlight all occurrences of symbol under cursor)
+    disposables.push(monaco.languages.registerDocumentHighlightProvider(languageId, {
+        provideDocumentHighlights: async (model, position) => {
+            try {
+                const uri = getModelUri(model);
+                const result = await lspClient.sendRequest('textDocument/documentHighlight', {
+                    textDocument: { uri },
+                    position: {
+                        line: position.lineNumber - 1, // LSP is 0-indexed
+                        character: position.column - 1,
+                    },
+                });
+
+                if (!result || !Array.isArray(result)) {
+                    return [];
+                }
+
+                return result.map((highlight: any) => ({
+                    range: {
+                        startLineNumber: highlight.range.start.line + 1,
+                        startColumn: highlight.range.start.character + 1,
+                        endLineNumber: highlight.range.end.line + 1,
+                        endColumn: highlight.range.end.character + 1,
+                    },
+                    kind: convertHighlightKind(monaco, highlight.kind),
+                }));
+            } catch (error) {
+                // Silently return empty if LSP not started yet
+                if (error instanceof Error && error.message.includes('not started')) {
+                    return [];
+                }
+                console.error('[LSP] Document highlight error:', error);
+                return [];
             }
         },
     }));
@@ -525,7 +847,7 @@ export function registerCSharpLSPFeatures(monaco: typeof Monaco): Monaco.IDispos
                         Object.entries(action.edit.changes).forEach(([fileUri, textEdits]: [string, any]) => {
                             textEdits.forEach((edit: any) => {
                                 workspaceEdits.push({
-                                    resource: monaco.Uri.parse(fileUri),
+                                    resource: monaco.Uri.parse(lspUriToMonacoUri(fileUri)),
                                     versionId: undefined,
                                     textEdit: {
                                         range: new monaco.Range(
@@ -612,19 +934,11 @@ export function registerCSharpLSPFeatures(monaco: typeof Monaco): Monaco.IDispos
         // Monaco model URI usually matches this if parsed correctly
         try {
             const uriStr = params.uri;
-            const uri = monaco.Uri.parse(uriStr);
+            const uri = monaco.Uri.parse(lspUriToMonacoUri(uriStr));
             const model = monaco.editor.getModel(uri);
 
             if (!model) {
-                // Try fuzzy matching if exact match fails (case sensitivity issues etc)
-                const models = monaco.editor.getModels();
-                const pathFromUri = uriStr.replace('file:///', '');
-                const found = models.find(m => m.uri.path.endsWith(pathFromUri) || params.uri.includes(m.uri.path));
-                if (found) {
-                    // Found it
-                } else {
-                    return;
-                }
+                return;
             }
 
             // If model is found (or need to find way to map back), apply markers. 
@@ -642,7 +956,13 @@ export function registerCSharpLSPFeatures(monaco: typeof Monaco): Monaco.IDispos
                 source: diag.source || 'csharp-ls',
             }));
 
+            // Set Monaco markers (existing functionality - maintains squiggles)
             monaco.editor.setModelMarkers(model, markerOwner, markers);
+
+            // Update diagnostics store (new functionality - for Problems panel)
+            const filePath = uriToFilePath(uriStr);
+            const storeDiagnostics = convertLspDiagnosticsToStore(uriStr, diagnostics);
+            useDiagnosticsStore.getState().setDiagnostics(filePath, storeDiagnostics);
         } catch (e) {
             console.error('[LSP] Error handling diagnostics:', e);
         }
@@ -656,6 +976,14 @@ export function registerCSharpLSPFeatures(monaco: typeof Monaco): Monaco.IDispos
         dispose: () => {
             disposables.forEach(d => d.dispose());
             monaco.editor.getModels().forEach((m) => monaco.editor.setModelMarkers(m, markerOwner, []));
+            
+            // Clear C# diagnostics from the store
+            const diagnosticsStore = useDiagnosticsStore.getState();
+            monaco.editor.getModels().forEach((m) => {
+                const filePath = uriToFilePath(m.uri.toString());
+                diagnosticsStore.clearDiagnostics(filePath);
+            });
+            
             // Reset flag when disposed so features can be re-registered if needed
             lspFeaturesRegistered = false;
             lspFeaturesDisposable = null;
@@ -708,6 +1036,83 @@ function convertDiagnosticSeverity(monaco: typeof Monaco, lspSeverity: number): 
     };
 
     return severityMap[lspSeverity] || monaco.MarkerSeverity.Info;
+}
+
+/**
+ * Convert LSP document highlight kind to Monaco document highlight kind
+ */
+function convertHighlightKind(monaco: typeof Monaco, lspKind?: number): Monaco.languages.DocumentHighlightKind {
+    // LSP DocumentHighlightKind: 1 = Text, 2 = Read, 3 = Write
+    // If kind is not provided, default to Text (1)
+    const kindMap: Record<number, Monaco.languages.DocumentHighlightKind> = {
+        1: monaco.languages.DocumentHighlightKind.Text,
+        2: monaco.languages.DocumentHighlightKind.Read,
+        3: monaco.languages.DocumentHighlightKind.Write,
+    };
+
+    return kindMap[lspKind ?? 1] || monaco.languages.DocumentHighlightKind.Text;
+}
+
+
+/**
+ * Convert LSP diagnostic severity to store diagnostic severity
+ */
+function lspSeverityToStoreSeverity(lspSeverity: number): 'error' | 'warning' | 'info' | 'hint' {
+    // LSP DiagnosticSeverity: 1 = Error, 2 = Warning, 3 = Info, 4 = Hint
+    const severityMap: Record<number, 'error' | 'warning' | 'info' | 'hint'> = {
+        1: 'error',
+        2: 'warning',
+        3: 'info',
+        4: 'hint',
+    };
+
+    return severityMap[lspSeverity] || 'info';
+}
+
+/**
+ * Convert URI to file path
+ * Handles both file:///C:/path/to/file.cs and C:/path/to/file.cs formats
+ */
+function uriToFilePath(uri: string): string {
+    return fileUriToFsPath(uri);
+}
+
+/**
+ * Extract file name from file path
+ */
+function getFileNameFromPath(filePath: string): string {
+    const parts = filePath.split(/[\\/]/);
+    return parts[parts.length - 1] || filePath;
+}
+
+/**
+ * Convert LSP diagnostics to store diagnostics
+ */
+function convertLspDiagnosticsToStore(uri: string, lspDiagnostics: any[]): Diagnostic[] {
+    const filePath = uriToFilePath(uri);
+    const fileName = getFileNameFromPath(filePath);
+
+    return lspDiagnostics.map((diag, index) => {
+        // Generate a unique ID for the diagnostic
+        const id = `csharp-ls:${filePath}:${diag.range.start.line}:${diag.range.start.character}:${index}`;
+
+        return {
+            id,
+            uri,
+            filePath,
+            fileName,
+            severity: lspSeverityToStoreSeverity(diag.severity),
+            message: diag.message,
+            code: diag.code,
+            source: diag.source || 'csharp-ls',
+            range: {
+                startLine: diag.range.start.line + 1, // Convert to 1-indexed
+                startColumn: diag.range.start.character + 1, // Convert to 1-indexed
+                endLine: diag.range.end.line + 1,
+                endColumn: diag.range.end.character + 1,
+            },
+        };
+    });
 }
 
 function convertDocumentSymbol(monaco: typeof Monaco, symbol: any): Monaco.languages.DocumentSymbol {

@@ -4,10 +4,70 @@
  * Provides easy-to-use utilities for profiling React components,
  * async operations, and user interactions. All functions are no-ops
  * when profiling is not available (production builds).
+ * 
+ * ## Parent-Child Relationship Tracking
+ * 
+ * Supports automatic parent-child span relationships through a call stack.
+ * Parent IDs are captured at span START time, ensuring correct hierarchy
+ * even when spans complete in different orders.
+ * 
+ * ### Limitation: Fire-and-Forget Async Operations
+ * 
+ * The stack-based approach has a limitation with "fire-and-forget" patterns:
+ * 
+ * ```typescript
+ * // ❌ INCORRECT - loadData won't have parent as its parent
+ * profileSync('parent', 'workspace', () => {
+ *   loadData();  // fire-and-forget, doesn't await
+ * });
+ * 
+ * // ✅ CORRECT - loadData will have parent as its parent
+ * await profileAsync('parent', 'workspace', async () => {
+ *   await loadData();  // properly awaited
+ * });
+ * ```
+ * 
+ * When an async operation is started but not awaited, the parent span
+ * may have already been popped from the stack by the time the child
+ * operation captures its parent ID. For accurate hierarchies, ensure
+ * profiled operations are properly awaited.
  */
 
 import { ProfilerService } from './ProfilerService';
 import type { FrontendCategory, SpanCategory } from '@/types/profiling';
+
+// =============================================================================
+// Span Context Stack (for parent-child relationships)
+// =============================================================================
+
+/**
+ * Stack of active span IDs for tracking parent-child relationships.
+ * Uses a simple array since JS is single-threaded.
+ * 
+ * Note: This tracks the "current" span in the synchronous call stack.
+ * For async operations, we capture the parent at span start time.
+ */
+let spanIdCounter = 1000000; // Start high to avoid conflicts with backend IDs
+const activeSpanStack: string[] = [];
+
+function generateSpanId(): string {
+    // Use simple incrementing counter that can be parsed as u64 in Rust
+    return (spanIdCounter++).toString();
+}
+
+export function getCurrentParentId(): string | undefined {
+    return activeSpanStack.length > 0 
+        ? activeSpanStack[activeSpanStack.length - 1] 
+        : undefined;
+}
+
+function pushSpan(spanId: string): void {
+    activeSpanStack.push(spanId);
+}
+
+function popSpan(): void {
+    activeSpanStack.pop();
+}
 
 // =============================================================================
 // Span Handle
@@ -17,10 +77,17 @@ import type { FrontendCategory, SpanCategory } from '@/types/profiling';
  * Handle returned by startSpan for ending the span.
  */
 export interface SpanHandle {
+    /** Unique ID of this span */
+    id: string;
     /** End the span and record it */
     end: (metadata?: Record<string, string>) => Promise<void>;
     /** Cancel the span without recording it */
     cancel: () => void;
+}
+
+export interface ProfilerOptions {
+    metadata?: Record<string, string>;
+    parentId?: string;
 }
 
 // =============================================================================
@@ -29,6 +96,7 @@ export interface SpanHandle {
 
 /**
  * Start a new span for manual timing.
+ * Automatically tracks parent-child relationships through the call stack.
  * 
  * @example
  * const span = startSpan('loadData', 'frontend_network');
@@ -38,27 +106,59 @@ export interface SpanHandle {
  *   await span.end();
  * }
  */
-export function startSpan(name: string, category: FrontendCategory | SpanCategory): SpanHandle {
+export function startSpan(name: string, category: FrontendCategory | SpanCategory, options?: ProfilerOptions | Record<string, string>): SpanHandle {
+    // Backwards compatibility handling
+    let metadata: Record<string, string> | undefined;
+    let explicitParentId: string | undefined;
+
+    if (options) {
+        if ('metadata' in options || 'parentId' in options) {
+            const opts = options as ProfilerOptions;
+            metadata = opts.metadata;
+            explicitParentId = opts.parentId;
+        } else {
+            metadata = options as Record<string, string>;
+        }
+    }
+
+    const spanId = generateSpanId();
+    const parentId = explicitParentId || getCurrentParentId();
     const startTime = performance.now();
     let cancelled = false;
 
+    // Push this span onto the stack so nested spans can find it
+    pushSpan(spanId);
+
     return {
-        end: async (metadata?: Record<string, string>) => {
+        id: spanId,
+        end: async (metadataOverride?: Record<string, string>) => {
+            // Pop this span from the stack
+            popSpan();
+            
             if (cancelled) return;
 
             const durationMs = performance.now() - startTime;
-            const metadataEntries = metadata
-                ? Object.entries(metadata) as [string, string][]
+            
+            // Merge initial metadata with end metadata
+            const finalMetadata: Record<string, string> = {};
+            if (metadata) Object.assign(finalMetadata, metadata);
+            if (metadataOverride) Object.assign(finalMetadata, metadataOverride);
+            
+            const metadataEntries = Object.keys(finalMetadata).length > 0
+                ? Object.entries(finalMetadata) as [string, string][]
                 : undefined;
 
             await ProfilerService.recordFrontendSpan({
+                id: spanId,
                 name,
                 category,
                 durationMs,
+                parentId,
                 metadata: metadataEntries,
             });
         },
         cancel: () => {
+            popSpan();
             cancelled = true;
         },
     };
@@ -80,18 +180,28 @@ export async function profileAsync<T>(
     name: string,
     category: FrontendCategory | SpanCategory,
     fn: () => Promise<T>,
-    metadata?: Record<string, string>
+    options?: ProfilerOptions | Record<string, string>
 ): Promise<T> {
-    const span = startSpan(name, category);
+    const span = startSpan(name, category, options);
     try {
         return await fn();
     } finally {
+        // Backwards compatibility for when options was just metadata
+        let metadata: Record<string, string> | undefined;
+        if (options) {
+             if ('metadata' in options || 'parentId' in options) {
+                metadata = (options as ProfilerOptions).metadata;
+            } else {
+                metadata = options as Record<string, string>;
+            }
+        }
         await span.end(metadata);
     }
 }
 
 /**
  * Profile a synchronous operation.
+ * Automatically tracks parent-child relationships through the call stack.
  * 
  * @example
  * const result = profileSync('parseData', 'frontend_render', () => {
@@ -102,18 +212,44 @@ export function profileSync<T>(
     name: string,
     category: FrontendCategory | SpanCategory,
     fn: () => T,
-    metadata?: Record<string, string>
+    options?: ProfilerOptions | Record<string, string>
 ): T {
+    // Backwards compatibility handling
+    let metadata: Record<string, string> | undefined;
+    let explicitParentId: string | undefined;
+
+    if (options) {
+        if ('metadata' in options || 'parentId' in options) {
+            const opts = options as ProfilerOptions;
+            metadata = opts.metadata;
+            explicitParentId = opts.parentId;
+        } else {
+            metadata = options as Record<string, string>;
+        }
+    }
+
+    const spanId = generateSpanId();
+    const parentId = explicitParentId || getCurrentParentId();
     const startTime = performance.now();
+    
+    // Push this span onto the stack so nested spans can find it
+    pushSpan(spanId);
+    
     try {
         return fn();
     } finally {
+        // Pop this span from the stack
+        popSpan();
+        
         const durationMs = performance.now() - startTime;
+        
         // Fire and forget - don't await in sync context
         ProfilerService.recordFrontendSpan({
+            id: spanId,
             name,
             category,
             durationMs,
+            parentId,
             metadata: metadata ? Object.entries(metadata) as [string, string][] : undefined,
         }).catch(() => {
             // Ignore errors in production
@@ -160,8 +296,8 @@ export function createProfilerCallback(componentName: string): ProfilerOnRender 
         phase: 'mount' | 'update' | 'nested-update',
         actualDuration: number,
         baseDuration: number,
-        _startTime: number,
-        _commitTime: number
+        startTime: number,
+        commitTime: number
     ) => {
         // Skip frequent update phases to reduce profiling noise
         // Only record mount phases which are useful for understanding initial render performance
@@ -169,15 +305,28 @@ export function createProfilerCallback(componentName: string): ProfilerOnRender 
             return;
         }
 
+        // Get current parent from stack (if rendering inside a profiled operation)
+        const parentId = getCurrentParentId();
+        // Generate a unique ID for this render span
+        const spanId = generateSpanId();
+        
+        // Calculate render phases timing
+        const renderTime = commitTime - startTime;
+        const commitOverhead = actualDuration - renderTime;
+
         // Fire and forget
         ProfilerService.recordFrontendSpan({
+            id: spanId,
             name: `${componentName}:${phase}`,
             category: 'frontend_render',
             durationMs: actualDuration,
+            parentId,
             metadata: [
                 ['phase', phase],
                 ['baseDuration', baseDuration.toFixed(2)],
                 ['id', id],
+                ['renderTime', renderTime.toFixed(2)],
+                ['commitOverhead', commitOverhead.toFixed(2)],
             ],
         }).catch(() => {
             // Ignore errors
@@ -202,10 +351,15 @@ export function trackInteraction(
     name: string,
     metadata?: Record<string, string>
 ): void {
+    const parentId = getCurrentParentId();
+    const spanId = generateSpanId();
+    
     ProfilerService.recordFrontendSpan({
+        id: spanId,
         name,
         category: 'frontend_interaction',
         durationMs: 0, // Interactions are point-in-time events
+        parentId,
         metadata: metadata ? Object.entries(metadata) as [string, string][] : undefined,
     }).catch(() => {
         // Ignore errors
@@ -277,6 +431,7 @@ export const FrontendProfiler = {
     startSpan,
     profileAsync,
     profileSync,
+    getCurrentParentId,
 
     // React integration
     createProfilerCallback,

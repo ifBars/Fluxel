@@ -6,7 +6,7 @@ import { isInspectorMessage } from '@/lib/inspector/inspectorMessages';
 import type { IframeToParentMessage } from '@/lib/inspector/inspectorMessages';
 
 export default function WebPreview() {
-    const { currentProject } = useProjectStore();
+    const { currentProject, projectProfile } = useProjectStore();
     const {
         previewUrl,
         isServerRunning,
@@ -113,13 +113,27 @@ export default function WebPreview() {
         }
     }, [isServerRunning, isInspectorOpen, inspectorBridgeScript]);
 
-    // Cleanup and Auto-start
+// Cleanup and Auto-start
     useEffect(() => {
         const initPreview = async () => {
             if (import.meta.env.DEV) {
-                console.log('[WebPreview] initPreview check:', { rootPath: currentProject?.rootPath, isServerRunning, isLoading, previewUrl });
+                console.log('[WebPreview] initPreview check:', { 
+                    rootPath: currentProject?.rootPath, 
+                    projectKind: projectProfile?.kind,
+                    isServerRunning, 
+                    isLoading, 
+                    previewUrl 
+                });
             }
-            if (currentProject?.rootPath && !isServerRunning && !isLoading && !previewUrl) {
+            
+            // Only auto-start for JavaScript/TypeScript projects, not pure C# projects
+            const shouldAutoStart = currentProject?.rootPath && 
+                !isServerRunning && 
+                !isLoading && 
+                !previewUrl && 
+                (projectProfile?.kind === 'javascript' || projectProfile?.kind === 'mixed');
+                
+            if (shouldAutoStart) {
                 if (import.meta.env.DEV) {
                     console.log('[WebPreview] Triggering startPreview for:', currentProject.rootPath);
                 }
@@ -136,7 +150,7 @@ export default function WebPreview() {
             // Always stop the preview when component unmounts to prevent zombie processes
             stopPreview().catch(console.error);
         };
-    }, [currentProject?.rootPath]); // Dependency on rootPath ensures restart on project switch
+    }, [currentProject?.rootPath, projectProfile?.kind]); // Include project kind in dependencies
 
     // Fetch content via Bun to bypass CORS and inject inspector script
     useEffect(() => {
@@ -262,18 +276,34 @@ export default function WebPreview() {
         );
     }
 
-    // Show placeholder when no project is open
-    if (!currentProject) {
+// Show placeholder when no project is open or for non-web projects
+    if (!currentProject || projectProfile?.kind === 'dotnet') {
+        const isDotnetProject = projectProfile?.kind === 'dotnet';
         return (
             <div className="h-full w-full flex flex-col items-center justify-center bg-background text-foreground">
-                <div className="p-8 rounded-2xl border border-dashed border-border flex flex-col items-center gap-4">
+                <div className="p-8 rounded-2xl border border-dashed border-border flex flex-col items-center gap-4 max-w-md">
                     <div className="w-16 h-16 rounded-xl bg-primary/10 flex items-center justify-center">
                         <Play className="w-8 h-8 text-primary" />
                     </div>
                     <h3 className="text-xl font-semibold">Web Preview</h3>
-                    <p className="text-muted-foreground text-center max-w-xs">
-                        Open a project folder to enable the live preview.
+                    <p className="text-muted-foreground text-center">
+                        {isDotnetProject 
+                            ? "Web preview is not available for C#/.NET projects. Use the Build Panel for project management."
+                            : "Open a project folder to enable live preview."
+                        }
                     </p>
+                    
+                    {!isDotnetProject && (
+                        <div className="text-xs text-muted-foreground text-center mt-4">
+                            <p>Web preview is available for:</p>
+                            <div className="flex flex-wrap gap-2 justify-center mt-2">
+                                <span className="px-2 py-1 bg-muted rounded">JavaScript</span>
+                                <span className="px-2 py-1 bg-muted rounded">TypeScript</span>
+                                <span className="px-2 py-1 bg-muted rounded">HTML/CSS</span>
+                                <span className="px-2 py-1 bg-muted rounded">React/Vue/Svelte</span>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         );

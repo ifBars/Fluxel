@@ -1,6 +1,8 @@
 import { readDir } from '@tauri-apps/plugin-fs';
 import { BaseLSPClient } from '../base/BaseLSPClient';
 import type { LSPClientConfig } from '../base/types';
+import { fsPathToLspUri } from '../base/fileUris';
+import { FrontendProfiler } from '@/lib/services/FrontendProfiler';
 
 /**
  * C#-specific LSP client
@@ -21,20 +23,51 @@ export class CSharpLSPClient extends BaseLSPClient {
      * Start the C# LSP client with enhanced error handling
      */
     async start(workspaceRoot?: string): Promise<void> {
-        try {
-            console.log('[CSharpLSP] This may take a moment if csharp-ls needs to be installed...');
-            await super.start(workspaceRoot);
-        } catch (error) {
-            // Show user-friendly error message
-            if (error && typeof error === 'string') {
-                if (error.includes('dotnet')) {
-                    console.error('[CSharpLSP] .NET SDK is required. Please install from: https://dotnet.microsoft.com/download');
-                } else if (error.includes('csharp-ls')) {
-                    console.error('[CSharpLSP] Failed to install csharp-ls automatically. Please install manually: dotnet tool install --global csharp-ls');
-                }
+        return FrontendProfiler.profileAsync('csharp_lsp_start', 'lsp_request', async () => {
+            if (!workspaceRoot) {
+                console.warn('[CSharpLSP] Refusing to start without workspace root');
+                return;
             }
-            throw error;
-        }
+
+            try {
+                console.log('[CSharpLSP] This may take a moment if csharp-ls needs to be installed...');
+                await super.start(workspaceRoot);
+            } catch (error) {
+                // Show user-friendly error message
+                if (error && typeof error === 'string') {
+                    if (error.includes('dotnet')) {
+                        console.error('[CSharpLSP] .NET SDK is required. Please install from: https://dotnet.microsoft.com/download');
+                    } else if (error.includes('csharp-ls')) {
+                        console.error('[CSharpLSP] Failed to install csharp-ls automatically. Please install manually: dotnet tool install --global csharp-ls');
+                    }
+                }
+                throw error;
+            }
+        }, { workspaceRoot: workspaceRoot || 'undefined' });
+    }
+
+    /**
+     * csharp-ls is sensitive to workspace URI canonicalization and may treat rootUri + workspaceFolders as
+     * two separate folders. Provide rootUri + workspaceFolders that both point to the same folder using
+     * standard LSP file URIs so the server does not invent a default workspace.
+     */
+    protected buildInitializeParams(workspaceRoot: string): any {
+        const normalizedRoot = workspaceRoot.replace(/\\/g, '/');
+        const workspaceName = normalizedRoot.split('/').pop() || 'workspace';
+        const rootUri = fsPathToLspUri(workspaceRoot);
+
+        return {
+            processId: null,
+            rootPath: normalizedRoot,
+            rootUri,
+            capabilities: this.getClientCapabilities(),
+            workspaceFolders: [
+                {
+                    uri: rootUri,
+                    name: workspaceName,
+                },
+            ],
+        };
     }
 
     /**
@@ -145,12 +178,18 @@ export class CSharpLSPClient extends BaseLSPClient {
 
         // C#-specific handler for workspace configuration
         this.onRequest('workspace/configuration', async (params: any) => {
-            const solution = await findSolutionFile(this.getWorkspaceRoot());
-            const items = Array.isArray(params?.items) && params.items.length > 0 ? params.items : [{}];
-            return items.map(() => ({
-                solution,
-                applyFormattingOptions: false,
-            }));
+            return FrontendProfiler.profileAsync('csharp_workspace_config', 'lsp_request', async () => {
+                const solution = await findSolutionOrProjectFile(this.getWorkspaceRoot());
+                const items = Array.isArray(params?.items) && params.items.length > 0 ? params.items : [{}];
+                return items.map(() => ({
+                    // Be liberal in what we return: different clients/servers use different casing/keys.
+                    solution,
+                    solutionPath: solution,
+                    SolutionPath: solution,
+                    applyFormattingOptions: false,
+                    ApplyFormattingOptions: false,
+                }));
+            });
         });
     }
 }
@@ -174,27 +213,63 @@ export function getCSharpLSPClient(): CSharpLSPClient {
 async function findSolutionFile(workspaceRoot?: string): Promise<string | null> {
     if (!workspaceRoot) return null;
 
-    try {
-        const entries = await readDir(workspaceRoot);
+    return FrontendProfiler.profileAsync('find_solution_file', 'frontend_render', async () => {
+        try {
+            const entries = await readDir(workspaceRoot);
 
-        for (const entry of entries) {
-            if (!entry.name) continue;
-            const fullPath = normalizePath(`${workspaceRoot}/${entry.name}`);
-            if (entry.isDirectory) {
-                const childEntries = await readDir(fullPath);
-                const found = childEntries.find((child) => child.name?.toLowerCase().endsWith('.sln'));
-                if (found && found.name) {
-                    return normalizePath(`${fullPath}/${found.name}`);
+            for (const entry of entries) {
+                if (!entry.name) continue;
+                const fullPath = normalizePath(`${workspaceRoot}/${entry.name}`);
+                if (entry.isDirectory) {
+                    const childEntries = await readDir(fullPath);
+                    const found = childEntries.find((child) => child.name?.toLowerCase().endsWith('.sln'));
+                    if (found && found.name) {
+                        return normalizePath(`${fullPath}/${found.name}`);
+                    }
+                } else if (entry.name.toLowerCase().endsWith('.sln')) {
+                    return fullPath;
                 }
-            } else if (entry.name.toLowerCase().endsWith('.sln')) {
-                return fullPath;
             }
+        } catch (error) {
+            console.warn('[CSharpLSP] Failed to search for solution file:', error);
         }
-    } catch (error) {
-        console.warn('[CSharpLSP] Failed to search for solution file:', error);
-    }
 
-    return null;
+        return null;
+    });
+}
+
+/**
+ * Find a .sln (preferred) or .csproj file near the workspace root (depth 2).
+ */
+async function findSolutionOrProjectFile(workspaceRoot?: string): Promise<string | null> {
+    if (!workspaceRoot) return null;
+
+    return FrontendProfiler.profileAsync('find_solution_or_project', 'frontend_render', async () => {
+        const solution = await findSolutionFile(workspaceRoot);
+        if (solution) return solution;
+
+        try {
+            const entries = await readDir(workspaceRoot);
+
+            for (const entry of entries) {
+                if (!entry.name) continue;
+                const fullPath = normalizePath(`${workspaceRoot}/${entry.name}`);
+                if (entry.isDirectory) {
+                    const childEntries = await readDir(fullPath);
+                    const found = childEntries.find((child) => child.name?.toLowerCase().endsWith('.csproj'));
+                    if (found && found.name) {
+                        return normalizePath(`${fullPath}/${found.name}`);
+                    }
+                } else if (entry.name.toLowerCase().endsWith('.csproj')) {
+                    return fullPath;
+                }
+            }
+        } catch (error) {
+            console.warn('[CSharpLSP] Failed to search for project file:', error);
+        }
+
+        return null;
+    });
 }
 
 function normalizePath(path: string): string {

@@ -42,17 +42,22 @@ export interface OllamaChatResponse {
 
 const DEFAULT_ENDPOINT = 'http://localhost:11434';
 
+import { FrontendProfiler } from '@/lib/services/FrontendProfiler';
+
 /**
  * Check if Ollama server is accessible
  */
 export async function checkOllamaHealth(endpoint: string = DEFAULT_ENDPOINT): Promise<boolean> {
+    const span = FrontendProfiler.startSpan('check_ollama_health', 'frontend_network');
     try {
         const response = await fetch(`${endpoint}/api/tags`, {
             method: 'GET',
             signal: AbortSignal.timeout(3000),
         });
+        await span.end({ status: response.status.toString() });
         return response.ok;
-    } catch {
+    } catch (e) {
+        await span.end({ error: e instanceof Error ? e.message : String(e) });
         return false;
     }
 }
@@ -61,13 +66,20 @@ export async function checkOllamaHealth(endpoint: string = DEFAULT_ENDPOINT): Pr
  * Get list of available models
  */
 export async function getAvailableModels(endpoint: string = DEFAULT_ENDPOINT): Promise<string[]> {
+    const span = FrontendProfiler.startSpan('get_available_models', 'frontend_network');
     try {
         const response = await fetch(`${endpoint}/api/tags`);
-        if (!response.ok) return [];
+        if (!response.ok) {
+            await span.end({ status: response.status.toString(), success: 'false' });
+            return [];
+        }
 
         const data = await response.json();
-        return data.models?.map((m: { name: string }) => m.name) ?? [];
-    } catch {
+        const models = data.models?.map((m: { name: string }) => m.name) ?? [];
+        await span.end({ count: models.length.toString(), success: 'true' });
+        return models;
+    } catch (e) {
+        await span.end({ error: e instanceof Error ? e.message : String(e), success: 'false' });
         return [];
     }
 }

@@ -27,6 +27,10 @@ impl GitignoreCache {
     }
 
     /// Get a cached gitignore matcher for a workspace, or build and cache a new one.
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip(self), fields(category = "workspace"))
+    )]
     pub async fn get_or_build(&self, workspace_root: &str) -> Option<Arc<Gitignore>> {
         // Check cache first
         {
@@ -36,7 +40,7 @@ impl GitignoreCache {
             }
         }
 
-        // Build a new gitignore matcher
+        // Build a new gitignore matcher in a blocking context
         let root = PathBuf::from(workspace_root);
         let mut builder = GitignoreBuilder::new(&root);
 
@@ -100,7 +104,6 @@ pub struct SearchResult {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DirEntry {
     pub name: String,
-    pub path: String,
     #[serde(rename = "isDirectory")]
     pub is_directory: bool,
     #[serde(rename = "isIgnored")]
@@ -121,7 +124,9 @@ pub async fn list_directory_entries(
     max_entries: Option<usize>,
     parent_is_ignored: Option<bool>,
     cache: tauri::State<'_, GitignoreCache>,
+    trace_parent: Option<String>,
 ) -> Result<Vec<DirEntry>, String> {
+    let _ = trace_parent; // Suppress unused warning
     let max_entries = max_entries.unwrap_or(10_000);
     let path_buf = PathBuf::from(&path);
     let skip_gitignore = parent_is_ignored.unwrap_or(false);
@@ -138,83 +143,170 @@ pub async fn list_directory_entries(
         .unwrap_or_else(|| path.clone());
 
     // Get cached gitignore matcher (or build and cache a new one)
-    let cached_gitignore = if skip_gitignore {
-        None
-    } else {
-        cache.get_or_build(&workspace_root_str).await
+    // Use a block scope to ensure the span guard is dropped before the await
+    let cached_gitignore = {
+        #[cfg(feature = "profiling")]
+        let _span = tracing::span!(
+            tracing::Level::INFO,
+            "gitignore_cache_lookup",
+            category = "workspace"
+        )
+        .entered();
+
+        if skip_gitignore {
+            None
+        } else {
+            // Drop the span guard before the await by using a separate variable
+            #[cfg(feature = "profiling")]
+            drop(_span);
+
+            cache.get_or_build(&workspace_root_str).await
+        }
     };
 
-    let entries = spawn_blocking(move || -> Result<Vec<DirEntry>, String> {
-        // Pre-allocate with a reasonable capacity to reduce allocations
-        let mut collected: Vec<DirEntry> = Vec::with_capacity(256);
+    let entries = {
+        let blocking_future = spawn_blocking(move || -> Result<Vec<DirEntry>, String> {
+            #[cfg(feature = "profiling")]
+            let _blocking_span = tracing::span!(
+                tracing::Level::INFO,
+                "blocking:read_dir_and_process",
+                category = "workspace"
+            )
+            .entered();
+            #[cfg(feature = "profiling")]
+            let _blocking_inner = tracing::span!(
+                tracing::Level::INFO,
+                "blocking:inner_work",
+                category = "workspace"
+            )
+            .entered();
 
-        for dir_entry in fs::read_dir(&path_buf).map_err(|e| format!("Failed to read dir: {e}"))? {
-            if collected.len() >= max_entries {
-                break;
-            }
+            // Pre-allocate with a reasonable capacity to reduce allocations
+            let mut collected: Vec<DirEntry> = Vec::with_capacity(256);
 
-            let dir_entry = match dir_entry {
-                Ok(entry) => entry,
-                Err(_) => continue,
+            let dir_entries: Vec<_> = {
+                #[cfg(feature = "profiling")]
+                let _read_dir_span =
+                    tracing::span!(tracing::Level::INFO, "fs:read_dir", category = "file_io")
+                        .entered();
+
+                fs::read_dir(&path_buf)
+                    .map_err(|e| format!("Failed to read dir: {e}"))?
+                    .collect()
             };
 
-            let file_type = match dir_entry.file_type() {
-                Ok(ft) => ft,
-                Err(_) => continue,
-            };
+            #[cfg(feature = "profiling")]
+            let _process_span = tracing::span!(
+                tracing::Level::INFO,
+                "process:entries",
+                category = "file_io",
+                entry_count = dir_entries.len()
+            )
+            .entered();
 
-            let child_path = dir_entry.path();
-            let is_directory = file_type.is_dir();
-
-            // If parent is ignored, all children are ignored (skip expensive checking)
-            // Otherwise, evaluate gitignore status if matcher is available
-            let is_ignored = if skip_gitignore {
-                true
-            } else {
-                cached_gitignore
-                    .as_ref()
-                    .map(|g| {
-                        g.matched_path_or_any_parents(&child_path, is_directory)
-                            .is_ignore()
-                    })
-                    .unwrap_or(false)
-            };
-
-            // Optimize string conversions - avoid cloning when possible
-            let name = dir_entry.file_name();
-            let path_string = child_path.to_string_lossy();
-            
-            collected.push(DirEntry {
-                name: name.to_string_lossy().into_owned(),
-                path: if cfg!(windows) {
-                    path_string.replace('\\', "/")
-                } else {
-                    path_string.into_owned()
-                },
-                is_directory,
-                is_ignored,
-            });
-        }
-
-        // Optimize sorting: directories first, then case-insensitive alphabetical
-        // Use lexicographical_cmp for better performance than to_lowercase()
-        collected.sort_unstable_by(|a, b| {
-            match (a.is_directory, b.is_directory) {
-                (true, false) => std::cmp::Ordering::Less,
-                (false, true) => std::cmp::Ordering::Greater,
-                _ => {
-                    // Case-insensitive comparison without allocating new strings
-                    a.name.chars()
-                        .flat_map(|c| c.to_lowercase())
-                        .cmp(b.name.chars().flat_map(|c| c.to_lowercase()))
+            for dir_entry in dir_entries {
+                if collected.len() >= max_entries {
+                    break;
                 }
+
+                let dir_entry = match dir_entry {
+                    Ok(entry) => entry,
+                    Err(_) => continue,
+                };
+
+                let file_type = match dir_entry.file_type() {
+                    Ok(ft) => ft,
+                    Err(_) => continue,
+                };
+
+                let child_path = dir_entry.path();
+                let is_directory = file_type.is_dir();
+
+                // If parent is ignored, all children are ignored (skip expensive checking)
+                // Otherwise, evaluate gitignore status if matcher is available
+                let is_ignored = if skip_gitignore {
+                    true
+                } else {
+                    cached_gitignore
+                        .as_ref()
+                        .map(|g| {
+                            g.matched_path_or_any_parents(&child_path, is_directory)
+                                .is_ignore()
+                        })
+                        .unwrap_or(false)
+                };
+
+                // Optimize string conversions - avoid cloning when possible
+                let name = dir_entry.file_name();
+                collected.push(DirEntry {
+                    name: name.to_string_lossy().into_owned(),
+                    is_directory,
+                    is_ignored,
+                });
             }
+
+            #[cfg(feature = "profiling")]
+            drop(_process_span);
+
+            {
+                #[cfg(feature = "profiling")]
+                let _sort_span = tracing::span!(
+                    tracing::Level::INFO,
+                    "sort:entries",
+                    category = "file_io",
+                    entry_count = collected.len()
+                )
+                .entered();
+
+                // Optimize sorting: pre-compute lowercase names to avoid repeated allocations
+                // This is significantly faster than calling to_lowercase() in the comparison closure
+                #[cfg(feature = "profiling")]
+                let _precompute_span = tracing::span!(
+                    tracing::Level::INFO,
+                    "sort:precompute_keys",
+                    category = "file_io"
+                )
+                .entered();
+
+                // Pre-compute lowercase names once to avoid repeated allocations during sort
+                let mut entries_with_keys: Vec<_> = collected
+                    .into_iter()
+                    .map(|entry| {
+                        let lower_name = entry.name.to_lowercase();
+                        (entry, lower_name)
+                    })
+                    .collect();
+
+                // Sort using pre-computed keys
+                entries_with_keys.sort_unstable_by(|a, b| {
+                    // Directories first
+                    match (a.0.is_directory, b.0.is_directory) {
+                        (true, false) => std::cmp::Ordering::Less,
+                        (false, true) => std::cmp::Ordering::Greater,
+                        _ => {
+                            // Then alphabetically (case-insensitive) using pre-computed lowercase
+                            a.1.cmp(&b.1)
+                        }
+                    }
+                });
+
+                // Extract sorted entries
+                collected = entries_with_keys
+                    .into_iter()
+                    .map(|(entry, _)| entry)
+                    .collect();
+
+                #[cfg(feature = "profiling")]
+                drop(_precompute_span);
+            }
+
+            Ok(collected)
         });
 
-        Ok(collected)
-    })
-    .await
-    .map_err(|e| format!("Failed to join directory listing task: {e}"))??;
+        blocking_future
+            .await
+            .map_err(|e| format!("Failed to join directory listing task: {e}"))?
+    }?;
 
     Ok(entries)
 }
@@ -297,10 +389,9 @@ pub fn search_files(
         };
 
         let reader = BufReader::new(file);
-        let mut line_number = 0;
 
-        for line_result in reader.lines() {
-            line_number += 1;
+        for (line_number, line_result) in reader.lines().enumerate() {
+            let line_number = line_number + 1; // Convert to 1-based
 
             if matches.len() >= max_results {
                 break;

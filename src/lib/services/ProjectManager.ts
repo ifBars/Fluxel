@@ -29,9 +29,27 @@ export function shouldLoadCSharpConfigurations(profile: ProjectProfile | null): 
  */
 export function shouldHydrateTypeScriptWorkspace(profile: ProjectProfile | null): profile is ProjectProfile {
   if (!profile) return false;
-  const hasNodeArtifacts = profile.node.has_package_json || profile.node.has_tsconfig || profile.node.has_jsconfig;
-  const isNodeKind = profile.kind === 'javascript' || profile.kind === 'mixed';
-  return isNodeKind || hasNodeArtifacts;
+  
+  // For pure C# projects, never hydrate TypeScript services regardless of package.json presence
+  if (profile.kind === 'dotnet') {
+    return false;
+  }
+  
+  // For JavaScript projects, hydrate if they have Node.js artifacts
+  if (profile.kind === 'javascript') {
+    const hasNodeArtifacts = profile.node.has_package_json || profile.node.has_tsconfig || profile.node.has_jsconfig;
+    return hasNodeArtifacts;
+  }
+  
+  // For mixed projects, hydrate if they have TypeScript-specific artifacts
+  if (profile.kind === 'mixed') {
+    const hasTypeScriptArtifacts = profile.node.has_tsconfig || profile.node.has_jsconfig;
+    return hasTypeScriptArtifacts;
+  }
+  
+  // Unknown projects - hydrate if they have TypeScript artifacts
+  const hasTypeScriptArtifacts = profile.node.has_tsconfig || profile.node.has_jsconfig;
+  return hasTypeScriptArtifacts;
 }
 
 function resetCSharpConfigurations(): void {
@@ -81,16 +99,17 @@ export function initializeProjectOrchestrator(): void {
   if (lifecycleSubscribed) return;
   lifecycleSubscribed = true;
 
-  useProjectStore.subscribe<ProjectLifecycleSnapshot>(
-    (state) => ({
+  let prevSnapshot: ProjectLifecycleSnapshot | undefined;
+  
+  useProjectStore.subscribe((state) => {
+    const snapshot: ProjectLifecycleSnapshot = {
       rootPath: state.currentProject?.rootPath ?? null,
       profile: state.projectProfile,
       status: state.projectInitStatus,
-    }),
-    (snapshot, prevSnapshot) => {
-      void handleProjectLifecycle(snapshot, prevSnapshot);
-    }
-  );
+    };
+    void handleProjectLifecycle(snapshot, prevSnapshot);
+    prevSnapshot = snapshot;
+  });
 }
 
 /**
@@ -103,6 +122,7 @@ export async function openWorkspace(rootPath: string): Promise<void> {
   initializeProjectOrchestrator();
   await FrontendProfiler.profileAsync('openWorkspace', 'workspace', async () => {
     const normalizedRoot = rootPath.replace(/\\/g, '/');
+    const parentId = FrontendProfiler.getCurrentParentId();
 
     // Fire-and-forget cleanup operations - don't block workspace opening
     // These run in parallel with the new workspace loading
@@ -112,20 +132,29 @@ export async function openWorkspace(rootPath: string): Promise<void> {
 
     // Update project state immediately for UI responsiveness (kicks off detection + language service init).
     // This allows the UI to show loading state immediately while directory loads.
+    // Profile store subscription handlers that run after openProject
+    const storeUpdateSpan = FrontendProfiler.startSpan('store:openProject', 'workspace');
     useProjectStore.getState().openProject(normalizedRoot);
+    
+    // Store subscriptions run synchronously, but we need to track them
+    // Use a microtask to capture subscription handler execution
+    Promise.resolve().then(() => {
+      storeUpdateSpan.end({ rootPath: normalizedRoot });
+    });
 
     // Load file tree for the new workspace.
     // This happens after project state update so UI can show immediately.
     // We do NOT await this so the UI transition can happen instantly.
     // Note: loadDirectory already profiles itself internally, so no outer wrapper needed.
-    useFileSystemStore.getState().loadDirectory(normalizedRoot).catch((error) => {
+    // We pass explicit parent ID since we're firing and forgetting (leaving the span context)
+    useFileSystemStore.getState().loadDirectory(normalizedRoot, parentId).catch((error) => {
       console.error('[ProjectManager] Failed to load directory:', error);
     });
 
     // Load config metadata in the background (already non-blocking, but ensure it doesn't interfere).
     FrontendProfiler.profileAsync('loadConfigMetadata', 'workspace', async () => {
       await loadConfigMetadata(normalizedRoot);
-    }).catch((error) => {
+    }, { parentId }).catch((error) => {
       console.error('[ProjectManager] Failed to load config metadata:', error);
     });
   }, { rootPath });

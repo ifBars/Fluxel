@@ -3,6 +3,8 @@ import { getConfigMetadata } from '@/lib/config/loader';
 import { Command, Child } from '@tauri-apps/plugin-shell';
 import { registerProcess, unregisterProcess } from '@/lib/services/processManager';
 import { FrontendProfiler } from '@/lib/services/FrontendProfiler';
+import { invoke } from '@tauri-apps/api/core';
+import type { ProjectProfile } from '@/types/project';
 
 interface PreviewState {
     // Preview URL for the iframe
@@ -42,9 +44,29 @@ export const usePreviewStore = create<PreviewState>((set, get) => ({
     setError: (error) => set({ error }),
     setPort: (port) => set({ port }),
 
-    startPreview: async (projectPath: string, autoStart = true) => {
+startPreview: async (projectPath: string, autoStart = true) => {
         await FrontendProfiler.profileAsync('startPreview', 'tauri_command', async () => {
             set({ isLoading: true, error: null });
+
+            // Check project type before starting preview - don't start for pure C# projects
+            try {
+                const profile = await invoke<ProjectProfile>('detect_project_profile', {
+                    workspace_root: projectPath,
+                });
+
+                if (profile.kind === 'dotnet') {
+                    set({
+                        error: 'Web preview is not available for C#/.NET projects. Use the Build Panel for project management.',
+                        isLoading: false,
+                        isServerRunning: false,
+                        previewUrl: null
+                    });
+                    return;
+                }
+            } catch (error) {
+                // Continue if project detection fails
+                console.warn('Failed to detect project type for preview:', error);
+            }
 
             try {
             // Load config metadata to get the configured dev server port

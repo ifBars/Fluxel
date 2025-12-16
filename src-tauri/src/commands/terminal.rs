@@ -77,10 +77,8 @@ pub fn execute_shell_command<R: Runtime>(
     let app_clone = app.clone();
     std::thread::spawn(move || {
         let reader = BufReader::new(stdout);
-        for line in reader.lines() {
-            if let Ok(l) = line {
-                let _ = app_clone.emit("terminal://output", TerminalOutput { pid, data: l });
-            }
+        for l in reader.lines().map_while(Result::ok) {
+            let _ = app_clone.emit("terminal://output", TerminalOutput { pid, data: l });
         }
     });
 
@@ -88,14 +86,12 @@ pub fn execute_shell_command<R: Runtime>(
     let app_clone = app.clone();
     std::thread::spawn(move || {
         let reader = BufReader::new(stderr);
-        for line in reader.lines() {
-            if let Ok(l) = line {
-                // We emit to same event or different?
-                // BuildPanel.tsx expects 'error' type for stderr.
-                // But let's use a distinct event or just include type in payload.
-                // For now, let's use a "terminal://stderr" event to be explicit.
-                let _ = app_clone.emit("terminal://stderr", TerminalOutput { pid, data: l });
-            }
+        for l in reader.lines().map_while(Result::ok) {
+            // We emit to same event or different?
+            // BuildPanel.tsx expects 'error' type for stderr.
+            // But let's use a distinct event or just include type in payload.
+            // For now, let's use a "terminal://stderr" event to be explicit.
+            let _ = app_clone.emit("terminal://stderr", TerminalOutput { pid, data: l });
         }
     });
 

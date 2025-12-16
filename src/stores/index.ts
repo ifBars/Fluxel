@@ -3,6 +3,7 @@ export * from './workbench';
 export * from './editor';
 export * from './project';
 export * from './build';
+export * from './diagnostics';
 export * from './git/useGitStore';
 export * from './profiler';
 export * from './terminal';

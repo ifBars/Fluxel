@@ -10,6 +10,11 @@ performance.mark('app_start');
 // Expose invoke to window for debugging/profiling
 if (import.meta.env.DEV) {
   (window as any).invoke = invoke;
+  
+  // Register performance benchmarks for dev mode
+  import('./lib/services/PerformanceBenchmark').then(({ registerGlobalBenchmarks }) => {
+    registerGlobalBenchmarks();
+  });
 }
 
 const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement);

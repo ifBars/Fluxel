@@ -48,7 +48,7 @@ pub async fn start_csharp_ls(
     // Determine working directory
     let working_dir = workspace_root
         .as_ref()
-        .map(|root| PathBuf::from(root))
+        .map(PathBuf::from)
         .filter(|p| p.is_dir());
 
     // Build arguments - find solution or project file

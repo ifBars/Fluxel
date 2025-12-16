@@ -36,6 +36,7 @@ interface FileTreeNodeProps {
 }
 
 const FileTreeNode = memo(function FileTreeNode({ entry, depth }: FileTreeNodeProps) {
+    const { startSpan, trackInteraction } = useProfiler('FileTreeNode');
     // Optimize store selectors - only subscribe to what we need
     const isExpanded = useFileSystemStore((state) => state.expandedPaths.has(entry.path));
     const toggleFolder = useFileSystemStore((state) => state.toggleFolder);
@@ -49,17 +50,47 @@ const FileTreeNode = memo(function FileTreeNode({ entry, depth }: FileTreeNodePr
     const extension = entry.isDirectory ? '' : getFileExtension(entry.name);
     const fileIcon = useFileIcon(entry.name, extension);
 
-    const handleClick = useCallback(() => {
+    const handleClick = useCallback(async () => {
         if (entry.isDirectory) {
+            trackInteraction('folder_toggle', { 
+                path: entry.path, 
+                expanded: (!isExpanded).toString() 
+            });
+            
             toggleFolder(entry.path);
             // Load children if expanding and not already loaded
             if (!entry.children) {
-                void loadFolderChildren(entry.path);
+                const span = startSpan('load_folder_children', 'frontend_network');
+                try {
+                    await loadFolderChildren(entry.path);
+                    await span.end({ 
+                        folderPath: entry.path,
+                        childCount: '0' // Children haven't loaded yet at this point
+                    });
+                } catch (error) {
+                    await span.end({ 
+                        folderPath: entry.path,
+                        error: error instanceof Error ? error.message : String(error)
+                    });
+                }
             }
         } else {
-            void openFile(entry.path);
+            const span = startSpan('open_file_from_tree', 'frontend_interaction');
+            try {
+                await openFile(entry.path);
+                trackInteraction('file_opened', { 
+                    fileName: entry.name,
+                    extension: getFileExtension(entry.name)
+                });
+                await span.end({ filePath: entry.path });
+            } catch (error) {
+                await span.end({ 
+                    filePath: entry.path,
+                    error: error instanceof Error ? error.message : String(error)
+                });
+            }
         }
-    }, [entry.isDirectory, entry.path, entry.children, toggleFolder, loadFolderChildren, openFile]);
+    }, [entry.isDirectory, entry.path, entry.children, isExpanded, toggleFolder, loadFolderChildren, openFile, startSpan, trackInteraction]);
 
     return (
         <div>
@@ -126,30 +157,44 @@ const FileTreeNode = memo(function FileTreeNode({ entry, depth }: FileTreeNodePr
  * to avoid blocking the UI thread with thousands of files.
  */
 function ChunkedFileTree({ children }: { children: FileEntry[] }) {
+    const { startSpan, trackInteraction } = useProfiler('ChunkedFileTree');
     const [visibleCount, setVisibleCount] = useState(() => {
         // Initial render: show a reasonable number of items
-        // More items for better UX, but not so many that it blocks the UI
+        // More items for better UX, but not so many that it blocks UI
         return Math.min(children.length, 200);
     });
 
+    // Single unified effect that handles both reset and progressive loading
     useEffect(() => {
-        // Reset visible count when children change
-        setVisibleCount(Math.min(children.length, 200));
-    }, [children]);
+        const childrenLength = children.length;
+        const initialVisible = Math.min(childrenLength, 200);
 
-    useEffect(() => {
-        if (visibleCount < children.length) {
-            // Schedule the next batch of items to render
-            // Use requestIdleCallback for better performance, with fallback to setTimeout
+        // Reset visible count when children length changes
+        if (visibleCount > childrenLength || visibleCount < initialVisible) {
+            setVisibleCount(initialVisible);
+            trackInteraction('file_tree_reset', { 
+                totalCount: childrenLength.toString(),
+                initialVisible: initialVisible.toString()
+            });
+            return; // Don't schedule progressive loading on reset
+        }
+
+        // Progressive loading: if we have more items to show
+        if (visibleCount < childrenLength) {
             const scheduleNextBatch = () => {
-                const nextCount = Math.min(visibleCount + 100, children.length);
+                const span = startSpan('render_file_batch', 'frontend_render');
+                const nextCount = Math.min(visibleCount + 100, childrenLength);
                 setVisibleCount(nextCount);
+                span.end({ 
+                    batchSize: (nextCount - visibleCount).toString(),
+                    totalVisible: nextCount.toString()
+                });
             };
 
             const timeoutId = setTimeout(scheduleNextBatch, 0);
             return () => clearTimeout(timeoutId);
         }
-    }, [visibleCount, children.length]);
+    }, [visibleCount, children.length, startSpan, trackInteraction]);
 
     const visibleChildren = children.slice(0, visibleCount);
     const remainingCount = children.length - visibleCount;

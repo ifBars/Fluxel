@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { BuildDiagnostic } from '@/lib/languages/csharp';
 
 export type BuildStatus = 'idle' | 'running' | 'success' | 'error';
 
@@ -12,6 +13,10 @@ export interface BuildPanelState {
     buildOutput: string[];
     buildStartTime: number | null;
     buildEndTime: number | null;
+    
+    // BuildResult data from Rust backend
+    buildDiagnostics: BuildDiagnostic[];
+    buildDurationMs: number | null;
 
     // Actions
     openPanel: () => void;
@@ -19,7 +24,7 @@ export interface BuildPanelState {
     togglePanel: () => void;
 
     startBuild: () => void;
-    finishBuild: (status: 'success' | 'error') => void;
+    finishBuild: (status: 'success' | 'error', diagnostics?: BuildDiagnostic[], durationMs?: number) => void;
 
     appendOutput: (line: string) => void;
     setOutput: (lines: string[]) => void;
@@ -34,6 +39,8 @@ export const useBuildPanelStore = create<BuildPanelState>()((set) => ({
     buildOutput: [],
     buildStartTime: null,
     buildEndTime: null,
+    buildDiagnostics: [],
+    buildDurationMs: null,
 
     // Panel actions
     openPanel: () => set({ isOpen: true }),
@@ -48,12 +55,16 @@ export const useBuildPanelStore = create<BuildPanelState>()((set) => ({
         buildOutput: [],
         buildStartTime: Date.now(),
         buildEndTime: null,
+        buildDiagnostics: [],
+        buildDurationMs: null,
     }),
 
-    finishBuild: (status) => set({
+    finishBuild: (status, diagnostics = [], durationMs) => set({
         isBuilding: false,
         buildStatus: status,
         buildEndTime: Date.now(),
+        buildDiagnostics: diagnostics,
+        buildDurationMs: durationMs ?? null,
     }),
 
     // Output actions
@@ -63,5 +74,5 @@ export const useBuildPanelStore = create<BuildPanelState>()((set) => ({
 
     setOutput: (lines) => set({ buildOutput: lines }),
 
-    clearOutput: () => set({ buildOutput: [] }),
+    clearOutput: () => set({ buildOutput: [], buildDiagnostics: [], buildDurationMs: null }),
 }));

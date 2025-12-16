@@ -1,28 +1,61 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, Loader2, CheckCircle2, XCircle, Terminal, Copy, Check, Hammer } from 'lucide-react';
-import { useBuildPanelStore, useTerminalStore } from '@/stores';
+import { X, Loader2, CheckCircle2, XCircle, Terminal, Copy, Check, Hammer, AlertCircle, AlertTriangle, ExternalLink } from 'lucide-react';
+import { useBuildPanelStore, useTerminalStore, useDiagnosticsStore, useProjectStore } from '@/stores';
 import ScrollableArea from '@/components/ui/scrollable-area';
+import ProblemsView from './ProblemsView';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
+import { useProfiler } from '@/hooks/useProfiler';
 
-type Tab = 'build' | 'terminal';
+type Tab = 'problems' | 'build' | 'terminal';
 
 export default function BuildPanel() {
     const { isOpen, closePanel } = useBuildPanelStore();
-    const [activeTab, setActiveTab] = useState<Tab>('build');
+    const { projectProfile } = useProjectStore();
+    const counts = useDiagnosticsStore((state) => state.getCounts());
+    const [activeTab, setActiveTab] = useState<Tab>('problems');
+    const { trackInteraction, ProfilerWrapper } = useProfiler('BuildPanel');
 
     if (!isOpen) return null;
 
+    const handleTabChange = (tab: Tab) => {
+        trackInteraction('tab_changed', { tab, previousTab: activeTab });
+        setActiveTab(tab);
+    };
+
     return (
-        <div className="flex flex-col h-full bg-card resize-none overflow-hidden">
-            {/* Header */}
-            <div
-                className="flex items-center justify-between border-b border-border bg-muted/30 shrink-0"
-                style={{
-                    height: 'var(--build-panel-header-height, 2.25rem)',
-                }}
-            >
-                <div className="flex items-center h-full">
+        <ProfilerWrapper>
+            <div className="flex flex-col h-full bg-card resize-none overflow-hidden">
+                {/* Header */}
+                <div
+                    className="flex items-center justify-between border-b border-border bg-muted/30 shrink-0"
+                    style={{
+                        height: 'var(--build-panel-header-height, 2.25rem)',
+                    }}
+                >
+                    <div className="flex items-center h-full">
+                        <button
+                            onClick={() => handleTabChange('problems')}
+                            className={`px-3 h-full flex items-center gap-2 text-xs font-medium border-b-2 transition-colors ${activeTab === 'problems'
+                                ? 'border-primary text-foreground bg-background/50'
+                                : 'border-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                                }`}
+                        >
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        Problems
+                        {counts.errors > 0 && (
+                            <Badge variant="error" className="h-4 px-1.5 text-[10px] min-w-[1.25rem] justify-center">
+                                {counts.errors}
+                            </Badge>
+                        )}
+                        {counts.warnings > 0 && (
+                            <Badge variant="warning" className="h-4 px-1.5 text-[10px] min-w-[1.25rem] justify-center">
+                                {counts.warnings}
+                            </Badge>
+                        )}
+                    </button>
                     <button
-                        onClick={() => setActiveTab('build')}
+                        onClick={() => handleTabChange('build')}
                         className={`px-3 h-full flex items-center gap-2 text-xs font-medium border-b-2 transition-colors ${activeTab === 'build'
                             ? 'border-primary text-foreground bg-background/50'
                             : 'border-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground'
@@ -32,7 +65,7 @@ export default function BuildPanel() {
                         Build
                     </button>
                     <button
-                        onClick={() => setActiveTab('terminal')}
+                        onClick={() => handleTabChange('terminal')}
                         className={`px-3 h-full flex items-center gap-2 text-xs font-medium border-b-2 transition-colors ${activeTab === 'terminal'
                             ? 'border-primary text-foreground bg-background/50'
                             : 'border-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground'
@@ -48,7 +81,10 @@ export default function BuildPanel() {
                     style={{ gap: 'var(--build-panel-header-gap, 0.5rem)' }}
                 >
                     <button
-                        onClick={closePanel}
+                        onClick={() => {
+                            trackInteraction('panel_closed');
+                            closePanel();
+                        }}
                         className="rounded hover:bg-muted transition-colors"
                         style={{ padding: 'var(--build-panel-button-padding, 0.25rem)' }}
                         aria-label="Close panel"
@@ -63,14 +99,18 @@ export default function BuildPanel() {
 
             {/* Content Area */}
             <div className="flex-1 overflow-hidden relative">
-                <div className={`absolute inset-0 ${activeTab === 'build' ? 'z-10' : 'z-0 invisible'}`}>
-                    <BuildView />
-                </div>
-                <div className={`absolute inset-0 ${activeTab === 'terminal' ? 'z-10' : 'z-0 invisible'}`}>
-                    <TerminalView />
+                    <div className={`absolute inset-0 ${activeTab === 'problems' ? 'z-10' : 'z-0 invisible'}`}>
+                        <ProblemsView />
+                    </div>
+                    <div className={`absolute inset-0 ${activeTab === 'build' ? 'z-10' : 'z-0 invisible'}`}>
+                        <BuildView />
+                    </div>
+                    <div className={`absolute inset-0 ${activeTab === 'terminal' ? 'z-10' : 'z-0 invisible'}`}>
+                        <TerminalView projectProfile={projectProfile} />
+                    </div>
                 </div>
             </div>
-        </div>
+        </ProfilerWrapper>
     );
 }
 
@@ -81,10 +121,14 @@ function BuildView() {
         buildOutput,
         buildStartTime,
         buildEndTime,
+        buildDiagnostics,
+        buildDurationMs,
     } = useBuildPanelStore();
 
+    const { navigateToDiagnostic } = useDiagnosticsStore();
     const outputRef = useRef<HTMLDivElement>(null);
     const [isCopied, setIsCopied] = useState(false);
+    const { trackInteraction, startSpan } = useProfiler('BuildView');
 
     // Auto-scroll to bottom when new output is added
     useEffect(() => {
@@ -94,6 +138,10 @@ function BuildView() {
     }, [buildOutput]);
 
     const getBuildDuration = () => {
+        // Prefer duration from BuildResult if available
+        if (buildDurationMs !== null) {
+            return (buildDurationMs / 1000).toFixed(2);
+        }
         if (!buildStartTime) return null;
         const endTime = buildEndTime || Date.now();
         const duration = (endTime - buildStartTime) / 1000;
@@ -115,22 +163,85 @@ function BuildView() {
     };
 
     const handleCopy = async () => {
+        const span = startSpan('copy_build_output', 'frontend_interaction');
         try {
             await navigator.clipboard.writeText(buildOutput.join('\n'));
             setIsCopied(true);
             setTimeout(() => setIsCopied(false), 2000);
+            await span.end({ 
+                outputLines: buildOutput.length.toString(),
+                success: 'true'
+            });
+            trackInteraction('build_output_copied', { 
+                lineCount: buildOutput.length.toString() 
+            });
         } catch (err) {
             console.error('Failed to copy text: ', err);
+            await span.end({ 
+                error: err instanceof Error ? err.message : 'Unknown error' 
+            });
+        }
+    };
+
+    // Calculate diagnostic counts from BuildResult
+    const errorCount = buildDiagnostics.filter(d => d.severity === 'error').length;
+    const warningCount = buildDiagnostics.filter(d => d.severity === 'warning').length;
+
+    // Convert BuildDiagnostic to Diagnostic format for navigation
+    const handleDiagnosticClick = async (diagnostic: typeof buildDiagnostics[0]) => {
+        const span = startSpan('navigate_to_build_diagnostic', 'frontend_interaction');
+        trackInteraction('build_diagnostic_clicked', {
+            severity: diagnostic.severity,
+            code: diagnostic.code,
+            filePath: diagnostic.file_path
+        });
+
+        try {
+            // Find the diagnostic in the store's format (it should already be there from BuildManager)
+            // Both BuildDiagnostic and Diagnostic store use 1-based line/column
+            const storeDiagnostics = useDiagnosticsStore.getState().getAllDiagnostics();
+            const matchingDiagnostic = storeDiagnostics.find(d => 
+                d.filePath === diagnostic.file_path &&
+                d.range.startLine === diagnostic.line &&
+                d.range.startColumn === diagnostic.column &&
+                d.code === diagnostic.code &&
+                d.source === 'build'
+            );
+            
+            if (matchingDiagnostic) {
+                await navigateToDiagnostic(matchingDiagnostic);
+                await span.end({ matched: 'true', filePath: diagnostic.file_path });
+            } else {
+                // Fallback: create a temporary diagnostic for navigation
+                // Both BuildDiagnostic and Diagnostic store use 1-based line/column
+                const fileName = diagnostic.file_path.split(/[/\\]/).pop() || diagnostic.file_path;
+                const tempDiagnostic = {
+                    id: `build-${diagnostic.code}-${diagnostic.file_path}-${diagnostic.line}-${diagnostic.column}`,
+                    uri: `file://${diagnostic.file_path}`,
+                    filePath: diagnostic.file_path,
+                    fileName,
+                    severity: diagnostic.severity === 'error' ? 'error' as const : 'warning' as const,
+                    message: diagnostic.message,
+                    code: diagnostic.code,
+                    source: 'build',
+                    range: {
+                        startLine: diagnostic.line, // Both use 1-based
+                        startColumn: diagnostic.column,
+                        endLine: diagnostic.line,
+                        endColumn: diagnostic.column,
+                    },
+                };
+                await navigateToDiagnostic(tempDiagnostic);
+                await span.end({ matched: 'false', filePath: diagnostic.file_path });
+            }
+        } catch (error) {
+            await span.end({ error: error instanceof Error ? error.message : 'Unknown error' });
         }
     };
 
     return (
         <div className="flex flex-col h-full">
-            {/* Toolbar for Build specific actions (optional, can be integrated in tab bar, but keeping separate for now if needed) 
-                Currently reused logic from old header into this view or just overlay? 
-                The old header had status text and copy button. I'll put them in a sub-bar or float them.
-                Actually, simpler to have a small status bar inside.
-            */}
+            {/* Status Bar */}
             <div className="flex items-center justify-between px-3 py-1 bg-muted/20 border-b border-border text-xs">
                 <div className="flex items-center gap-2">
                     {getStatusIcon()}
@@ -139,6 +250,21 @@ function BuildView() {
                             buildStatus === 'success' ? `Build succeeded (${getBuildDuration()}s)` :
                                 buildStatus === 'error' ? `Build failed (${getBuildDuration()}s)` : 'Ready'}
                     </span>
+                    {buildDiagnostics.length > 0 && (
+                        <>
+                            <span className="text-muted-foreground/50">•</span>
+                            {errorCount > 0 && (
+                                <Badge variant="error" className="h-4 px-1.5 text-[10px]">
+                                    {errorCount} error{errorCount !== 1 ? 's' : ''}
+                                </Badge>
+                            )}
+                            {warningCount > 0 && (
+                                <Badge variant="warning" className="h-4 px-1.5 text-[10px]">
+                                    {warningCount} warning{warningCount !== 1 ? 's' : ''}
+                                </Badge>
+                            )}
+                        </>
+                    )}
                 </div>
                 <button
                     onClick={handleCopy}
@@ -149,6 +275,55 @@ function BuildView() {
                 </button>
             </div>
 
+            {/* Diagnostics Summary (if available) */}
+            {buildDiagnostics.length > 0 && buildStatus !== 'running' && (
+                <div className="px-3 py-2 bg-muted/10 border-b border-border">
+                    <div className="flex flex-col gap-1.5">
+                        {buildDiagnostics.slice(0, 5).map((diagnostic, index) => {
+                            const Icon = diagnostic.severity === 'error' ? AlertCircle : AlertTriangle;
+                            const iconColor = diagnostic.severity === 'error' ? 'text-red-500' : 'text-yellow-500';
+                            const fileName = diagnostic.file_path.split(/[/\\]/).pop() || diagnostic.file_path;
+                            
+                            return (
+                                <button
+                                    key={index}
+                                    onClick={() => handleDiagnosticClick(diagnostic)}
+                                    className="flex items-start gap-2 px-2 py-1 rounded hover:bg-muted/50 text-left group transition-colors"
+                                >
+                                    <Icon className={cn("w-3.5 h-3.5 mt-0.5 shrink-0", iconColor)} />
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 text-xs">
+                                            <span className="text-foreground font-medium truncate">
+                                                {diagnostic.message}
+                                            </span>
+                                            <span className="text-muted-foreground/60 shrink-0 text-[10px]">
+                                                {diagnostic.code}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
+                                            <span className="truncate" title={diagnostic.file_path}>
+                                                {fileName}
+                                            </span>
+                                            <span className="opacity-50">•</span>
+                                            <span className="font-mono opacity-70">
+                                                Ln {diagnostic.line}, Col {diagnostic.column}
+                                            </span>
+                                            <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity shrink-0 ml-auto" />
+                                        </div>
+                                    </div>
+                                </button>
+                            );
+                        })}
+                        {buildDiagnostics.length > 5 && (
+                            <div className="text-xs text-muted-foreground px-2 py-1">
+                                + {buildDiagnostics.length - 5} more diagnostic{buildDiagnostics.length - 5 !== 1 ? 's' : ''}. See Problems tab for full list.
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Build Output */}
             <ScrollableArea
                 ref={outputRef}
                 className="flex-1 font-mono select-text"
@@ -167,12 +342,14 @@ function BuildView() {
                     buildOutput.map((line, index) => (
                         <div
                             key={index}
-                            className={`whitespace-pre-wrap ${line.toLowerCase().includes('error')
-                                ? 'text-red-400'
-                                : line.toLowerCase().includes('warning')
-                                    ? 'text-yellow-400'
-                                    : 'text-foreground'
-                                }`}
+                            className={cn(
+                                "whitespace-pre-wrap",
+                                line.toLowerCase().includes('error') || line.toLowerCase().includes('error cs')
+                                    ? 'text-red-400'
+                                    : line.toLowerCase().includes('warning') || line.toLowerCase().includes('warning cs')
+                                        ? 'text-yellow-400'
+                                        : 'text-foreground'
+                            )}
                         >
                             {line}
                         </div>
@@ -183,7 +360,7 @@ function BuildView() {
     );
 }
 
-function TerminalView() {
+function TerminalView({ projectProfile }: { projectProfile: any }) {
     const {
         entries,
         history,
@@ -335,7 +512,7 @@ function TerminalView() {
                         onChange={(e) => setInputValue(e.target.value)}
                         onKeyDown={handleKeyDown}
                         className="flex-1 bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/30 h-6"
-                        placeholder={entries.length === 0 ? "Try 'npm run dev' or 'bun install'..." : ""}
+                        placeholder={entries.length === 0 ? getPlaceholderText(projectProfile?.kind) : ""}
                         disabled={isRunning && !activeCommandCanAcceptInput(currentCommand)}
                         autoFocus
                     />
@@ -344,6 +521,20 @@ function TerminalView() {
             </div>
         </div>
     );
+}
+
+// Helper to get project-specific placeholder text
+function getPlaceholderText(projectKind?: string): string {
+    switch (projectKind) {
+        case 'dotnet':
+            return "Try 'dotnet build' or 'dotnet run'...";
+        case 'javascript':
+            return "Try 'npm run dev' or 'bun install'...";
+        case 'mixed':
+            return "Try 'dotnet build', 'npm run dev', or other commands...";
+        default:
+            return "Try build commands for your project type...";
+    }
 }
 
 // Helper to decide if we should block input. 

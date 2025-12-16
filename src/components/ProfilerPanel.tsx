@@ -1,10 +1,11 @@
-import React, { useEffect } from 'react';
-import { useProfilerStore } from '@/stores/profiler';
-import { SessionControls } from './profiler/SessionControls';
-import { SpanTimeline } from './profiler/SpanTimeline';
-import { CategoryBreakdown } from './profiler/CategoryBreakdown';
-import { HotspotList } from './profiler/HotspotList';
+import React, { useEffect, useMemo } from 'react';
+import { useProfilerStore, useSettingsStore, densityConfigs } from '@/stores';
+import { SessionControls } from '@/components/workbench/profiler/SessionControls';
+import { SpanTimeline } from '@/components/workbench/profiler/SpanTimeline';
+import { ProfilerTabs } from '@/components/workbench/profiler/ProfilerTabs';
 import { X, Maximize2, Minimize2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 
 export const ProfilerPanel: React.FC = () => {
     const {
@@ -19,6 +20,9 @@ export const ProfilerPanel: React.FC = () => {
         panelSize,
         setPanelPosition
     } = useProfilerStore();
+
+    const uiDensity = useSettingsStore((state) => state.uiDensity);
+    const densityConfig = useMemo(() => densityConfigs[uiDensity], [uiDensity]);
 
     // Initial load and polling
     useEffect(() => {
@@ -77,7 +81,7 @@ export const ProfilerPanel: React.FC = () => {
             style={panelStyle}
             className={`
                 flex flex-col bg-background border border-border shadow-2xl rounded-lg overflow-hidden
-                ${isDocked ? '' : 'resize overflow-auto'}
+                ${isDocked ? '' : 'resize'}
             `}
         >
             {/* Header / Drag Handle */}
@@ -91,20 +95,24 @@ export const ProfilerPanel: React.FC = () => {
                 <div className="flex items-center gap-2">
                     <span className="font-semibold text-sm">Performance Profiler</span>
                 </div>
-                <div className="flex items-center gap-2">
-                    <button
+                <div className="flex items-center gap-1">
+                    <Button
+                        variant="ghost"
+                        size="icon"
                         onClick={toggleDocked}
-                        className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground transition-colors"
                         title={isDocked ? "Undock" : "Dock"}
+                        className="h-6 w-6"
                     >
                         {isDocked ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                        variant="ghost"
+                        size="icon"
                         onClick={togglePanel}
-                        className="p-1 hover:bg-destructive hover:text-white rounded text-muted-foreground transition-colors"
+                        className="h-6 w-6 hover:bg-destructive hover:text-white"
                     >
                         <X size={14} />
-                    </button>
+                    </Button>
                 </div>
             </div>
 
@@ -112,14 +120,45 @@ export const ProfilerPanel: React.FC = () => {
             <SessionControls />
 
             {/* Main Content Area */}
-            <div className="flex-1 flex overflow-hidden min-h-0">
-                <CategoryBreakdown />
-                <SpanTimeline />
-                <HotspotList />
+            <div className="flex-1 flex flex-col min-h-0 relative">
+                <PanelGroup direction="vertical">
+                    {/* Timeline - Top Section */}
+                    <Panel defaultSize={60} minSize={20}>
+                        <div className="h-full w-full relative">
+                            <SpanTimeline />
+                        </div>
+                    </Panel>
+
+                    <PanelResizeHandle
+                        className="group panel-resize-handle bg-transparent cursor-row-resize z-50 flex items-center justify-center outline-none"
+                        style={{
+                            height: '10px',
+                            minHeight: '10px',
+                            width: '100%',
+                            marginTop: '-5px',
+                            marginBottom: '-5px',
+                            position: 'relative',
+                        }}
+                    >
+                        <div
+                            className="w-full bg-border group-hover:bg-primary group-active:bg-primary transition-colors transition-all opacity-60 group-hover:opacity-100"
+                            style={{
+                                height: densityConfig.panelHandleWidth,
+                            }}
+                        />
+                    </PanelResizeHandle>
+
+                    {/* Details/Tabs - Bottom Section */}
+                    <Panel defaultSize={40} minSize={20}>
+                        <div className="h-full w-full relative bg-background">
+                            <ProfilerTabs />
+                        </div>
+                    </Panel>
+                </PanelGroup>
             </div>
 
             {/* Status Bar */}
-            <div className="h-6 bg-muted/50 border-t border-border flex items-center px-4 text-[10px] text-muted-foreground justify-between">
+            <div className="h-6 bg-muted/50 border-t border-border flex items-center px-4 text-[10px] text-muted-foreground justify-between shrink-0">
                 <div>
                     {isDocked ? 'Docked Mode' : 'Floating Mode (Drag header to move)'}
                 </div>

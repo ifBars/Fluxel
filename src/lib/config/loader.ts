@@ -33,6 +33,7 @@ import type {
     Framework,
 } from './schemas/metadata-types';
 import { useConfigMetadataStore } from '@/stores';
+import { FrontendProfiler } from '../services/FrontendProfiler';
 
 /**
  * Parse package.json file
@@ -285,9 +286,12 @@ async function detectPackageManager(
 export async function loadConfigMetadata(
     projectRoot: string
 ): Promise<ConfigResult<ConfigMetadata>> {
+    const span = FrontendProfiler.startSpan('load_config_metadata', 'frontend_network');
+    
     // Guard: Skip if already cached for this project
     const cached = useConfigMetadataStore.getState().getMetadata(projectRoot);
     if (cached) {
+        await span.end({ cached: 'true', projectRoot });
         return { success: true, data: cached };
     }
 
@@ -303,108 +307,125 @@ export async function loadConfigMetadata(
         transparent: DEFAULT_WINDOW.TRANSPARENT,
     };
 
-    // Parse all config files AND detect package manager in parallel
-    const [pkgResult, viteResult, tauriResult, tsResult, packageManager] = await Promise.all([
-        parsePackageJson(projectRoot),
-        parseViteConfig(projectRoot),
-        parseTauriConfig(projectRoot),
-        parseTsConfig(projectRoot),
-        detectPackageManager(projectRoot),
-    ]);
+    try {
+        // Parse all config files AND detect package manager in parallel
+        const [pkgResult, viteResult, tauriResult, tsResult, packageManager] = await Promise.all([
+            parsePackageJson(projectRoot),
+            parseViteConfig(projectRoot),
+            parseTauriConfig(projectRoot),
+            parseTsConfig(projectRoot),
+            detectPackageManager(projectRoot),
+        ]);
 
-    // Collect errors
-    if (!pkgResult.success) {
-        errors.push(...(pkgResult.errors ?? []));
-    }
-    if (!viteResult.success) {
-        errors.push(...(viteResult.errors ?? []));
-    }
-    if (!tauriResult.success) {
-        // Tauri config is optional, so we'll create a default
-    }
-    if (!tsResult.success) {
-        // tsconfig is optional
-    }
+        // Collect errors
+        if (!pkgResult.success) {
+            errors.push(...(pkgResult.errors ?? []));
+        }
+        if (!viteResult.success) {
+            errors.push(...(viteResult.errors ?? []));
+        }
+        if (!tauriResult.success) {
+            // Tauri config is optional, so we'll create a default
+        }
+        if (!tsResult.success) {
+            // tsconfig is optional
+        }
 
-    // Use package.json data or defaults
-    const pkgData = pkgResult.success
-        ? pkgResult.data
-        : {
-            project: {
-                name: DEFAULT_PROJECT.NAME,
-                version: DEFAULT_PROJECT.VERSION,
-                description: DEFAULT_PROJECT.DESCRIPTION,
-            },
-            dependencies: undefined,
-            scripts: undefined,
-            isTypeScript: false,
+        // Use package.json data or defaults
+        const pkgData = pkgResult.success
+            ? pkgResult.data
+            : {
+                project: {
+                    name: DEFAULT_PROJECT.NAME,
+                    version: DEFAULT_PROJECT.VERSION,
+                    description: DEFAULT_PROJECT.DESCRIPTION,
+                },
+                dependencies: undefined,
+                scripts: undefined,
+                isTypeScript: false,
+            };
+
+        // Use vite config data or defaults
+        const viteData = viteResult.success
+            ? viteResult.data
+            : {
+                devServer: {
+                    host: 'localhost',
+                    port: 1420,
+                    strictPort: true,
+                    clearScreen: false,
+                },
+                hmr: {
+                    enabled: true,
+                    port: 1421,
+                    protocol: 'ws' as const,
+                },
+                build: {
+                    outDir: DEFAULT_BUILD.DIST_DIR,
+                },
+            };
+
+        // Use tauri config data or create minimal default
+        const tauriData = tauriResult.success
+            ? tauriResult.data.tauri
+            : {
+                productName: pkgData.project.name,
+                version: pkgData.project.version,
+                identifier: `com.tauri.${pkgData.project.name}`,
+                beforeDevCommand: 'bun run dev',
+                beforeBuildCommand: 'bun run build',
+                devUrl: `http://localhost:${viteData.devServer.port}`,
+                frontendDist: DEFAULT_BUILD.FRONTEND_DIST,
+                window: defaultWindowConfig,
+            };
+
+        // Build complete metadata
+        const metadata: ConfigMetadata = {
+            version: CONFIG_METADATA_VERSION,
+            lastUpdated: new Date().toISOString(),
+            project: pkgData.project,
+            framework: detectFramework(pkgData.dependencies),
+            packageManager,
+            devServer: viteData.devServer,
+            hmr: viteData.hmr,
+            tauri: tauriData,
+            build: viteData.build,
+            pathAliases: tsResult.success ? tsResult.data.pathAliases : undefined,
+            dependencies: pkgData.dependencies,
+            scripts: pkgData.scripts,
+            isTypeScript: pkgData.isTypeScript,
         };
 
-    // Use vite config data or defaults
-    const viteData = viteResult.success
-        ? viteResult.data
-        : {
-            devServer: {
-                host: 'localhost',
-                port: 1420,
-                strictPort: true,
-                clearScreen: false,
-            },
-            hmr: {
-                enabled: true,
-                port: 1421,
-                protocol: 'ws' as const,
-            },
-            build: {
-                outDir: DEFAULT_BUILD.DIST_DIR,
-            },
-        };
+        // Store in metadata store
+        useConfigMetadataStore.getState().setMetadata(projectRoot, metadata);
 
-    // Use tauri config data or create minimal default
-    const tauriData = tauriResult.success
-        ? tauriResult.data.tauri
-        : {
-            productName: pkgData.project.name,
-            version: pkgData.project.version,
-            identifier: `com.tauri.${pkgData.project.name}`,
-            beforeDevCommand: 'bun run dev',
-            beforeBuildCommand: 'bun run build',
-            devUrl: `http://localhost:${viteData.devServer.port}`,
-            frontendDist: DEFAULT_BUILD.FRONTEND_DIST,
-            window: defaultWindowConfig,
-        };
+        await span.end({
+            projectRoot,
+            packageManager,
+            framework: metadata.framework,
+            isTypeScript: pkgData.isTypeScript?.toString() || 'false',
+            errorCount: errors.length.toString(),
+            success: (errors.length === 0).toString()
+        });
 
-    // Build complete metadata
-    const metadata: ConfigMetadata = {
-        version: CONFIG_METADATA_VERSION,
-        lastUpdated: new Date().toISOString(),
-        project: pkgData.project,
-        framework: detectFramework(pkgData.dependencies),
-        packageManager,
-        devServer: viteData.devServer,
-        hmr: viteData.hmr,
-        tauri: tauriData,
-        build: viteData.build,
-        pathAliases: tsResult.success ? tsResult.data.pathAliases : undefined,
-        dependencies: pkgData.dependencies,
-        scripts: pkgData.scripts,
-        isTypeScript: pkgData.isTypeScript,
-    };
+        if (errors.length > 0) {
+            return {
+                success: false,
+                errors,
+            };
+        }
 
-    // Store in metadata store
-    useConfigMetadataStore.getState().setMetadata(projectRoot, metadata);
-
-    if (errors.length > 0) {
         return {
-            success: false,
-            errors,
+            success: true,
+            data: metadata,
         };
+    } catch (error) {
+        await span.end({ 
+            error: error instanceof Error ? error.message : 'Unknown error',
+            projectRoot 
+        });
+        throw error;
     }
-
-    return {
-        success: true,
-        data: metadata,
-    };
 }
 
 /**

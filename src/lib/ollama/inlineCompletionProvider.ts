@@ -6,6 +6,7 @@
 import type { Monaco } from "@monaco-editor/react";
 import type { editor, languages, Position, CancellationToken } from "monaco-editor";
 import { generateCompletion, type OllamaConfig } from "./ollamaClient";
+import { FrontendProfiler } from "@/lib/services/FrontendProfiler";
 
 export interface InlineCompletionProviderConfig extends Partial<OllamaConfig> {
     debounceMs: number;
@@ -273,168 +274,184 @@ export function createInlineCompletionProvider(
                     return { items: [] };
                 }
 
-                // Extract context
-                const { prefix, suffix } = extractContext(
-                    model,
-                    position,
-                    finalConfig.maxContextLines,
-                    finalConfig.maxContextChars
-                );
+                return await FrontendProfiler.profileAsync('ollama_generate', 'frontend_interaction', async () => {
+                    // Extract context
+                    const { prefix, suffix } = extractContext(
+                        model,
+                        position,
+                        finalConfig.maxContextLines,
+                        finalConfig.maxContextChars
+                    );
 
-                // Drop leading comments/blank lines from suffix so the model anchors
-                // to the next real code instead of mirroring nearby comments.
-                let sanitizedSuffix = stripLeadingComments(suffix);
+                    // Drop leading comments/blank lines from suffix so the model anchors
+                    // to the next real code instead of mirroring nearby comments.
+                    let sanitizedSuffix = stripLeadingComments(suffix);
 
-                // If suffix is empty after stripping, look ahead for the next code lines
-                // to give the model a forward anchor.
-                if (!sanitizedSuffix) {
-                    const forward = findForwardCodeSuffix(model, position.lineNumber);
-                    if (forward) {
-                        sanitizedSuffix = forward;
+                    // If suffix is empty after stripping, look ahead for the next code lines
+                    // to give the model a forward anchor.
+                    if (!sanitizedSuffix) {
+                        const forward = findForwardCodeSuffix(model, position.lineNumber);
+                        if (forward) {
+                            sanitizedSuffix = forward;
+                        }
                     }
-                }
 
-                // Skip if prefix is too short or just whitespace
-                if (prefix.trim().length < 3) {
-                    return { items: [] };
-                }
+                    // Skip if prefix is too short or just whitespace
+                    if (prefix.trim().length < 3) {
+                        return { items: [] };
+                    }
 
-                // Generate completion
-                let completionText = "";
-                let hasReceivedChunk = false;
+                    // Generate completion
+                    let completionText = "";
+                    let hasReceivedChunk = false;
 
-                const languageId = getLanguageId(model);
-                const completionRequest = {
-                    prefix,
-                    suffix: sanitizedSuffix,
-                    language: languageId,
-                    maxTokens: finalConfig.maxCompletionLength,
-                };
-                const completionConfig = {
-                    endpoint: finalConfig.endpoint,
-                    model: finalConfig.model,
-                };
+                    const languageId = getLanguageId(model);
+                    const completionRequest = {
+                        prefix,
+                        suffix: sanitizedSuffix,
+                        language: languageId,
+                        maxTokens: finalConfig.maxCompletionLength,
+                    };
+                    const completionConfig = {
+                        endpoint: finalConfig.endpoint,
+                        model: finalConfig.model,
+                    };
 
-                // --- CACHING LOGIC START ---
-                // If we have a cached completion that still matches what the user typed, return it immediately.
-                if (lastCompletion) {
-                    const reqPrefix = lastCompletion.requestPrefix;
-                    const cachedText = lastCompletion.text;
-                    const currentPrefix = prefix;
+                    // --- CACHING LOGIC START ---
+                    // If we have a cached completion that still matches what the user typed, return it immediately.
+                    if (lastCompletion) {
+                        const reqPrefix = lastCompletion.requestPrefix;
+                        const cachedText = lastCompletion.text;
+                        const currentPrefix = prefix;
 
-                    // Check if the current prefix is just an extension of the old prefix
-                    if (currentPrefix.length > reqPrefix.length && currentPrefix.startsWith(reqPrefix)) {
-                        const addedText = currentPrefix.slice(reqPrefix.length);
+                        // Check if the current prefix is just an extension of the old prefix
+                        if (currentPrefix.length > reqPrefix.length && currentPrefix.startsWith(reqPrefix)) {
+                            const addedText = currentPrefix.slice(reqPrefix.length);
 
-                        // Check if what the user typed matches the beginning of the cached completion
-                        if (cachedText.startsWith(addedText)) {
-                            const remainingText = cachedText.slice(addedText.length);
-                            if (remainingText.length > 0) {
-                                // Update the cache to reflect the new state (optional, but good for next char)
-                                // Actually, we can just keep the original valid cache or update it.
-                                // Let's not update 'requestPrefix' to keep the anchor point, 
-                                // but relying on the original anchor is safer.
+                            // Check if what the user typed matches the beginning of the cached completion
+                            if (cachedText.startsWith(addedText)) {
+                                const remainingText = cachedText.slice(addedText.length);
+                                if (remainingText.length > 0) {
+                                    // Update the cache to reflect the new state (optional, but good for next char)
+                                    // Actually, we can just keep the original valid cache or update it.
+                                    // Let's not update 'requestPrefix' to keep the anchor point, 
+                                    // but relying on the original anchor is safer.
 
-                                return {
-                                    items: [{
-                                        insertText: remainingText,
-                                        range: {
-                                            startLineNumber: position.lineNumber,
-                                            startColumn: position.column,
-                                            endLineNumber: position.lineNumber,
-                                            endColumn: position.column,
-                                        },
-                                    }]
-                                };
+                                    FrontendProfiler.trackInteraction('ollama_cache_hit', { language: languageId });
+                                    return {
+                                        items: [{
+                                            insertText: remainingText,
+                                            range: {
+                                                startLineNumber: position.lineNumber,
+                                                startColumn: position.column,
+                                                endLineNumber: position.lineNumber,
+                                                endColumn: position.column,
+                                            },
+                                        }]
+                                    };
+                                }
                             }
                         }
+
+                        // If we're here, the cache is invalid (user typed something else or moved cursor disjointly)
+                        lastCompletion = null;
                     }
+                    // --- CACHING LOGIC END ---
 
-                    // If we're here, the cache is invalid (user typed something else or moved cursor disjointly)
-                    lastCompletion = null;
-                }
-                // --- CACHING LOGIC END ---
-
-                try {
-                    for await (const chunk of generateCompletion(
-                        completionRequest,
-                        completionConfig,
-                        abortSignal
-                    )) {
-                        // Check cancellation during streaming
-                        if (abortSignal.aborted || token.isCancellationRequested) {
-                            break;
-                        }
-
-                        hasReceivedChunk = true;
-                        completionText += chunk;
-
-                        // Stop early if we have enough text
-                        if (completionText.length >= streamingHardLimit) {
-                            break;
-                        } else if (completionText.length >= streamingSoftLimit) {
-                            if (softLimitHit) {
+                    try {
+                        const startTime = performance.now();
+                        for await (const chunk of generateCompletion(
+                            completionRequest,
+                            completionConfig,
+                            abortSignal
+                        )) {
+                            // Check cancellation during streaming
+                            if (abortSignal.aborted || token.isCancellationRequested) {
                                 break;
                             }
-                            softLimitHit = true;
+
+                            hasReceivedChunk = true;
+                            completionText += chunk;
+
+                            // Stop early if we have enough text
+                            if (completionText.length >= streamingHardLimit) {
+                                break;
+                            } else if (completionText.length >= streamingSoftLimit) {
+                                if (softLimitHit) {
+                                    break;
+                                }
+                                softLimitHit = true;
+                            }
                         }
+                        
+                        // Track generation stats
+                        if (hasReceivedChunk) {
+                            const duration = performance.now() - startTime;
+                            FrontendProfiler.trackInteraction('ollama_generation_stats', { 
+                                durationMs: duration.toFixed(0),
+                                charCount: completionText.length.toString(),
+                                language: languageId
+                            });
+                        }
+                    } catch (genError) {
+                        // Silently handle aborts - they're expected when user types quickly
+                        if (genError instanceof DOMException && genError.name === "AbortError") {
+                            return { items: [] };
+                        }
+                        // Also handle Error objects that might wrap AbortError
+                        if (genError instanceof Error && genError.message.includes("aborted")) {
+                            return { items: [] };
+                        }
+                        console.error("[Autocomplete] Generation error:", genError);
+                        throw genError;
                     }
-                } catch (genError) {
-                    // Silently handle aborts - they're expected when user types quickly
-                    if (genError instanceof DOMException && genError.name === "AbortError") {
+
+                    if (!hasReceivedChunk || !completionText.trim()) {
                         return { items: [] };
                     }
-                    // Also handle Error objects that might wrap AbortError
-                    if (genError instanceof Error && genError.message.includes("aborted")) {
+
+                    if (abortSignal.aborted || token.isCancellationRequested) {
                         return { items: [] };
                     }
-                    console.error("[Autocomplete] Generation error:", genError);
-                    throw genError;
-                }
 
-                if (!hasReceivedChunk || !completionText.trim()) {
-                    return { items: [] };
-                }
+                    // Clean and validate completion
+                    const cleanedCompletion = cleanCompletion(completionText);
 
-                if (abortSignal.aborted || token.isCancellationRequested) {
-                    return { items: [] };
-                }
+                    if (!cleanedCompletion || !cleanedCompletion.trim()) {
+                        return { items: [] };
+                    }
 
-                // Clean and validate completion
-                const cleanedCompletion = cleanCompletion(completionText);
+                    if (isEchoingSuffix(cleanedCompletion, sanitizedSuffix)) {
+                        return { items: [] };
+                    }
 
-                if (!cleanedCompletion || !cleanedCompletion.trim()) {
-                    return { items: [] };
-                }
+                    // Create inline completion item
+                    const item: languages.InlineCompletion = {
+                        insertText: cleanedCompletion,
+                        range: {
+                            startLineNumber: position.lineNumber,
+                            startColumn: position.column,
+                            endLineNumber: position.lineNumber,
+                            endColumn: position.column,
+                        },
+                    };
 
-                if (isEchoingSuffix(cleanedCompletion, sanitizedSuffix)) {
-                    return { items: [] };
-                }
+                    // Cache the completion for sticky behavior
+                    lastCompletion = {
+                        text: cleanedCompletion,
+                        requestPrefix: prefix,
+                        requestSuffix: sanitizedSuffix
+                    };
 
-                // Create inline completion item
-                const item: languages.InlineCompletion = {
-                    insertText: cleanedCompletion,
-                    range: {
-                        startLineNumber: position.lineNumber,
-                        startColumn: position.column,
-                        endLineNumber: position.lineNumber,
-                        endColumn: position.column,
-                    },
-                };
+                    // If Monaco already cancelled this request, silently drop the result
+                    if (token.isCancellationRequested || abortSignal.aborted) {
+                        return { items: [] };
+                    }
 
-                // Cache the completion for sticky behavior
-                lastCompletion = {
-                    text: cleanedCompletion,
-                    requestPrefix: prefix,
-                    requestSuffix: sanitizedSuffix
-                };
+                    FrontendProfiler.trackInteraction('ollama_completion_shown', { language: languageId });
+                    return { items: [item] };
 
-                // If Monaco already cancelled this request, silently drop the result
-                if (token.isCancellationRequested || abortSignal.aborted) {
-                    return { items: [] };
-                }
-
-                return { items: [item] };
+                }, { language: getLanguageId(model) });
 
             } catch (error) {
                 // Handle aborts silently

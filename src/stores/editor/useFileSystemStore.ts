@@ -7,7 +7,6 @@ import { FrontendProfiler } from '@/lib/services/FrontendProfiler';
 
 type BackendDirEntry = {
     name: string;
-    path: string;
     isDirectory: boolean;
     isIgnored?: boolean;
 };
@@ -23,7 +22,7 @@ interface FileSystemState {
     error: string | null;
 
     /** Load directory structure from a path */
-    loadDirectory: (path: string) => Promise<void>;
+    loadDirectory: (path: string, traceParent?: string) => Promise<void>;
     /** Load children of a specific folder (lazy loading) */
     loadFolderChildren: (path: string) => Promise<FileEntry[]>;
     /** Toggle folder expanded/collapsed state */
@@ -49,35 +48,91 @@ async function readDirectoryEntries(
     gitignoreManager: GitignoreManager | null,
     parentIsIgnored?: boolean
 ): Promise<FileEntry[]> {
-    return await FrontendProfiler.profileAsync('readDirectoryEntries', 'file_io', async () => {
+    const span = FrontendProfiler.startSpan('readDirectoryEntries', 'file_io');
+
+    try {
+        let results: FileEntry[] = [];
+        let usedBackend = 'fallback';
+        let dirCount = 0;
+        let fileCount = 0;
+        let ignoredCount = 0;
+
         try {
             // Prefer the Rust-side implementation to avoid blocking the UI thread on large folders.
-            // If parent is ignored, skip expensive gitignore checking (all children are ignored anyway)
-            const entries = await invoke<BackendDirEntry[]>('list_directory_entries', {
+            const invokeSpan = FrontendProfiler.startSpan('invoke:list_directory_entries', 'file_io');
+
+            // Prepare invoke args (minimal overhead, no separate span needed)
+            const invokeArgs = {
                 path,
                 workspaceRoot,
                 maxEntries: 10_000,
                 parentIsIgnored: parentIsIgnored ?? false,
+                traceParent: invokeSpan.id,
+            };
+
+            // Profile the actual IPC call (includes Tauri's internal serialization/deserialization)
+            // This measures the full round-trip time including:
+            // - Tauri's argument serialization
+            // - IPC message passing
+            // - Rust command execution
+            // - Response serialization
+            // - IPC response passing
+            // - Tauri's response deserialization
+            const ipcSpan = FrontendProfiler.startSpan('ipc:list_directory_entries', 'file_io');
+            const entries = await invoke<BackendDirEntry[]>('list_directory_entries', invokeArgs);
+
+            // Calculate metrics without separate span (minimal overhead)
+            const entryCount = entries.length;
+            const avgPathLength = entryCount > 0
+                ? Math.round(entries.reduce((sum, e) => sum + (path.length + 1 + e.name.length), 0) / entryCount)
+                : 0;
+
+            await ipcSpan.end({
+                entryCount: String(entryCount),
+                avgPathLength: String(avgPathLength)
             });
 
-            return entries.map((entry) => ({
-                name: entry.name,
-                path: entry.path.replace(/\\/g, '/'),
-                isDirectory: entry.isDirectory,
-                children: entry.isDirectory ? undefined : undefined,
-                isExpanded: false,
-                isIgnored: entry.isIgnored ?? false,
-            }));
+            await invokeSpan.end({ rawEntryCount: String(entryCount) });
+
+            // Optimize mapping: combine normalization, counting, and object creation in a single pass
+            // Pre-allocate array for better performance
+            results = new Array(entries.length);
+
+            // Single pass: normalize paths, count types, and create objects
+            for (let i = 0; i < entries.length; i++) {
+                const entry = entries[i];
+                // Reconstruct the path since backend no longer sends it to save bandwidth
+                // path arg is already normalized with forward slashes
+                const normalizedPath = `${path}/${entry.name}`;
+
+                // Count types
+                if (entry.isDirectory) dirCount++;
+                else fileCount++;
+                if (entry.isIgnored) ignoredCount++;
+
+                // Create object
+                results[i] = {
+                    name: entry.name,
+                    path: normalizedPath,
+                    isDirectory: entry.isDirectory,
+                    children: undefined,
+                    isExpanded: false,
+                    isIgnored: entry.isIgnored ?? false,
+                };
+            }
+
+            usedBackend = 'rust';
         } catch (error) {
             console.warn('Rust directory listing failed, falling back to plugin-fs readDir', error);
-        }
 
-        // Fallback: use plugin-fs directly (slower for very large folders).
-        try {
+            // Fallback: use plugin-fs directly (slower for very large folders).
+            const fallbackReadSpan = FrontendProfiler.startSpan('fallback:readDir', 'file_io');
             const entries = await readDir(path);
+            await fallbackReadSpan.end({ rawEntryCount: String(entries.length) });
 
             // If parent is ignored, all children are ignored - skip expensive gitignore checking
-            const fileEntries: FileEntry[] = await Promise.all(
+            const fallbackMapSpan = FrontendProfiler.startSpan('fallback:mapAndCheckGitignore', 'file_io');
+            results = await Promise.all(
                 entries.map(async (entry) => {
                     const entryPath = `${path}/${entry.name}`.replace(/\\/g, '/');
                     const isIgnored = parentIsIgnored
@@ -85,6 +140,10 @@ async function readDirectoryEntries(
                         : gitignoreManager
                             ? await gitignoreManager.isIgnored(entryPath, !!entry.isDirectory)
                             : false;
+
+                    if (entry.isDirectory) dirCount++;
+                    else fileCount++;
+                    if (isIgnored) ignoredCount++;
 
                     return {
                         name: entry.name,
@@ -96,18 +155,33 @@ async function readDirectoryEntries(
                     };
                 })
             );
+            await fallbackMapSpan.end({ mappedCount: String(results.length) });
 
             // Sort: directories first, then alphabetically
-            return fileEntries.sort((a, b) => {
+            const sortSpan = FrontendProfiler.startSpan('fallback:sortEntries', 'file_io');
+            results.sort((a, b) => {
                 if (a.isDirectory && !b.isDirectory) return -1;
                 if (!a.isDirectory && b.isDirectory) return 1;
                 return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
             });
-        } catch (error) {
-            console.error('Failed to read directory:', path, error);
-            return [];
+            await sortSpan.end();
         }
-    }, { path, entryCount: 'unknown' });
+
+        await span.end({
+            path,
+            entryCount: String(results.length),
+            backend: usedBackend,
+            directories: String(dirCount),
+            files: String(fileCount),
+            ignored: String(ignoredCount)
+        });
+
+        return results;
+    } catch (error) {
+        console.error('Failed to read directory:', path, error);
+        span.cancel();
+        return [];
+    }
 }
 
 export const useFileSystemStore = create<FileSystemState>((set, get) => ({
@@ -118,7 +192,7 @@ export const useFileSystemStore = create<FileSystemState>((set, get) => ({
     rootPath: null,
     gitignoreManager: null,
 
-    loadDirectory: async (path: string) => {
+    loadDirectory: async (path: string, traceParent?: string) => {
         const normalizedPath = path.replace(/\\/g, '/');
         const { rootPath, isLoading } = get();
 
@@ -138,8 +212,13 @@ export const useFileSystemStore = create<FileSystemState>((set, get) => ({
 
                 // Load directory entries first (Rust backend handles gitignore checking efficiently).
                 // GitignoreManager will be created lazily only if needed (fallback path).
+                // Note: readDirectoryEntries already has its own span, creating a child hierarchy
                 const children = await readDirectoryEntries(normalizedPath, normalizedPath, null, false);
 
+                // Profile the tree construction and state update
+                const buildSpan = FrontendProfiler.startSpan('buildRootEntry', 'file_io');
+
+                // Create root entry object (minimal overhead, no separate span)
                 const rootEntry: FileEntry = {
                     name,
                     path: normalizedPath,
@@ -150,7 +229,8 @@ export const useFileSystemStore = create<FileSystemState>((set, get) => ({
                 };
 
                 // Batch the state update to avoid multiple re-renders
-                // Use flushSync is NOT needed here since we want React to batch this naturally
+                // Single Zustand update with all state changes
+                const stateUpdateSpan = FrontendProfiler.startSpan('update:fileSystemState', 'file_io');
                 set({
                     rootEntry,
                     expandedPaths: new Set([normalizedPath]),
@@ -159,6 +239,12 @@ export const useFileSystemStore = create<FileSystemState>((set, get) => ({
                     // GitignoreManager is only needed for the JS fallback path (which is rarely used).
                     // Defer creation until actually needed to keep initial load fast.
                     gitignoreManager: null,
+                });
+                await stateUpdateSpan.end();
+
+                await buildSpan.end({
+                    childCount: String(children.length),
+                    rootName: name
                 });
 
                 // Note: refreshIgnoredStatus is NOT called here because the Rust backend
@@ -169,51 +255,73 @@ export const useFileSystemStore = create<FileSystemState>((set, get) => ({
                     isLoading: false,
                 });
             }
-        }, { path });
+        }, { metadata: { path }, parentId: traceParent });
     },
 
     loadFolderChildren: async (path: string) => {
-        const { gitignoreManager, rootPath, rootEntry } = get();
+        return await FrontendProfiler.profileAsync('loadFolderChildren', 'file_io', async () => {
+            const { gitignoreManager, rootPath, rootEntry } = get();
 
-        // Check if the parent folder is ignored to optimize gitignore checking
-        let parentIsIgnored = false;
-        if (rootEntry) {
-            const findEntry = (entry: FileEntry): FileEntry | null => {
-                if (entry.path === path) return entry;
-                if (entry.children) {
-                    for (const child of entry.children) {
-                        const found = findEntry(child);
-                        if (found) return found;
+            // Check if the parent folder is ignored to optimize gitignore checking
+            let parentIsIgnored = false;
+            const findParentSpan = FrontendProfiler.startSpan('findParentEntry', 'file_io');
+            if (rootEntry) {
+                const findEntry = (entry: FileEntry): FileEntry | null => {
+                    if (entry.path === path) return entry;
+                    if (entry.children) {
+                        for (const child of entry.children) {
+                            const found = findEntry(child);
+                            if (found) return found;
+                        }
                     }
-                }
-                return null;
-            };
-            const folder = findEntry(rootEntry);
-            parentIsIgnored = folder?.isIgnored ?? false;
-        }
+                    return null;
+                };
+                const folder = findEntry(rootEntry);
+                parentIsIgnored = folder?.isIgnored ?? false;
+            }
+            await findParentSpan.end({ parentIsIgnored: String(parentIsIgnored) });
 
-        const children = await readDirectoryEntries(path, rootPath, gitignoreManager, parentIsIgnored);
+            const children = await readDirectoryEntries(path, rootPath, gitignoreManager, parentIsIgnored);
 
-        // Update the tree with loaded children
-        const { rootEntry: currentRoot } = get();
-        if (currentRoot) {
-            const updateChildren = (entry: FileEntry): FileEntry => {
-                if (entry.path === path) {
-                    return { ...entry, children, isExpanded: true };
-                }
-                if (entry.children) {
-                    return {
-                        ...entry,
-                        children: entry.children.map(updateChildren),
-                    };
-                }
-                return entry;
-            };
+            // Update the tree with loaded children
+            const updateTreeSpan = FrontendProfiler.startSpan('updateTreeWithChildren', 'file_io');
 
-            set({ rootEntry: updateChildren(currentRoot) });
-        }
+            // Profile tree traversal
+            const traverseSpan = FrontendProfiler.startSpan('traverse:fileTree', 'file_io');
+            const { rootEntry: currentRoot } = get();
+            let updatedRoot: FileEntry | null = null;
+            if (currentRoot) {
+                const updateChildren = (entry: FileEntry): FileEntry => {
+                    if (entry.path === path) {
+                        return { ...entry, children, isExpanded: true };
+                    }
+                    if (entry.children) {
+                        return {
+                            ...entry,
+                            children: entry.children.map(updateChildren),
+                        };
+                    }
+                    return entry;
+                };
 
-        return children;
+                updatedRoot = updateChildren(currentRoot);
+            }
+            await traverseSpan.end({
+                childCount: String(children.length),
+                treeUpdated: String(updatedRoot !== null)
+            });
+
+            // Profile state update
+            const treeStateUpdateSpan = FrontendProfiler.startSpan('zustand:updateTreeState', 'file_io');
+            if (updatedRoot) {
+                set({ rootEntry: updatedRoot });
+            }
+            await treeStateUpdateSpan.end();
+
+            await updateTreeSpan.end({ childCount: String(children.length) });
+
+            return children;
+        }, { path });
     },
 
     toggleFolder: (path: string) => {
@@ -255,10 +363,12 @@ export const useFileSystemStore = create<FileSystemState>((set, get) => ({
     },
 
     refreshTree: async () => {
-        const { rootEntry, loadDirectory } = get();
-        if (rootEntry) {
-            await loadDirectory(rootEntry.path);
-        }
+        await FrontendProfiler.profileAsync('refreshTree', 'file_io', async () => {
+            const { rootEntry, loadDirectory } = get();
+            if (rootEntry) {
+                await loadDirectory(rootEntry.path);
+            }
+        });
     },
 
     clearTree: () => {
@@ -275,25 +385,29 @@ export const useFileSystemStore = create<FileSystemState>((set, get) => ({
      * Refresh ignored status for all entries in the tree
      */
     refreshIgnoredStatus: async () => {
-        const { rootEntry, gitignoreManager } = get();
-        if (!rootEntry || !gitignoreManager) return;
+        await FrontendProfiler.profileAsync('refreshIgnoredStatus', 'file_io', async () => {
+            const { rootEntry, gitignoreManager } = get();
+            if (!rootEntry || !gitignoreManager) return;
 
-        const updateIgnoredStatus = async (entry: FileEntry): Promise<FileEntry> => {
-            const isIgnored = await gitignoreManager.isIgnored(entry.path, entry.isDirectory);
-            const updatedEntry = { ...entry, isIgnored };
+            let entriesProcessed = 0;
+            const updateIgnoredStatus = async (entry: FileEntry): Promise<FileEntry> => {
+                entriesProcessed++;
+                const isIgnored = await gitignoreManager.isIgnored(entry.path, entry.isDirectory);
+                const updatedEntry = { ...entry, isIgnored };
 
-            if (entry.children) {
-                const updatedChildren = await Promise.all(
-                    entry.children.map(updateIgnoredStatus)
-                );
-                return { ...updatedEntry, children: updatedChildren };
-            }
+                if (entry.children) {
+                    const updatedChildren = await Promise.all(
+                        entry.children.map(updateIgnoredStatus)
+                    );
+                    return { ...updatedEntry, children: updatedChildren };
+                }
 
-            return updatedEntry;
-        };
+                return updatedEntry;
+            };
 
-        const updatedRoot = await updateIgnoredStatus(rootEntry);
-        set({ rootEntry: updatedRoot });
+            const updatedRoot = await updateIgnoredStatus(rootEntry);
+            set({ rootEntry: updatedRoot });
+        });
     },
 }));
 

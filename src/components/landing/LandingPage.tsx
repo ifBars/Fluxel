@@ -66,27 +66,44 @@ export default function LandingPage({ onProjectOpen }: LandingPageProps) {
     };
 
     const handleOpenRecentProject = async (rootPath: string) => {
-        await FrontendProfiler.profileAsync('handleOpenRecentProject', 'frontend_interaction', async () => {
-        try {
-            // Show loading state immediately
-            setOpeningProjectPath(rootPath);
-            
-            // Use startTransition to keep UI responsive during workspace opening
-            startTransition(async () => {
-                try {
-                    await openWorkspace(rootPath);
-                    onProjectOpen();
-                } catch (error) {
-                    console.error("Failed to open recent project:", error);
-                } finally {
-                    setOpeningProjectPath(null);
-                }
-            });
-        } catch (error) {
-            console.error("Failed to open recent project:", error);
-            setOpeningProjectPath(null);
-        }
-        }, { rootPath });
+        // Show loading state immediately
+        setOpeningProjectPath(rootPath);
+        
+    // Use startTransition to keep UI responsive during workspace opening
+    // Profile the gap between workspace opening and view switch
+    const gapSpan = FrontendProfiler.startSpan('gap:workspaceToViewSwitch', 'frontend_interaction');
+    
+    FrontendProfiler.profileAsync('handleOpenRecentProject', 'frontend_interaction', async () => {
+            try {
+                await openWorkspace(rootPath);
+                
+                // End gap span when workspace opens, before view switch
+                gapSpan.end({ rootPath });
+                
+                // Profile React transition scheduling
+                const transitionSpan = FrontendProfiler.startSpan('react:startTransition', 'frontend_render');
+                startTransition(() => {
+                    // End transition span when React schedules the update
+                    Promise.resolve().then(() => {
+                        transitionSpan.end({ view: 'editor' });
+                    });
+                    
+                    try {
+                        onProjectOpen();
+                    } catch (error) {
+                        console.error("Failed to open recent project:", error);
+                    } finally {
+                        setOpeningProjectPath(null);
+                    }
+                });
+            } catch (error) {
+                console.error("Failed to open recent project:", error);
+                gapSpan.cancel();
+                setOpeningProjectPath(null);
+            }
+        }, { rootPath }).catch(() => {
+            // Ignore errors in profiling
+        });
     };
 
     // Truncate path from the left for display

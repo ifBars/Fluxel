@@ -26,6 +26,8 @@ pub enum SpanCategory {
     FrontendInteraction,
     /// Frontend network/API calls
     FrontendNetwork,
+    /// Generic backend operation
+    BackendOperation,
     Other,
 }
 
@@ -44,6 +46,7 @@ impl SpanCategory {
                     "frontend_render" => SpanCategory::FrontendRender,
                     "frontend_interaction" => SpanCategory::FrontendInteraction,
                     "frontend_network" => SpanCategory::FrontendNetwork,
+                    "tauri_command" => SpanCategory::TauriCommand,
                     _ => SpanCategory::Other,
                 };
             }
@@ -52,6 +55,7 @@ impl SpanCategory {
         // Infer from name/target patterns
         let name_lower = name.to_lowercase();
         let target_lower = target.to_lowercase();
+        let is_frontend = target == "frontend";
 
         if name_lower.contains("git") || target_lower.contains("git") {
             SpanCategory::GitOperation
@@ -63,6 +67,9 @@ impl SpanCategory {
             SpanCategory::FileIo
         } else if target_lower.contains("tauri") || name_lower.starts_with("command") {
             SpanCategory::TauriCommand
+        } else if !is_frontend {
+            // If it's not explicitly frontend and matched nothing else, it's a generic backend op
+            SpanCategory::BackendOperation
         } else {
             SpanCategory::Other
         }
