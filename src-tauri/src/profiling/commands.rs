@@ -9,6 +9,7 @@
 //! - `profiler_start_session` - Start a named profiling session
 //! - `profiler_end_session` - End a session and get report
 //! - `profiler_record_frontend_span` - Record a span from the frontend
+//! - `profiler_record_frontend_spans_batch` - Record multiple spans (batched)
 //! - `profiler_export` - Export spans as JSON or Chrome Trace format
 
 use serde::{Deserialize, Serialize};
@@ -182,6 +183,25 @@ pub fn profiler_end_session(
 /// merged with backend spans for unified analysis.
 #[tauri::command]
 pub fn profiler_record_frontend_span(state: State<'_, FluxelProfiler>, span: FrontendSpanInput) {
+    record_frontend_span_internal(&state, span);
+}
+
+/// Record multiple spans from the frontend in a single IPC call.
+///
+/// This is more efficient than calling `profiler_record_frontend_span` multiple times
+/// as it reduces IPC overhead.
+#[tauri::command]
+pub fn profiler_record_frontend_spans_batch(
+    state: State<'_, FluxelProfiler>,
+    spans: Vec<FrontendSpanInput>,
+) {
+    for span in spans {
+        record_frontend_span_internal(&state, span);
+    }
+}
+
+/// Internal function to record a single frontend span.
+fn record_frontend_span_internal(state: &FluxelProfiler, span: FrontendSpanInput) {
     // Parse category
     let category = match span.category.as_str() {
         "frontend_render" => SpanCategory::FrontendRender,

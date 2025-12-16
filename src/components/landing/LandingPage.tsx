@@ -38,22 +38,31 @@ export default function LandingPage({ onProjectOpen }: LandingPageProps) {
     const [openingProjectPath, setOpeningProjectPath] = useState<string | null>(null);
 
     const handleOpenProject = async () => {
-        await FrontendProfiler.profileAsync('handleOpenProject', 'frontend_interaction', async () => {
+        const clickSpan = FrontendProfiler.startSpan('landing:open_project_click', 'frontend_interaction');
+        FrontendProfiler.trackInteraction('button_click', { button: 'open_project' });
+        
+        await FrontendProfiler.profileAsync('landing:handleOpenProject', 'frontend_interaction', async () => {
         try {
+            const dialogSpan = FrontendProfiler.startSpan('landing:open_project_dialog', 'frontend_interaction');
             const selected = await open({
                 directory: true,
                 multiple: false,
                 title: "Open Project",
             });
+            dialogSpan.end({ hasSelection: selected ? 'true' : 'false' });
 
             if (selected && typeof selected === "string") {
                 setOpeningProjectPath(selected);
+                const transitionSpan = FrontendProfiler.startSpan('landing:open_project_transition', 'frontend_interaction');
                 startTransition(async () => {
                     try {
-                        await openWorkspace(selected);
+                        // Wait for directory to load before switching views
+                        await openWorkspace(selected, { waitForDirectory: true });
+                        transitionSpan.end({ path: selected });
                         onProjectOpen();
                     } catch (error) {
                         console.error("Failed to open project:", error);
+                        transitionSpan.end({ error: 'true' });
                     } finally {
                         setOpeningProjectPath(null);
                     }
@@ -62,10 +71,15 @@ export default function LandingPage({ onProjectOpen }: LandingPageProps) {
         } catch (error) {
             console.error("Failed to open project:", error);
         }
+        }).finally(async () => {
+            await clickSpan.end();
         });
     };
 
     const handleOpenRecentProject = async (rootPath: string) => {
+        const clickSpan = FrontendProfiler.startSpan('landing:open_recent_project_click', 'frontend_interaction');
+        FrontendProfiler.trackInteraction('button_click', { button: 'open_recent_project', path: rootPath });
+        
         // Show loading state immediately
         setOpeningProjectPath(rootPath);
         
@@ -73,9 +87,11 @@ export default function LandingPage({ onProjectOpen }: LandingPageProps) {
     // Profile the gap between workspace opening and view switch
     const gapSpan = FrontendProfiler.startSpan('gap:workspaceToViewSwitch', 'frontend_interaction');
     
-    FrontendProfiler.profileAsync('handleOpenRecentProject', 'frontend_interaction', async () => {
+    FrontendProfiler.profileAsync('landing:handleOpenRecentProject', 'frontend_interaction', async () => {
             try {
-                await openWorkspace(rootPath);
+                // Wait for directory to load before switching views
+                // This eliminates the gap where the UI switches but file tree isn't ready
+                await openWorkspace(rootPath, { waitForDirectory: true });
                 
                 // End gap span when workspace opens, before view switch
                 gapSpan.end({ rootPath });
@@ -101,7 +117,9 @@ export default function LandingPage({ onProjectOpen }: LandingPageProps) {
                 gapSpan.cancel();
                 setOpeningProjectPath(null);
             }
-        }, { rootPath }).catch(() => {
+        }, { rootPath }).finally(async () => {
+            await clickSpan.end({ path: rootPath });
+        }).catch(() => {
             // Ignore errors in profiling
         });
     };
@@ -133,7 +151,14 @@ export default function LandingPage({ onProjectOpen }: LandingPageProps) {
                         <span className="text-primary/90">Pro+</span>
                         <span className="text-muted-foreground/40">•</span>
                         <button
-                            onClick={() => setIsSettingsOpen(true)}
+                            onClick={() => {
+                                const clickSpan = FrontendProfiler.startSpan('landing:settings_button_click', 'frontend_interaction');
+                                FrontendProfiler.trackInteraction('button_click', { button: 'settings' });
+                                FrontendProfiler.profileSync('landing:open_settings', 'frontend_interaction', () => {
+                                    setIsSettingsOpen(true);
+                                });
+                                clickSpan.end();
+                            }}
                             className="hover:text-foreground hover:underline transition-colors cursor-pointer"
                         >
                             Settings
@@ -151,13 +176,17 @@ export default function LandingPage({ onProjectOpen }: LandingPageProps) {
                     <ActionButton
                         icon={<GitBranchIcon size={18} />}
                         label="Clone repo"
-                        onClick={() => { }}
+                        onClick={() => {
+                            FrontendProfiler.trackInteraction('button_click', { button: 'clone_repo', disabled: 'true' });
+                        }}
                         disabled
                     />
                     <ActionButton
                         icon={<BoxIcon size={18} />}
                         label="Placeholder"
-                        onClick={() => { }}
+                        onClick={() => {
+                            FrontendProfiler.trackInteraction('button_click', { button: 'placeholder', disabled: 'true' });
+                        }}
                         disabled
                     />
                 </div>

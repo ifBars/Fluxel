@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { X, Loader2, CheckCircle2, XCircle, Terminal, Copy, Check, Hammer, AlertCircle, AlertTriangle, ExternalLink } from 'lucide-react';
 import { useBuildPanelStore, useTerminalStore, useDiagnosticsStore, useProjectStore } from '@/stores';
+import type { Diagnostic } from '@/stores/diagnostics/useDiagnosticsStore';
 import ScrollableArea from '@/components/ui/scrollable-area';
 import ProblemsView from './ProblemsView';
 import { Badge } from '@/components/ui/badge';
@@ -12,7 +13,38 @@ type Tab = 'problems' | 'build' | 'terminal';
 export default function BuildPanel() {
     const { isOpen, closePanel } = useBuildPanelStore();
     const { projectProfile } = useProjectStore();
-    const counts = useDiagnosticsStore((state) => state.getCounts());
+    // Select underlying state to avoid infinite re-renders from getCounts() returning new objects
+    const diagnosticsByFile = useDiagnosticsStore((state) => state.diagnosticsByFile);
+    const buildDiagnostics = useDiagnosticsStore((state) => state.buildDiagnostics);
+    
+    // Compute counts with useMemo to prevent infinite loops
+    const counts = useMemo(() => {
+        // Combine all LSP diagnostics from all files
+        const allLspDiagnostics: Diagnostic[] = [];
+        diagnosticsByFile.forEach((diagnostics) => {
+            allLspDiagnostics.push(...diagnostics);
+        });
+
+        // Combine with build diagnostics (avoiding duplicates by checking id)
+        const lspIds = new Set(allLspDiagnostics.map((d) => d.id));
+        const uniqueBuildDiagnostics = buildDiagnostics.filter((d) => !lspIds.has(d.id));
+        const allDiagnostics = [...allLspDiagnostics, ...uniqueBuildDiagnostics];
+
+        return allDiagnostics.reduce(
+            (acc, diagnostic) => {
+                if (diagnostic.severity === 'error') {
+                    acc.errors++;
+                } else if (diagnostic.severity === 'warning') {
+                    acc.warnings++;
+                } else if (diagnostic.severity === 'info') {
+                    acc.info++;
+                }
+                return acc;
+            },
+            { errors: 0, warnings: 0, info: 0 }
+        );
+    }, [diagnosticsByFile, buildDiagnostics]);
+    
     const [activeTab, setActiveTab] = useState<Tab>('problems');
     const { trackInteraction, ProfilerWrapper } = useProfiler('BuildPanel');
 

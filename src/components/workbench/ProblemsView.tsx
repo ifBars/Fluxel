@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
     AlertCircle, 
     AlertTriangle, 
@@ -21,19 +21,79 @@ import { useProfiler } from '@/hooks/useProfiler';
 
 export default function ProblemsView() {
     const { 
-        getFilteredDiagnostics, 
-        getCounts, 
         filter, 
         setFilter,
         navigateToDiagnostic 
     } = useDiagnosticsStore();
+    
+    // Select underlying state to avoid re-computing on every render
+    const diagnosticsByFile = useDiagnosticsStore((state) => state.diagnosticsByFile);
+    const buildDiagnostics = useDiagnosticsStore((state) => state.buildDiagnostics);
 
     const [groupByFile, setGroupByFile] = useState(true);
     const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
     const { trackInteraction, ProfilerWrapper } = useProfiler('ProblemsView');
 
-    const diagnostics = getFilteredDiagnostics();
-    const counts = getCounts();
+    // Compute all diagnostics first
+    const allDiagnostics = useMemo(() => {
+        // Combine all LSP diagnostics from all files
+        const allLspDiagnostics: Diagnostic[] = [];
+        diagnosticsByFile.forEach((diagnostics) => {
+            allLspDiagnostics.push(...diagnostics);
+        });
+
+        // Combine with build diagnostics (avoiding duplicates by checking id)
+        const lspIds = new Set(allLspDiagnostics.map((d) => d.id));
+        const uniqueBuildDiagnostics = buildDiagnostics.filter((d) => !lspIds.has(d.id));
+        return [...allLspDiagnostics, ...uniqueBuildDiagnostics];
+    }, [diagnosticsByFile, buildDiagnostics]);
+
+    // Compute filtered diagnostics with useMemo
+    const diagnostics = useMemo(() => {
+        return allDiagnostics.filter((diagnostic) => {
+            // Filter by severity
+            if (!filter.severity.includes(diagnostic.severity)) {
+                return false;
+            }
+
+            // Filter by source
+            if (filter.source && diagnostic.source !== filter.source) {
+                return false;
+            }
+
+            // Filter by search query
+            if (filter.searchQuery) {
+                const query = filter.searchQuery.toLowerCase();
+                const matchesMessage = diagnostic.message.toLowerCase().includes(query);
+                const matchesFile = diagnostic.fileName.toLowerCase().includes(query);
+                const matchesPath = diagnostic.filePath.toLowerCase().includes(query);
+                const matchesCode = diagnostic.code?.toString().toLowerCase().includes(query);
+                
+                if (!matchesMessage && !matchesFile && !matchesPath && !matchesCode) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+    }, [allDiagnostics, filter]);
+    
+    // Compute counts with useMemo
+    const counts = useMemo(() => {
+        return allDiagnostics.reduce(
+            (acc, diagnostic) => {
+                if (diagnostic.severity === 'error') {
+                    acc.errors++;
+                } else if (diagnostic.severity === 'warning') {
+                    acc.warnings++;
+                } else if (diagnostic.severity === 'info') {
+                    acc.info++;
+                }
+                return acc;
+            },
+            { errors: 0, warnings: 0, info: 0 }
+        );
+    }, [allDiagnostics]);
 
     const toggleSeverity = (severity: 'error' | 'warning' | 'info' | 'hint') => {
         const current = filter.severity;

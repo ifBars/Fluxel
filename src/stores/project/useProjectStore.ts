@@ -63,7 +63,9 @@ export const useProjectStore = create<ProjectState>()(
                 const previousWorkspace = lspClient.getWorkspaceRoot();
                 if (previousWorkspace && previousWorkspace !== rootPath) {
                     set({ csharpLspStatus: 'stopped', csharpLspError: undefined });
-                    void lspClient.stop().catch(() => {
+                    void FrontendProfiler.profileAsync('csharp_lsp_stop_workspace_switch', 'lsp_request', async () => {
+                        await lspClient.stop();
+                    }, { previousWorkspace, newWorkspace: rootPath }).catch(() => {
                         // Best-effort; ignore
                     });
                 }
@@ -139,9 +141,12 @@ export const useProjectStore = create<ProjectState>()(
                 set({ projectInitStatus: 'detecting', projectInitError: undefined });
 
                 try {
+                    const detectSpan = FrontendProfiler.startSpan('invoke:detect_project_profile', 'tauri_command');
                     const profile = await invoke<ProjectProfile>('detect_project_profile', {
                         workspace_root: project.rootPath,
+                        traceParent: detectSpan.id,
                     });
+                    await detectSpan.end({ workspaceRoot: project.rootPath });
 
                     // If project changed during detection, drop the result.
                     if (get().currentProject?.rootPath !== project.rootPath) {

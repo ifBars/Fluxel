@@ -16,6 +16,20 @@ const AuthPage = lazy(() => import("./components/auth/AuthPage"));
 const LandingPage = lazy(() => import("./components/landing/LandingPage"));
 const EditorPage = lazy(() => import("./components/editor/EditorPage"));
 
+// Preload EditorPage module to eliminate lazy loading delay
+// This runs in the background and doesn't block the initial app load
+let editorPagePreloaded = false;
+function preloadEditorPage() {
+  if (!editorPagePreloaded) {
+    editorPagePreloaded = true;
+    // Start preloading the module chunk in the background
+    import("./components/editor/EditorPage").catch(() => {
+      // Reset on error so it can be retried
+      editorPagePreloaded = false;
+    });
+  }
+}
+
 type AppView = "auth" | "landing" | "editor";
 
 /**
@@ -25,65 +39,40 @@ type AppView = "auth" | "landing" | "editor";
  */
 function TrackedSuspenseFallback({ view }: { view: string }) {
   const spanRef = useRef<ReturnType<typeof FrontendProfiler.startSpan> | null>(null);
+  const startTimeRef = useRef<number>(performance.now());
 
   // Start span on mount (when Suspense begins loading)
   if (!spanRef.current) {
     spanRef.current = FrontendProfiler.startSpan(`suspense_load:${view}`, 'frontend_render');
   }
 
-  // Profile the actual module import
-  useEffect(() => {
-    const importSpan = FrontendProfiler.startSpan(`module_import:${view}`, 'frontend_render');
-    
-    // Use a small delay to capture when the module actually loads
-    // This is approximate since we can't hook into the actual import
-    const checkInterval = setInterval(() => {
-      // Check if component has mounted (module loaded)
-      if (document.querySelector(`[data-component="${view}"]`)) {
-        importSpan.end({ view });
-        clearInterval(checkInterval);
-      }
-    }, 1);
-    
-    return () => {
-      clearInterval(checkInterval);
-      importSpan.cancel();
-    };
-  }, [view]);
-
   // End span on unmount (when lazy component finishes loading)
   useEffect(() => {
+    const loadDuration = performance.now() - startTimeRef.current;
     return () => {
       if (spanRef.current) {
-        spanRef.current.end({ view });
+        spanRef.current.end({ 
+          view, 
+          loadDurationMs: String(loadDuration.toFixed(2))
+        });
         spanRef.current = null;
       }
     };
   }, [view]);
   
-  // Track when module actually loads by checking if component rendered
-  useEffect(() => {
-    const checkSpan = FrontendProfiler.startSpan(`module_import:${view}`, 'frontend_render');
-    // Module is loaded when this component unmounts (Suspense resolved)
-    return () => {
-      checkSpan.end({ view });
-    };
-  }, [view]);
-
   return null; // Invisible fallback
 }
 
 function App() {
   const [currentView, setCurrentView] = useState<AppView>("auth");
   const [, startTransition] = useTransition();
-  const initAppearance = useSettingsStore((state) => state.initAppearance);
   const { ProfilerWrapper } = useProfiler('App');
   useGlobalShortcuts();
 
   // Initialize appearance settings on mount
   useEffect(() => {
-    initAppearance();
-  }, [initAppearance]);
+    useSettingsStore.getState().initAppearance();
+  }, []); // Run only once on mount
 
   // Preload icon pack in parallel with launch path check (optimized startup)
   useEffect(() => {
@@ -109,13 +98,22 @@ function App() {
 
   const handleLogin = useCallback(() => {
     FrontendProfiler.trackInteraction('view_switch', { from: 'auth', to: 'landing' });
+    // Preload EditorPage when user reaches landing page (likely to open a project next)
+    preloadEditorPage();
     startTransition(() => {
       setCurrentView("landing");
     });
   }, [startTransition]);
 
   const handleProjectOpen = useCallback(() => {
+    // Start tracking the complete view transition (including module load)
+    const viewTransitionSpan = FrontendProfiler.startSpan('view_transition:landing_to_editor', 'frontend_interaction');
+    
     FrontendProfiler.trackInteraction('view_switch', { from: 'landing', to: 'editor' });
+    
+    // Ensure EditorPage is preloaded before switching views
+    // This eliminates the lazy loading delay during the transition
+    preloadEditorPage();
     
     // Profile React transition scheduling and rendering
     const transitionSpan = FrontendProfiler.startSpan('react:startTransition', 'frontend_render');
@@ -129,6 +127,13 @@ function App() {
       Promise.resolve().then(() => {
         stateUpdateSpan.end({ view: 'editor' });
         transitionSpan.end({ view: 'editor' });
+      });
+      
+      // End view transition span after EditorPage mounts (captured via RAF)
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          viewTransitionSpan.end({ from: 'landing', to: 'editor' });
+        });
       });
     });
   }, [startTransition]);
@@ -145,7 +150,11 @@ function App() {
 
   const openExternalProject = useCallback(
     async (rootPath: string) => {
-      await openWorkspace(rootPath);
+      // Preload EditorPage before opening workspace to avoid lazy loading delay
+      preloadEditorPage();
+      
+      // Wait for directory to load before switching views
+      await openWorkspace(rootPath, { waitForDirectory: true });
       FrontendProfiler.trackInteraction('view_switch', { from: 'landing', to: 'editor' });
       startTransition(() => {
         setCurrentView("editor");
@@ -163,25 +172,26 @@ function App() {
   openExternalProjectRef.current = openExternalProject;
 
   useEffect(() => {
-    const checkLaunchPath = async () => {
-      // Guard against duplicate calls (React Strict Mode, dep changes)
-      if (hasCheckedLaunchPath.current) return;
-      hasCheckedLaunchPath.current = true;
+    // Guard against duplicate calls (React Strict Mode, dep changes)
+    if (hasCheckedLaunchPath.current) return;
+    hasCheckedLaunchPath.current = true;
 
-      await FrontendProfiler.profileAsync('checkLaunchPath', 'workspace', async () => {
-        try {
-          const path = await invoke<string | null>("get_launch_path");
-          if (path) {
-            await openExternalProjectRef.current(path);
-          }
-        } catch (error) {
-          console.error("Failed to check launch path:", error);
+    // Optimized: Direct IIFE with manual span control to reduce overhead
+    void (async () => {
+      const span = FrontendProfiler.startSpan('checkLaunchPath', 'workspace');
+      try {
+        const path = await invoke<string | null>("get_launch_path");
+        if (path) {
+          await openExternalProjectRef.current(path);
+          span.end({ hasPath: 'true' });
+        } else {
+          span.end({ hasPath: 'false' });
         }
-      });
-    };
-
-    // Start launch path check immediately (icon preload runs in parallel via separate useEffect)
-    checkLaunchPath();
+      } catch (error) {
+        span.end({ error: 'true' });
+        console.error("Failed to check launch path:", error);
+      }
+    })();
   }, []); // Run only on mount
 
   // Setup window close handler to cleanup processes before exit

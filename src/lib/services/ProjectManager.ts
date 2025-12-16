@@ -58,38 +58,49 @@ function resetCSharpConfigurations(): void {
 }
 
 async function orchestrateProjectServices(profile: ProjectProfile): Promise<void> {
-  if (shouldLoadCSharpConfigurations(profile)) {
-    if (lastCSharpConfigRoot !== profile.root_path) {
-      lastCSharpConfigRoot = profile.root_path;
-      try {
-        await useCSharpStore.getState().loadProjectConfigurations(profile.root_path);
-      } catch (error) {
-        lastCSharpConfigRoot = null;
-        console.error('[ProjectManager] Failed to load C# configurations:', error);
+  await FrontendProfiler.profileAsync('orchestrateProjectServices', 'workspace', async () => {
+    if (shouldLoadCSharpConfigurations(profile)) {
+      if (lastCSharpConfigRoot !== profile.root_path) {
+        lastCSharpConfigRoot = profile.root_path;
+        try {
+          await useCSharpStore.getState().loadProjectConfigurations(profile.root_path);
+        } catch (error) {
+          lastCSharpConfigRoot = null;
+          console.error('[ProjectManager] Failed to load C# configurations:', error);
+        }
       }
+    } else if (lastCSharpConfigRoot) {
+      resetCSharpConfigurations();
     }
-  } else if (lastCSharpConfigRoot) {
-    resetCSharpConfigurations();
-  }
+  }, { profileKind: profile.kind, rootPath: profile.root_path });
 }
 
 async function handleProjectLifecycle(snapshot: ProjectLifecycleSnapshot, previous?: ProjectLifecycleSnapshot): Promise<void> {
   const projectChanged = snapshot.rootPath !== previous?.rootPath;
+  const parentId = FrontendProfiler.getCurrentParentId();
 
-  if (!snapshot.rootPath) {
-    resetCSharpConfigurations();
-    return;
-  }
+  await FrontendProfiler.profileAsync('handleProjectLifecycle', 'workspace', async () => {
+    if (!snapshot.rootPath) {
+      resetCSharpConfigurations();
+      return;
+    }
 
-  if (projectChanged) {
-    resetCSharpConfigurations();
-  }
+    if (projectChanged) {
+      resetCSharpConfigurations();
+    }
 
-  if (snapshot.status !== 'ready' || !snapshot.profile) {
-    return;
-  }
+    if (snapshot.status !== 'ready' || !snapshot.profile) {
+      return;
+    }
 
-  await orchestrateProjectServices(snapshot.profile);
+    await orchestrateProjectServices(snapshot.profile);
+  }, { 
+    rootPath: snapshot.rootPath || 'none',
+    status: snapshot.status,
+    projectChanged: String(projectChanged),
+    hasProfile: String(snapshot.profile !== null),
+    parentId 
+  });
 }
 
 /**
@@ -117,8 +128,14 @@ export function initializeProjectOrchestrator(): void {
  *
  * Keeps all "open/close workspace" side-effects in one place so other features can
  * reliably react to `useProjectStore` state (including detected `projectProfile`).
+ * 
+ * @param rootPath - The workspace root path to open
+ * @param options.waitForDirectory - If true, waits for loadDirectory to complete before resolving (default: false)
  */
-export async function openWorkspace(rootPath: string): Promise<void> {
+export async function openWorkspace(
+  rootPath: string, 
+  options?: { waitForDirectory?: boolean }
+): Promise<void> {
   initializeProjectOrchestrator();
   await FrontendProfiler.profileAsync('openWorkspace', 'workspace', async () => {
     const normalizedRoot = rootPath.replace(/\\/g, '/');
@@ -144,12 +161,24 @@ export async function openWorkspace(rootPath: string): Promise<void> {
 
     // Load file tree for the new workspace.
     // This happens after project state update so UI can show immediately.
-    // We do NOT await this so the UI transition can happen instantly.
+    // By default, we do NOT await this so the UI transition can happen instantly.
+    // Pass waitForDirectory=true to wait for the directory to fully load before returning.
     // Note: loadDirectory already profiles itself internally, so no outer wrapper needed.
-    // We pass explicit parent ID since we're firing and forgetting (leaving the span context)
-    useFileSystemStore.getState().loadDirectory(normalizedRoot, parentId).catch((error) => {
-      console.error('[ProjectManager] Failed to load directory:', error);
-    });
+    // We pass explicit parent ID since we may be firing and forgetting (leaving the span context)
+    const loadDirPromise = useFileSystemStore.getState().loadDirectory(normalizedRoot, parentId);
+    
+    if (options?.waitForDirectory) {
+      // Wait for directory to load before proceeding to view switch
+      // This eliminates the gap between loadDirectory and workbench_init
+      await loadDirPromise.catch((error) => {
+        console.error('[ProjectManager] Failed to load directory:', error);
+      });
+    } else {
+      // Fire-and-forget (original behavior)
+      loadDirPromise.catch((error) => {
+        console.error('[ProjectManager] Failed to load directory:', error);
+      });
+    }
 
     // Load config metadata in the background (already non-blocking, but ensure it doesn't interfere).
     FrontendProfiler.profileAsync('loadConfigMetadata', 'workspace', async () => {

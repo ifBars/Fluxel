@@ -217,11 +217,15 @@ function extractBuildConfig(content: string): BuildConfig {
 export async function parseViteConfig(
     projectRoot: string
 ): Promise<ConfigResult<{ devServer: DevServerConfig; hmr: HmrConfig; build: BuildConfig }>> {
-    const errors: string[] = [];
+    // Import FrontendProfiler dynamically to avoid circular dependencies
+    const { FrontendProfiler } = await import('../../services/FrontendProfiler');
+    
+    return await FrontendProfiler.profileAsync('parseViteConfig', 'file_io', async () => {
+        const errors: string[] = [];
 
-    // Try vite.config.ts first, then vite.config.js
-    let configPath: string | null = null;
-    let content: string | null = null;
+        // Try vite.config.ts first, then vite.config.js
+        let configPath: string | null = null;
+        let content: string | null = null;
 
     const pathsToTry = [
         `${projectRoot}/${CONFIG_FILE_PATHS.VITE}`,
@@ -239,75 +243,76 @@ export async function parseViteConfig(
         }
     }
 
-    if (!content || !configPath) {
-        // No vite config found, return defaults
-        return {
-            success: true,
-            data: {
-                devServer: DEFAULT_DEV_SERVER_CONFIG,
-                hmr: DEFAULT_HMR_CONFIG,
-                build: DEFAULT_BUILD_CONFIG,
-            },
-        };
-    }
-
-    try {
-        // Extract configuration using static analysis
-        const devServer = extractServerConfig(content);
-        const hmr = extractHmrConfig(content);
-        const build = extractBuildConfig(content);
-
-        // Validate extracted data
-        const validationResult = viteConfigSchema.safeParse({
-            server: {
-                port: devServer.port,
-                host: devServer.host,
-                strictPort: devServer.strictPort,
-                https: devServer.https,
-                open: devServer.open,
-                hmr: hmr.enabled
-                    ? {
-                          protocol: hmr.protocol,
-                          host: hmr.host,
-                          port: hmr.port,
-                      }
-                    : false,
-            },
-            build: {
-                outDir: build.outDir,
-            },
-            clearScreen: devServer.clearScreen,
-        });
-
-        if (!validationResult.success) {
-            errors.push(
-                `Validation failed: ${validationResult.error.message}`
-            );
-            // Still return extracted data even if validation fails
-        }
-
-        if (errors.length > 0) {
+        if (!content || !configPath) {
+            // No vite config found, return defaults
             return {
-                success: false,
-                errors,
+                success: true,
+                data: {
+                    devServer: DEFAULT_DEV_SERVER_CONFIG,
+                    hmr: DEFAULT_HMR_CONFIG,
+                    build: DEFAULT_BUILD_CONFIG,
+                },
             };
         }
 
-        return {
-            success: true,
-            data: {
-                devServer,
-                hmr,
-                build,
-            },
-        };
-    } catch (error) {
-        return {
-            success: false,
-            errors: [
-                `Failed to parse vite config: ${error instanceof Error ? error.message : String(error)}`,
-            ],
-        };
-    }
+        try {
+            // Extract configuration using static analysis
+            const devServer = extractServerConfig(content);
+            const hmr = extractHmrConfig(content);
+            const build = extractBuildConfig(content);
+
+            // Validate extracted data
+            const validationResult = viteConfigSchema.safeParse({
+                server: {
+                    port: devServer.port,
+                    host: devServer.host,
+                    strictPort: devServer.strictPort,
+                    https: devServer.https,
+                    open: devServer.open,
+                    hmr: hmr.enabled
+                        ? {
+                              protocol: hmr.protocol,
+                              host: hmr.host,
+                              port: hmr.port,
+                          }
+                        : false,
+                },
+                build: {
+                    outDir: build.outDir,
+                },
+                clearScreen: devServer.clearScreen,
+            });
+
+            if (!validationResult.success) {
+                errors.push(
+                    `Validation failed: ${validationResult.error.message}`
+                );
+                // Still return extracted data even if validation fails
+            }
+
+            if (errors.length > 0) {
+                return {
+                    success: false,
+                    errors,
+                };
+            }
+
+            return {
+                success: true,
+                data: {
+                    devServer,
+                    hmr,
+                    build,
+                },
+            };
+        } catch (error) {
+            return {
+                success: false,
+                errors: [
+                    `Failed to parse vite config: ${error instanceof Error ? error.message : String(error)}`,
+                ],
+            };
+        }
+    }, { projectRoot });
 }
 

@@ -243,6 +243,8 @@ describe('FrontendProfiler - React Integration', () => {
       ['phase', 'mount'],
       ['baseDuration', '40.10'],
       ['id', 'ExpensiveComponent'],
+      ['renderTime', '45.20'],
+      ['commitOverhead', '0.00'],
     ]);
   });
 });

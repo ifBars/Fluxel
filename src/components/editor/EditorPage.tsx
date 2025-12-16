@@ -6,19 +6,29 @@ import { FrontendProfiler } from "@/lib/services/FrontendProfiler";
 function EditorPage() {
     const { ProfilerWrapper } = useProfiler('EditorPage');
     const mountSpanRef = useRef<ReturnType<typeof FrontendProfiler.startSpan> | null>(null);
+    const moduleLoadedTime = useRef<number>(performance.now());
     
-    // Track component mount phase
+    // Track component initialization (module just loaded and function called)
     if (!mountSpanRef.current) {
+        const initTime = performance.now();
+        const initSpan = FrontendProfiler.startSpan('EditorPage:init', 'frontend_render');
+        initSpan.end({ 
+            timeSinceModuleLoad: String((initTime - moduleLoadedTime.current).toFixed(2))
+        });
+        
         mountSpanRef.current = FrontendProfiler.startSpan('EditorPage:mount', 'frontend_render');
     }
     
-    // End mount span after effects run
+    // End mount span after effects run and first paint completes
     useEffect(() => {
         if (mountSpanRef.current) {
             // Use requestAnimationFrame to capture after first paint
             requestAnimationFrame(() => {
                 if (mountSpanRef.current) {
-                    mountSpanRef.current.end();
+                    const mountTime = performance.now();
+                    mountSpanRef.current.end({
+                        totalMountTime: String((mountTime - moduleLoadedTime.current).toFixed(2))
+                    });
                     mountSpanRef.current = null;
                 }
             });

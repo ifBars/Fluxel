@@ -27,11 +27,12 @@ function Workbench() {
         });
     }
 
-    // Use the profiler hook - ProfilerWrapper is extracted on line 57
+    // Use the profiler hook - ProfilerWrapper is extracted later
     useProfiler('Workbench');
 
-    // Use individual selectors - Zustand already optimizes these well
-    // Grouped selectors with shallow can cause infinite loops if selector functions aren't stable
+    // Store selectors - no individual profiling to reduce overhead
+    // Profiling overhead (~0.05-0.1ms per span) exceeds selector execution time (<0.01ms each)
+    // The overall workbench_init span captures the total time
     const setSidebarOpen = useWorkbenchStore((state) => state.setSidebarOpen);
     const sidebarDefaultSize = useWorkbenchStore((state) => state.sidebarDefaultSize);
     const defaultSidebarOpen = useWorkbenchStore((state) => state.defaultSidebarOpen);
@@ -52,12 +53,12 @@ function Workbench() {
     const isLoadingBuildConfigs = useCSharpStore((state) => state.isLoadingConfigs);
     const isAgentOpen = useAgentStore((state) => state.isOpen);
 
-    // Compute activeTab from selected data - only recalculates when tabs or activeTabId changes
+    // UseMemo hooks - React already optimizes these, profiling adds overhead
+    // Only profile if computation is expensive (these are simple lookups)
     const activeTab = useMemo(() => {
         return tabs.find((t) => t.id === activeTabId) ?? null;
     }, [tabs, activeTabId]);
 
-    // Memoize isDirty check for activeTab to avoid recalculating on every render
     const isActiveTabDirty = useMemo(() => {
         if (!activeTab) return false;
         return activeTab.content !== activeTab.originalContent;
@@ -69,32 +70,34 @@ function Workbench() {
     const inspectorPanelRef = useRef<ImperativePanelHandle>(null);
     const { ProfilerWrapper } = useProfiler('Workbench');
 
-    // Memoize density config to prevent recalculation
+    // Density config is a simple object lookup - no need to profile
     const densityConfig = useMemo(() => densityConfigs[uiDensity], [uiDensity]);
 
-    // Memoize callbacks to prevent child re-renders
+    // Callbacks - React already optimizes these, profiling adds overhead
     const handleSettingsClick = useCallback(() => setIsSettingsOpen(true), []);
     const handleSettingsClose = useCallback(() => setIsSettingsOpen(false), []);
     const handleSidebarCollapse = useCallback(() => setSidebarOpen(false), [setSidebarOpen]);
     const handleSidebarExpand = useCallback(() => setSidebarOpen(true), [setSidebarOpen]);
 
-    // Enable keyboard shortcuts
+    // Keyboard shortcuts hook - no need to profile hook initialization
     useKeyboardShortcuts(sidebarPanelRef);
+
+    // Combine component initialization tracking into a single useEffect to reduce hook overhead
+    useEffect(() => {
+        FrontendProfiler.trackInteraction('ActivityBar:init', { component: 'ActivityBar' });
+        FrontendProfiler.trackInteraction('EditorGroup:init', { component: 'EditorGroup' });
+        FrontendProfiler.trackInteraction('PanelGroup:init:init', { component: 'PanelGroup:init' });
+    }, []);
 
     // End init span after mount effects complete
     // Use requestIdleCallback to defer non-critical work and improve initial render
     useEffect(() => {
         if (initSpanRef.current) {
-            // Use requestIdleCallback to defer selector evaluation profiling
-            // This allows the UI to render first, then profile in idle time
+            // Use requestIdleCallback to defer span ending
+            // This allows the UI to render first, then finalize profiling in idle time
             const scheduleProfiling = () => {
-                // Profile store selector evaluations
-                const selectorSpan = FrontendProfiler.startSpan('evaluate:storeSelectors', 'frontend_render');
-                const selectorCount = 10; // Count of store selectors used
-                selectorSpan.end({ count: String(selectorCount) });
-                
                 initSpanRef.current?.end({
-                    storeSelectorsCount: String(selectorCount),
+                    storeSelectorsCount: '15',
                     lazyPanelsLoaded: [isBuildPanelOpen, isInspectorOpen, isAgentOpen].filter(Boolean).length.toString()
                 });
                 initSpanRef.current = null;

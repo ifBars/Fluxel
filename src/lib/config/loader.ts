@@ -46,10 +46,11 @@ async function parsePackageJson(
     scripts?: Record<string, string>;
     isTypeScript?: boolean;
 }>> {
-    try {
-        const content = await readTextFile(
-            `${projectRoot}/${CONFIG_FILE_PATHS.PACKAGE}`
-        );
+    return await FrontendProfiler.profileAsync('parsePackageJson', 'file_io', async () => {
+        try {
+            const content = await readTextFile(
+                `${projectRoot}/${CONFIG_FILE_PATHS.PACKAGE}`
+            );
         const json = JSON.parse(content);
         const result = packageJsonSchema.safeParse(json);
 
@@ -85,23 +86,24 @@ async function parsePackageJson(
             pkg.devDependencies?.['typescript'] !== undefined ||
             pkg.dependencies?.['typescript'] !== undefined;
 
-        return {
-            success: true,
-            data: {
-                project,
-                dependencies,
-                scripts: pkg.scripts,
-                isTypeScript,
-            },
-        };
-    } catch (error) {
-        return {
-            success: false,
-            errors: [
-                `Failed to read package.json: ${error instanceof Error ? error.message : String(error)}`,
-            ],
-        };
-    }
+            return {
+                success: true,
+                data: {
+                    project,
+                    dependencies,
+                    scripts: pkg.scripts,
+                    isTypeScript,
+                },
+            };
+        } catch (error) {
+            return {
+                success: false,
+                errors: [
+                    `Failed to read package.json: ${error instanceof Error ? error.message : String(error)}`,
+                ],
+            };
+        }
+    }, { projectRoot });
 }
 
 /**
@@ -110,10 +112,11 @@ async function parsePackageJson(
 async function parseTauriConfig(
     projectRoot: string
 ): Promise<ConfigResult<{ tauri: TauriConfig }>> {
-    try {
-        const content = await readTextFile(
-            `${projectRoot}/${CONFIG_FILE_PATHS.TAURI}`
-        );
+    return await FrontendProfiler.profileAsync('parseTauriConfig', 'file_io', async () => {
+        try {
+            const content = await readTextFile(
+                `${projectRoot}/${CONFIG_FILE_PATHS.TAURI}`
+            );
         const json = JSON.parse(content);
         const result = tauriConfigJsonSchema.safeParse(json);
 
@@ -166,19 +169,20 @@ async function parseTauriConfig(
                 : undefined,
         };
 
-        return {
-            success: true,
-            data: { tauri },
-        };
-    } catch (error) {
-        // Tauri config is optional for non-Tauri projects
-        return {
-            success: false,
-            errors: [
-                `Failed to read tauri.conf.json: ${error instanceof Error ? error.message : String(error)}`,
-            ],
-        };
-    }
+            return {
+                success: true,
+                data: { tauri },
+            };
+        } catch (error) {
+            // Tauri config is optional for non-Tauri projects
+            return {
+                success: false,
+                errors: [
+                    `Failed to read tauri.conf.json: ${error instanceof Error ? error.message : String(error)}`,
+                ],
+            };
+        }
+    }, { projectRoot });
 }
 
 /**
@@ -187,10 +191,11 @@ async function parseTauriConfig(
 async function parseTsConfig(
     projectRoot: string
 ): Promise<ConfigResult<{ pathAliases?: PathAliases }>> {
-    try {
-        const content = await readTextFile(
-            `${projectRoot}/${CONFIG_FILE_PATHS.TSCONFIG}`
-        );
+    return await FrontendProfiler.profileAsync('parseTsConfig', 'file_io', async () => {
+        try {
+            const content = await readTextFile(
+                `${projectRoot}/${CONFIG_FILE_PATHS.TSCONFIG}`
+            );
         const json = JSON.parse(content);
         const result = tsConfigSchema.safeParse(json);
 
@@ -210,19 +215,20 @@ async function parseTsConfig(
                 }
                 : undefined;
 
-        return {
-            success: true,
-            data: { pathAliases },
-        };
-    } catch (error) {
-        // tsconfig.json is optional
-        return {
-            success: false,
-            errors: [
-                `Failed to read tsconfig.json: ${error instanceof Error ? error.message : String(error)}`,
-            ],
-        };
-    }
+            return {
+                success: true,
+                data: { pathAliases },
+            };
+        } catch (error) {
+            // tsconfig.json is optional
+            return {
+                success: false,
+                errors: [
+                    `Failed to read tsconfig.json: ${error instanceof Error ? error.message : String(error)}`,
+                ],
+            };
+        }
+    }, { projectRoot });
 }
 
 /**
@@ -253,31 +259,33 @@ function detectFramework(
 async function detectPackageManager(
     projectRoot: string
 ): Promise<(typeof PACKAGE_MANAGERS)[number]> {
-    const lockfilePriority: Array<{
-        file: string;
-        manager: (typeof PACKAGE_MANAGERS)[number];
-    }> = [
-            { file: 'bun.lockb', manager: 'bun' },
-            { file: 'bun.lock', manager: 'bun' },
-            { file: 'pnpm-lock.yaml', manager: 'pnpm' },
-            { file: 'yarn.lock', manager: 'yarn' },
-            { file: 'package-lock.json', manager: 'npm' },
-        ];
+    return await FrontendProfiler.profileAsync('detectPackageManager', 'file_io', async () => {
+        const lockfilePriority: Array<{
+            file: string;
+            manager: (typeof PACKAGE_MANAGERS)[number];
+        }> = [
+                { file: 'bun.lockb', manager: 'bun' },
+                { file: 'bun.lock', manager: 'bun' },
+                { file: 'pnpm-lock.yaml', manager: 'pnpm' },
+                { file: 'yarn.lock', manager: 'yarn' },
+                { file: 'package-lock.json', manager: 'npm' },
+            ];
 
-    try {
-        const entries = await readDir(projectRoot);
+        try {
+            const entries = await readDir(projectRoot);
         const names = new Set(entries.map((entry) => entry.name).filter(Boolean));
 
-        for (const { file, manager } of lockfilePriority) {
-            if (names.has(file)) {
-                return manager;
+            for (const { file, manager } of lockfilePriority) {
+                if (names.has(file)) {
+                    return manager;
+                }
             }
+        } catch (error) {
+            console.warn('Failed to detect package manager; defaulting to bun:', error);
         }
-    } catch (error) {
-        console.warn('Failed to detect package manager; defaulting to bun:', error);
-    }
 
-    return DEFAULT_PACKAGE_MANAGER;
+        return DEFAULT_PACKAGE_MANAGER;
+    }, { projectRoot });
 }
 
 /**

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { AuthAuroraBackdrop } from "./AuthAuroraBackdrop";
 import { useSettingsStore, type AccentColor } from "@/stores";
+import { FrontendProfiler } from "@/lib/services/FrontendProfiler";
 
 // Inline SVG icons to avoid eager loading lucide-react during app initialization
 const GithubIcon = ({ className }: { className?: string }) => (
@@ -106,7 +107,12 @@ export default function AuthPage({
                                     <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Theme</span>
                                     <div className="grid grid-cols-2 gap-2">
                                         <button
-                                            onClick={() => setTheme("light")}
+                                            onClick={() => {
+                                                FrontendProfiler.trackInteraction('theme_change', { theme: 'light' });
+                                                FrontendProfiler.profileSync('auth:set_theme', 'frontend_interaction', () => {
+                                                    setTheme("light");
+                                                }, { theme: 'light' });
+                                            }}
                                             className={`flex items-center justify-center gap-2 p-2 rounded-lg border transition-all ${theme === "light"
                                                 ? "border-primary bg-primary/10 text-primary"
                                                 : "border-border hover:bg-muted/50 text-muted-foreground"
@@ -117,7 +123,12 @@ export default function AuthPage({
                                             {theme === "light" && <CheckIcon size={12} />}
                                         </button>
                                         <button
-                                            onClick={() => setTheme("dark")}
+                                            onClick={() => {
+                                                FrontendProfiler.trackInteraction('theme_change', { theme: 'dark' });
+                                                FrontendProfiler.profileSync('auth:set_theme', 'frontend_interaction', () => {
+                                                    setTheme("dark");
+                                                }, { theme: 'dark' });
+                                            }}
                                             className={`flex items-center justify-center gap-2 p-2 rounded-lg border transition-all ${theme === "dark"
                                                 ? "border-primary bg-primary/10 text-primary"
                                                 : "border-border hover:bg-muted/50 text-muted-foreground"
@@ -137,7 +148,12 @@ export default function AuthPage({
                                         {accentColors.map((color) => (
                                             <button
                                                 key={color.value}
-                                                onClick={() => setAccentColor(color.value)}
+                                                onClick={() => {
+                                                    FrontendProfiler.trackInteraction('accent_color_change', { color: color.value });
+                                                    FrontendProfiler.profileSync('auth:set_accent_color', 'frontend_interaction', () => {
+                                                        setAccentColor(color.value);
+                                                    }, { color: color.value });
+                                                }}
                                                 className={`relative w-7 h-7 rounded-full ${color.color} transition-all hover:scale-110 ${accentColor === color.value ? "ring-2 ring-offset-2 ring-offset-card ring-foreground" : ""
                                                     }`}
                                                 aria-label={color.label}
@@ -174,7 +190,14 @@ export default function AuthPage({
                             variant="surface"
                             size="tile"
                             className="w-full justify-start"
-                            onClick={onLogin}
+                            onClick={() => {
+                                const clickSpan = FrontendProfiler.startSpan('auth:github_login_click', 'frontend_interaction');
+                                FrontendProfiler.trackInteraction('button_click', { button: 'github_login' });
+                                FrontendProfiler.profileSync('auth:github_login_handler', 'frontend_interaction', () => {
+                                    onLogin();
+                                }, { provider: 'github' });
+                                clickSpan.end({ provider: 'github' });
+                            }}
                         >
                             <div className="flex items-center gap-3">
                                 <GithubIcon className="h-5 w-5 text-muted-foreground" />
@@ -192,7 +215,14 @@ export default function AuthPage({
                             variant="surface"
                             size="tile"
                             className="w-full justify-start"
-                            onClick={onLogin}
+                            onClick={() => {
+                                const clickSpan = FrontendProfiler.startSpan('auth:google_login_click', 'frontend_interaction');
+                                FrontendProfiler.trackInteraction('button_click', { button: 'google_login' });
+                                FrontendProfiler.profileSync('auth:google_login_handler', 'frontend_interaction', () => {
+                                    onLogin();
+                                }, { provider: 'google' });
+                                clickSpan.end({ provider: 'google' });
+                            }}
                         >
                             <div className="flex items-center gap-3">
                                 <span className="w-5 h-5 flex items-center justify-center font-bold text-lg text-blue-500">
@@ -213,7 +243,14 @@ export default function AuthPage({
                             variant="surface"
                             size="tile"
                             className="w-full justify-start"
-                            onClick={handleSkipLogin}
+                            onClick={() => {
+                                const clickSpan = FrontendProfiler.startSpan('auth:skip_login_click', 'frontend_interaction');
+                                FrontendProfiler.trackInteraction('button_click', { button: 'skip_login' });
+                                FrontendProfiler.profileSync('auth:skip_login_handler', 'frontend_interaction', () => {
+                                    handleSkipLogin();
+                                }, { action: 'skip' });
+                                clickSpan.end({ action: 'skip' });
+                            }}
                         >
                             <div className="flex items-center gap-3">
                                 <LogOutIcon className="h-5 w-5 text-muted-foreground" />

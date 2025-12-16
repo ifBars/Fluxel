@@ -21,21 +21,90 @@ import type {
  * In production builds, profiling commands are not registered.
  */
 let isProfilingAvailable: boolean | null = null;
+let profilingCheckPromise: Promise<boolean> | null = null;
 
 async function checkProfilingAvailable(): Promise<boolean> {
     if (isProfilingAvailable !== null) {
         return isProfilingAvailable;
     }
 
-    try {
-        await invoke('profiler_get_status');
-        isProfilingAvailable = true;
-    } catch {
-        isProfilingAvailable = false;
-        console.log('[Profiler] Profiling not available (production build or feature disabled)');
+    // Deduplicate concurrent checks
+    if (profilingCheckPromise) {
+        return profilingCheckPromise;
     }
 
-    return isProfilingAvailable;
+    profilingCheckPromise = (async () => {
+        try {
+            await invoke('profiler_get_status');
+            isProfilingAvailable = true;
+        } catch {
+            isProfilingAvailable = false;
+            console.log('[Profiler] Profiling not available (production build or feature disabled)');
+        }
+        return isProfilingAvailable;
+    })();
+
+    return profilingCheckPromise;
+}
+
+/**
+ * Synchronous check for profiling availability.
+ * Returns false if we haven't checked yet (to avoid blocking).
+ */
+function isProfilingAvailableSync(): boolean {
+    return isProfilingAvailable === true;
+}
+
+// =============================================================================
+// Span Batching for Performance
+// =============================================================================
+
+const pendingSpans: FrontendSpanInput[] = [];
+let flushScheduled = false;
+const BATCH_FLUSH_INTERVAL = 50; // ms - flush every 50ms max
+
+function scheduleFlush(): void {
+    if (flushScheduled || pendingSpans.length === 0) return;
+    flushScheduled = true;
+    
+    // Use setTimeout for batching - low priority, won't block UI
+    setTimeout(flushPendingSpans, BATCH_FLUSH_INTERVAL);
+}
+
+async function flushPendingSpans(): Promise<void> {
+    flushScheduled = false;
+    
+    if (pendingSpans.length === 0) return;
+    if (!isProfilingAvailableSync()) {
+        pendingSpans.length = 0; // Clear if profiling not available
+        return;
+    }
+    
+    // Take all pending spans
+    const spans = pendingSpans.splice(0, pendingSpans.length);
+    
+    try {
+        // Send all spans in a single IPC call
+        await invoke('profiler_record_frontend_spans_batch', { spans });
+    } catch {
+        // If batch command doesn't exist, fall back to individual calls
+        // This maintains backwards compatibility
+        for (const span of spans) {
+            invoke('profiler_record_frontend_span', { span }).catch(() => {});
+        }
+    }
+}
+
+/**
+ * Queue a span for batched recording.
+ * This is fire-and-forget - spans are batched and sent periodically.
+ */
+function queueSpan(span: FrontendSpanInput): void {
+    // Early exit if we know profiling isn't available
+    if (isProfilingAvailable === false) return;
+    
+    pendingSpans.push(span);
+    scheduleFlush();
 }
 
 // =============================================================================
@@ -110,10 +179,13 @@ export async function endSession(sessionId: string): Promise<SessionReport | nul
 /**
  * Record a span from the frontend.
  * This allows React/TypeScript code to record profiling data.
+ * 
+ * Note: Spans are batched and sent asynchronously for performance.
+ * This function returns immediately and does not block.
  */
 export async function recordFrontendSpan(span: FrontendSpanInput): Promise<void> {
-    if (!await checkProfilingAvailable()) return;
-    await invoke('profiler_record_frontend_span', { span });
+    // Use the fast path - queue for batching
+    queueSpan(span);
 }
 
 // =============================================================================
@@ -242,5 +314,9 @@ export const ProfilerService = {
     // Utilities
     isAvailable,
 };
+
+// Eagerly check profiling availability so that sync checks work
+// This is fire-and-forget - we don't block on it
+checkProfilingAvailable().catch(() => {});
 
 export default ProfilerService;

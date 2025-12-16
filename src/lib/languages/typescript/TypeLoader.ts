@@ -187,23 +187,32 @@ export function toFileUri(path: string): string {
  * Read and parse package.json
  */
 async function readPackageJson(projectRoot: string): Promise<PackageJson | null> {
-    try {
-        const content = await readTextFile(normalizePath(`${projectRoot}/package.json`));
-        return JSON.parse(content) as PackageJson;
-    } catch (error) {
-        // Silent failure is expected for non-Node projects
-        return null;
-    }
+    // Import FrontendProfiler dynamically to avoid circular dependencies
+    const { FrontendProfiler } = await import('../../services/FrontendProfiler');
+    
+    return await FrontendProfiler.profileAsync('readPackageJson', 'file_io', async () => {
+        try {
+            const content = await readTextFile(normalizePath(`${projectRoot}/package.json`));
+            return JSON.parse(content) as PackageJson;
+        } catch (error) {
+            // Silent failure is expected for non-Node projects
+            return null;
+        }
+    }, { projectRoot });
 }
 
 /**
  * Read and parse tsconfig.json, resolving references and extends
  */
 export async function readTsConfig(projectRoot: string): Promise<TsConfig | null> {
-    try {
-        const rootConfigPath = normalizePath(`${projectRoot}/tsconfig.json`);
-        const content = await readTextFile(rootConfigPath);
-        const rootConfig = JSON.parse(content) as TsConfig;
+    // Import FrontendProfiler dynamically to avoid circular dependencies
+    const { FrontendProfiler } = await import('../../services/FrontendProfiler');
+    
+    return await FrontendProfiler.profileAsync('readTsConfig', 'file_io', async () => {
+        try {
+            const rootConfigPath = normalizePath(`${projectRoot}/tsconfig.json`);
+            const content = await readTextFile(rootConfigPath);
+            const rootConfig = JSON.parse(content) as TsConfig;
         
         // If the root config has references, try to merge compilerOptions from referenced configs
         // This handles cases where paths are defined in tsconfig.app.json but referenced from root
@@ -242,6 +251,7 @@ export async function readTsConfig(projectRoot: string): Promise<TsConfig | null
         // Silent failure is expected for non-TS projects
         return null;
     }
+    }, { projectRoot });
 }
 
 /**
@@ -630,8 +640,12 @@ async function loadDefaultLibFiles(
     monaco: MonacoInstance,
     libs: string[]
 ): Promise<void> {
-    try {
-        const tsLibPath = normalizePath(`${projectRoot}/node_modules/typescript/lib`);
+    // Import FrontendProfiler dynamically to avoid circular dependencies
+    const { FrontendProfiler } = await import('../../services/FrontendProfiler');
+    
+    return await FrontendProfiler.profileAsync('loadDefaultLibFiles', 'workspace', async () => {
+        try {
+            const tsLibPath = normalizePath(`${projectRoot}/node_modules/typescript/lib`);
 
         // Check if typescript is installed
         const entries = await readDirectory(tsLibPath);
@@ -713,11 +727,12 @@ async function loadDefaultLibFiles(
             }
         }
 
-        console.log(`[TypeLoader] Loaded ${loadedCount} default lib files`);
-    } catch (error) {
-        console.error('[TypeLoader] Failed to load default lib files:', error);
-        // Don't rethrow - this is a non-critical enhancement
-    }
+            console.log(`[TypeLoader] Loaded ${loadedCount} default lib files`);
+        } catch (error) {
+            console.error('[TypeLoader] Failed to load default lib files:', error);
+            // Don't rethrow - this is a non-critical enhancement
+        }
+    }, { projectRoot, libCount: libs.length.toString() });
 }
 
 /**
@@ -772,8 +787,10 @@ function configureCompilerOptions(
     projectRoot: string,
     monaco: MonacoInstance
 ): void {
+    // Note: FrontendProfiler is imported dynamically in loadProjectTypes
+    // For synchronous profiling, we'll skip it here to avoid circular dependency issues
+    // The parent loadProjectTypes span already covers this operation
     const compilerOptions = tsConfig?.compilerOptions || {};
-
     const monacoOptions: Monaco.typescript.CompilerOptions = {
         target: monaco.typescript.ScriptTarget.ES2020,
         module: monaco.typescript.ModuleKind.ESNext,

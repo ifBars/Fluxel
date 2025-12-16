@@ -111,6 +111,8 @@ pub fn run() {
             #[cfg(feature = "profiling")]
             profiling::commands::profiler_record_frontend_span,
             #[cfg(feature = "profiling")]
+            profiling::commands::profiler_record_frontend_spans_batch,
+            #[cfg(feature = "profiling")]
             profiling::commands::profiler_export,
             // Process Manager Commands
             services::process_manager::register_child_process,
