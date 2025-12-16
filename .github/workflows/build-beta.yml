@@ -81,15 +81,11 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build frontend
-        env:
-          NODE_OPTIONS: --max-old-space-size=4096
-        run: bun run build
-
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_OPTIONS: --max-old-space-size=6144
         with:
           projectPath: ./src-tauri
           args: ${{ matrix.args }}
