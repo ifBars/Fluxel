@@ -6,7 +6,6 @@ use std::fs;
 
 use anyhow::{Context, Result};
 use camino::{Utf8Path, Utf8PathBuf};
-use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
