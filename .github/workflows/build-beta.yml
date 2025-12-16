@@ -87,19 +87,14 @@ jobs:
       - name: Install dependencies (macOS)
         if: matrix.platform == 'macos-latest'
         run: |
-          # Install OpenSSL via Homebrew for cross-compilation support
-          brew install openssl@3
-          OPENSSL_PREFIX=$(brew --prefix openssl@3)
-          # Set OPENSSL_DIR for cross-compilation (needed for x86_64-apple-darwin on Apple Silicon)
-          echo "OPENSSL_DIR=$OPENSSL_PREFIX" >> $GITHUB_ENV
-          # Set target-specific OpenSSL environment variables for cross-compilation
+          # git2 with vendored-openssl feature builds OpenSSL from source
+          # This works for both native and cross-compilation targets
+          # No need to install system OpenSSL when using vendored feature
+          # Set environment variables to ensure all OpenSSL-dependent crates use vendored builds
           if [ "${{ matrix.target }}" == "x86_64-apple-darwin" ]; then
-            echo "X86_64_APPLE_DARWIN_OPENSSL_DIR=$OPENSSL_PREFIX" >> $GITHUB_ENV
-            echo "X86_64_APPLE_DARWIN_OPENSSL_LIB_DIR=$OPENSSL_PREFIX/lib" >> $GITHUB_ENV
-            echo "X86_64_APPLE_DARWIN_OPENSSL_INCLUDE_DIR=$OPENSSL_PREFIX/include" >> $GITHUB_ENV
+            echo "OPENSSL_STATIC=1" >> $GITHUB_ENV
+            echo "OPENSSL_VENDORED=1" >> $GITHUB_ENV
           fi
-          # Set PKG_CONFIG_PATH so pkg-config can find OpenSSL
-          echo "PKG_CONFIG_PATH=$OPENSSL_PREFIX/lib/pkgconfig" >> $GITHUB_ENV
 
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
