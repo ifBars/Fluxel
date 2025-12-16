@@ -186,14 +186,28 @@ function configurePathAliases(
     // Monaco TS worker uses URI-style file names (file:///c%3A/...), so paths must match.
     const baseUrlUri = toFileUri(resolvedBaseUrlFs);
 
-    // Normalize path replacements to absolute URIs so Monaco/TS can resolve them
+    // IMPORTANT: Path replacements must preserve wildcards for TypeScript path mapping
+    // TypeScript's path mapping works by:
+    // 1. Matching the import against the pattern (e.g., @/components/ui/slider matches @/*)
+    // 2. Replacing * in the replacement pattern with the matched part (components/ui/slider)
+    // 3. Resolving the result relative to baseUrl
+    // Monaco's TypeScript worker needs absolute URIs, but we can use relative paths
+    // that will be resolved relative to the baseUrl URI
     const resolvedPaths: Record<string, string[]> = {};
     for (const [pattern, replacements] of Object.entries(paths)) {
         resolvedPaths[pattern] = (replacements as string[]).map((r: string) => {
-            const absFs = r.startsWith('/')
-                ? normalizePath(r)
-                : normalizePath(`${resolvedBaseUrlFs}/${r}`);
-            return toFileUri(absFs);
+            // If the replacement contains a wildcard, preserve it as a relative path
+            // Monaco will resolve it relative to baseUrl
+            if (r.includes('*')) {
+                // Ensure it starts with ./ for relative path
+                return r.startsWith('./') ? r : `./${r}`;
+            } else {
+                // For non-wildcard paths, resolve to absolute URI
+                const absFs = r.startsWith('/')
+                    ? normalizePath(r)
+                    : normalizePath(`${resolvedBaseUrlFs}/${r}`);
+                return toFileUri(absFs);
+            }
         });
     }
 

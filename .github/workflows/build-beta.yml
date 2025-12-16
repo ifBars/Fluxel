@@ -25,21 +25,34 @@ jobs:
       matrix:
         include:
           - platform: 'windows-latest'
+            target: 'x86_64-pc-windows-msvc'
             args: '--target x86_64-pc-windows-msvc'
             artifact_name: 'fluxel-windows-x86_64'
-            binary_ext: '.exe'
+            artifact_paths: |
+              src-tauri/target/x86_64-pc-windows-msvc/release/*.exe
+              src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+              src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
           - platform: 'macos-latest'
+            target: 'x86_64-apple-darwin'
             args: '--target x86_64-apple-darwin'
             artifact_name: 'fluxel-macos-x86_64'
-            binary_ext: ''
+            artifact_paths: |
+              src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
+              src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app
           - platform: 'macos-latest'
+            target: 'aarch64-apple-darwin'
             args: '--target aarch64-apple-darwin'
             artifact_name: 'fluxel-macos-aarch64'
-            binary_ext: ''
+            artifact_paths: |
+              src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+              src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app
           - platform: 'ubuntu-latest'
+            target: 'x86_64-unknown-linux-gnu'
             args: '--target x86_64-unknown-linux-gnu'
             artifact_name: 'fluxel-linux-x86_64'
-            binary_ext: ''
+            artifact_paths: |
+              src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+              src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
 
     runs-on: ${{ matrix.platform }}
 
@@ -55,7 +68,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.args == '--target x86_64-pc-windows-msvc' && 'x86_64-pc-windows-msvc' || matrix.args == '--target x86_64-apple-darwin' && 'x86_64-apple-darwin' || matrix.args == '--target aarch64-apple-darwin' && 'aarch64-apple-darwin' || 'x86_64-unknown-linux-gnu' }}
+          targets: ${{ matrix.target }}
 
       - name: Install dependencies (Ubuntu)
         if: matrix.platform == 'ubuntu-latest'
@@ -74,20 +87,28 @@ jobs:
       - name: Install dependencies (macOS)
         if: matrix.platform == 'macos-latest'
         run: |
-          # macOS dependencies are typically handled by Xcode command line tools
-          # which are pre-installed on GitHub Actions macOS runners
-          echo "macOS dependencies ready"
+          # Install OpenSSL via Homebrew for cross-compilation support
+          brew install openssl@3
+          OPENSSL_PREFIX=$(brew --prefix openssl@3)
+          # Set OPENSSL_DIR for cross-compilation (needed for x86_64-apple-darwin on Apple Silicon)
+          echo "OPENSSL_DIR=$OPENSSL_PREFIX" >> $GITHUB_ENV
+          # Set target-specific OpenSSL environment variables for cross-compilation
+          if [ "${{ matrix.target }}" == "x86_64-apple-darwin" ]; then
+            echo "X86_64_APPLE_DARWIN_OPENSSL_DIR=$OPENSSL_PREFIX" >> $GITHUB_ENV
+            echo "X86_64_APPLE_DARWIN_OPENSSL_LIB_DIR=$OPENSSL_PREFIX/lib" >> $GITHUB_ENV
+            echo "X86_64_APPLE_DARWIN_OPENSSL_INCLUDE_DIR=$OPENSSL_PREFIX/include" >> $GITHUB_ENV
+          fi
+          # Set PKG_CONFIG_PATH so pkg-config can find OpenSSL
+          echo "PKG_CONFIG_PATH=$OPENSSL_PREFIX/lib/pkgconfig" >> $GITHUB_ENV
 
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
-
-      - name: Build frontend
-        run: bun run build
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_OPTIONS: --max-old-space-size=6144
         with:
           projectPath: ./src-tauri
           args: ${{ matrix.args }}
@@ -95,45 +116,11 @@ jobs:
           # Otherwise, we'll use the create-release job for tag releases
           releaseDraft: false
 
-      - name: Upload Windows artifacts
-        if: matrix.platform == 'windows-latest'
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: |
-            src-tauri/target/x86_64-pc-windows-msvc/release/*.exe
-            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
-            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
-          retention-days: 90
-
-      - name: Upload macOS x86_64 artifacts
-        if: matrix.platform == 'macos-latest' && matrix.args == '--target x86_64-apple-darwin'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact_name }}
-          path: |
-            src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
-            src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app
-          retention-days: 90
-
-      - name: Upload macOS aarch64 artifacts
-        if: matrix.platform == 'macos-latest' && matrix.args == '--target aarch64-apple-darwin'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact_name }}
-          path: |
-            src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
-            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app
-          retention-days: 90
-
-      - name: Upload Linux artifacts
-        if: matrix.platform == 'ubuntu-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact_name }}
-          path: |
-            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
-            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
+          path: ${{ matrix.artifact_paths }}
           retention-days: 90
 
   create-release:

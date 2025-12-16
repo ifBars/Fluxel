@@ -228,7 +228,7 @@ export async function benchmarkFolderExpansion(
             const currentState = useFileSystemStore.getState();
             for (const folder of folders) {
                 if (currentState.expandedPaths.has(folder)) {
-                    currentState.toggleFolder(folder);
+                    await currentState.toggleFolder(folder);
                 }
             }
             await sleep(10);
@@ -239,7 +239,7 @@ export async function benchmarkFolderExpansion(
                 for (const folder of folders) {
                     const state = useFileSystemStore.getState();
                     if (!state.expandedPaths.has(folder)) {
-                        state.toggleFolder(folder);
+                        await state.toggleFolder(folder);
                         expandedCount++;
                         // Small delay to let async loads complete
                         await sleep(5);

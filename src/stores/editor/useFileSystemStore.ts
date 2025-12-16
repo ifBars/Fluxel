@@ -24,9 +24,9 @@ interface FileSystemState {
     /** Load directory structure from a path */
     loadDirectory: (path: string, traceParent?: string) => Promise<void>;
     /** Load children of a specific folder (lazy loading) */
-    loadFolderChildren: (path: string) => Promise<FileEntry[]>;
+    loadFolderChildren: (path: string, traceParent?: string) => Promise<FileEntry[]>;
     /** Toggle folder expanded/collapsed state */
-    toggleFolder: (path: string) => void;
+    toggleFolder: (path: string, traceParent?: string) => Promise<void>;
     /** Refresh the entire tree */
     refreshTree: () => Promise<void>;
     /** Clear the file tree */
@@ -37,6 +37,8 @@ interface FileSystemState {
     gitignoreManager: GitignoreManager | null;
     /** Refresh ignored status for all files in the tree */
     refreshIgnoredStatus: () => Promise<void>;
+    /** Internal: Map of path to entry for O(1) lookups */
+    _pathToEntryMap: Map<string, FileEntry> | null;
 }
 
 /**
@@ -184,6 +186,21 @@ async function readDirectoryEntries(
     }
 }
 
+/**
+ * Build a path-to-entry map for O(1) lookups instead of O(n) tree traversal
+ */
+function buildPathMap(entry: FileEntry | null, map: Map<string, FileEntry> = new Map()): Map<string, FileEntry> {
+    if (!entry) return map;
+    
+    map.set(entry.path, entry);
+    if (entry.children) {
+        for (const child of entry.children) {
+            buildPathMap(child, map);
+        }
+    }
+    return map;
+}
+
 export const useFileSystemStore = create<FileSystemState>((set, get) => ({
     rootEntry: null,
     expandedPaths: new Set(),
@@ -191,6 +208,7 @@ export const useFileSystemStore = create<FileSystemState>((set, get) => ({
     error: null,
     rootPath: null,
     gitignoreManager: null,
+    _pathToEntryMap: null,
 
     loadDirectory: async (path: string, traceParent?: string) => {
         const normalizedPath = path.replace(/\\/g, '/');
@@ -229,9 +247,13 @@ export const useFileSystemStore = create<FileSystemState>((set, get) => ({
                 };
 
                 // Batch the state update to avoid multiple re-renders
-                // Single Zustand update with all state changes
+                // Single Zustand update with all state changes - React 18+ automatically batches
                 const stateUpdateSpan = FrontendProfiler.startSpan('update:fileSystemState', 'file_io');
-                set({
+                // Build path map for O(1) lookups
+                const pathMap = buildPathMap(rootEntry);
+                // Use functional update to ensure atomic state change
+                set((state) => ({
+                    ...state,
                     rootEntry,
                     expandedPaths: new Set([normalizedPath]),
                     isLoading: false,
@@ -239,7 +261,8 @@ export const useFileSystemStore = create<FileSystemState>((set, get) => ({
                     // GitignoreManager is only needed for the JS fallback path (which is rarely used).
                     // Defer creation until actually needed to keep initial load fast.
                     gitignoreManager: null,
-                });
+                    _pathToEntryMap: pathMap,
+                }));
                 await stateUpdateSpan.end();
 
                 await buildSpan.end({
@@ -258,11 +281,12 @@ export const useFileSystemStore = create<FileSystemState>((set, get) => ({
         }, { metadata: { path }, parentId: traceParent });
     },
 
-    loadFolderChildren: async (path: string) => {
+    loadFolderChildren: async (path: string, traceParent?: string) => {
         return await FrontendProfiler.profileAsync('loadFolderChildren', 'file_io', async () => {
             const { gitignoreManager, rootPath, rootEntry } = get();
 
             // Check if the parent folder is ignored to optimize gitignore checking
+            // This span is automatically a child of loadFolderChildren via call stack
             let parentIsIgnored = false;
             const findParentSpan = FrontendProfiler.startSpan('findParentEntry', 'file_io');
             if (rootEntry) {
@@ -281,12 +305,14 @@ export const useFileSystemStore = create<FileSystemState>((set, get) => ({
             }
             await findParentSpan.end({ parentIsIgnored: String(parentIsIgnored) });
 
+            // Read directory entries - this span is automatically a child of loadFolderChildren via call stack
             const children = await readDirectoryEntries(path, rootPath, gitignoreManager, parentIsIgnored);
 
             // Update the tree with loaded children
+            // This span is automatically a child of loadFolderChildren via call stack
             const updateTreeSpan = FrontendProfiler.startSpan('updateTreeWithChildren', 'file_io');
 
-            // Profile tree traversal
+            // Profile tree traversal - this span is automatically a child of updateTreeWithChildren via call stack
             const traverseSpan = FrontendProfiler.startSpan('traverse:fileTree', 'file_io');
             const { rootEntry: currentRoot } = get();
             let updatedRoot: FileEntry | null = null;
@@ -311,54 +337,81 @@ export const useFileSystemStore = create<FileSystemState>((set, get) => ({
                 treeUpdated: String(updatedRoot !== null)
             });
 
-            // Profile state update
+            // Profile state update - this span is automatically a child of updateTreeWithChildren via call stack
+            // Batch state update to avoid multiple re-renders
             const treeStateUpdateSpan = FrontendProfiler.startSpan('zustand:updateTreeState', 'file_io');
             if (updatedRoot) {
-                set({ rootEntry: updatedRoot });
+                // Rebuild path map for O(1) lookups
+                const pathMap = buildPathMap(updatedRoot);
+                // Single batched update - React 18+ automatically batches synchronous updates
+                // This ensures only one re-render happens
+                set({ rootEntry: updatedRoot, _pathToEntryMap: pathMap });
             }
             await treeStateUpdateSpan.end();
 
             await updateTreeSpan.end({ childCount: String(children.length) });
 
             return children;
-        }, { path });
+        }, { metadata: { path }, parentId: traceParent });
     },
 
-    toggleFolder: (path: string) => {
-        const { expandedPaths, rootEntry, loadFolderChildren } = get();
+    toggleFolder: async (path: string, traceParent?: string) => {
+        const { expandedPaths, rootEntry, loadFolderChildren, _pathToEntryMap } = get();
         const newExpanded = new Set(expandedPaths);
         const isExpanding = !newExpanded.has(path);
 
         if (isExpanding) {
-            FrontendProfiler.profileSync('expandNode', 'workspace', () => {
-                newExpanded.add(path);
-                // Update UI state immediately so expansion isn't delayed by any async work.
-                set({ expandedPaths: newExpanded });
-            }, { path });
+            // Create a span for the expand operation that will be parent to loadFolderChildren
+            const expandSpan = FrontendProfiler.startSpan('expandNode', 'workspace', { 
+                metadata: { path },
+                parentId: traceParent 
+            });
+            
+            // Update UI state immediately so expansion isn't delayed by any async work.
+            // Use functional update for atomic state change
+            newExpanded.add(path);
+            set((state) => ({ ...state, expandedPaths: newExpanded }));
+            
+            // Capture the span ID before ending
+            const expandSpanId = expandSpan.id;
+            
+            // End and await the expandNode span to ensure it's recorded before loadFolderChildren
+            // This prevents race conditions where loadFolderChildren records before its parent
+            await expandSpan.end();
 
             if (!rootEntry) return;
 
-            // Load children if not already loaded (fire-and-forget).
-            const findEntry = (entry: FileEntry): FileEntry | null => {
-                if (entry.path === path) return entry;
-                if (entry.children) {
-                    for (const child of entry.children) {
-                        const found = findEntry(child);
-                        if (found) return found;
+            // Use O(1) map lookup instead of O(n) tree traversal for better performance
+            // Defer the lookup to avoid blocking the UI update
+            const folder = _pathToEntryMap?.get(path) ?? null;
+            
+            // If map lookup failed, fall back to tree traversal (shouldn't happen, but safety check)
+            if (!folder && rootEntry) {
+                // Defer tree traversal to next tick to avoid blocking UI
+                await new Promise(resolve => setTimeout(resolve, 0));
+                const findEntry = (entry: FileEntry): FileEntry | null => {
+                    if (entry.path === path) return entry;
+                    if (entry.children) {
+                        for (const child of entry.children) {
+                            const found = findEntry(child);
+                            if (found) return found;
+                        }
                     }
+                    return null;
+                };
+                const foundFolder = findEntry(rootEntry);
+                if (foundFolder && foundFolder.isDirectory && !foundFolder.children) {
+                    await loadFolderChildren(path, expandSpanId);
                 }
-                return null;
-            };
-
-            const folder = findEntry(rootEntry);
-            if (folder && folder.isDirectory && !folder.children) {
-                void loadFolderChildren(path);
+            } else if (folder && folder.isDirectory && !folder.children) {
+                await loadFolderChildren(path, expandSpanId);
             }
         } else {
             FrontendProfiler.profileSync('collapseNode', 'workspace', () => {
                 newExpanded.delete(path);
-                set({ expandedPaths: newExpanded });
-            }, { path });
+                // Use functional update for atomic state change
+                set((state) => ({ ...state, expandedPaths: newExpanded }));
+            }, { metadata: { path }, parentId: traceParent });
         }
     },
 
@@ -378,6 +431,7 @@ export const useFileSystemStore = create<FileSystemState>((set, get) => ({
             error: null,
             rootPath: null,
             gitignoreManager: null,
+            _pathToEntryMap: null,
         });
     },
 

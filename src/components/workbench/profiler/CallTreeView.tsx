@@ -38,7 +38,9 @@ const CallTreeRow: React.FC<CallTreeRowProps> = ({
     const { span, children, selfTimeMs, totalTimeMs, depth, callCount, path } = node;
     const hasChildren = children.length > 0;
     const isSelected = selectedId === span.id;
-    const isOrphaned = span.parentId !== null && path.length === 1; // Has parentId but no parent in path
+    // Check if orphaned: has parentId but parent not found in path (normalize IDs for comparison)
+    const normalizedParentId = span.parentId ? String(span.parentId).trim() : null;
+    const isOrphaned = normalizedParentId !== null && path.length === 1; // Has parentId but no parent in path
     
     // Calculate bar widths using calculated totalTimeMs
     const totalPercent = maxDuration > 0 ? (totalTimeMs / maxDuration) * 100 : 0;
@@ -230,6 +232,7 @@ export const CallTreeView: React.FC = () => {
             
             // Check if parent exists in the map (using normalized ID)
             if (normalizedParentId && spanMap.has(normalizedParentId)) {
+                // Parent exists - add as child
                 const siblings = childrenMap.get(normalizedParentId) || [];
                 siblings.push(span);
                 childrenMap.set(normalizedParentId, siblings);
@@ -239,7 +242,14 @@ export const CallTreeView: React.FC = () => {
                     // Parent ID exists but parent not found - orphaned
                     orphaned.push(span);
                 }
-                roots.push(span);
+                // Only add to roots if it doesn't have a parent (or parent not found)
+                // Spans with existing parents are handled via childrenMap
+                if (!normalizedParentId) {
+                    roots.push(span);
+                } else {
+                    // Has parentId but parent not found - still add to roots so it's displayed
+                    roots.push(span);
+                }
             }
         }
 
