@@ -114,8 +114,8 @@ pub fn resolve_module_native(
     let importer_dir = importer_path
         .parent()
         .map(|p| p.to_owned())
-        .ok_or_else(|| ResolveError::MissingImporter)?;
-    let project_root = req.project_root.as_ref().map(|p| Utf8PathBuf::from(p));
+        .ok_or(ResolveError::MissingImporter)?;
+    let project_root = req.project_root.as_ref().map(Utf8PathBuf::from);
 
     let mut warnings = Vec::new();
     let mut matched_export = None;
@@ -549,10 +549,8 @@ fn collect_pats(exports: &mut HashSet<String>, pat: &Pat) {
             exports.insert(id.id.sym.to_string());
         }
         Pat::Array(arr) => {
-            for elem in &arr.elems {
-                if let Some(elem) = elem {
-                    collect_pats(exports, elem);
-                }
+            for elem in arr.elems.iter().flatten() {
+                collect_pats(exports, elem);
             }
         }
         Pat::Object(obj) => {

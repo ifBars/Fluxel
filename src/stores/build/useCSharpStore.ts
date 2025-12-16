@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { getProjectConfigurations, BuildConfiguration } from '@/lib/languages/csharp';
+import { FrontendProfiler } from '@/lib/services/FrontendProfiler';
 
 interface CSharpStore {
     configurations: BuildConfiguration[];
@@ -36,6 +37,8 @@ export const useCSharpStore = create<CSharpStore>((set, get) => ({
         // Set loading state
         set({ isLoadingConfigs: true });
 
+        const span = FrontendProfiler.startSpan('load_project_configurations', 'frontend_network');
+
         try {
             if (import.meta.env.DEV) {
                 console.log('[CSharp] Loading configurations for:', workspaceRoot);
@@ -61,6 +64,13 @@ export const useCSharpStore = create<CSharpStore>((set, get) => ({
                 isLoadingConfigs: false,
             });
 
+            await span.end({
+                workspaceRoot,
+                configCount: configs.length.toString(),
+                selectedConfig: selectedConfig || 'none',
+                success: 'true'
+            });
+
             if (import.meta.env.DEV) {
                 console.log('[CSharp] Store updated - configs:', configs.length, 'selected:', selectedConfig);
             }
@@ -70,6 +80,10 @@ export const useCSharpStore = create<CSharpStore>((set, get) => ({
                 console.error('[CSharp] Error details:', error.message);
             }
             set({ configurations: [], selectedConfiguration: null, lastLoadedWorkspace: null, isLoadingConfigs: false });
+            await span.end({ 
+                error: error instanceof Error ? error.message : 'Unknown error',
+                workspaceRoot
+            });
         }
     },
 

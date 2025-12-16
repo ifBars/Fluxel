@@ -169,8 +169,10 @@ impl FluxelProfiler {
 
     /// Record a span from the frontend.
     /// This allows React/TypeScript code to record profiling data.
+    /// The span ID is provided by the frontend to preserve parent-child relationships.
     pub fn record_frontend_span(
         &self,
+        span_id: SpanId,
         name: String,
         category: SpanCategory,
         duration_ms: f64,
@@ -181,7 +183,6 @@ impl FluxelProfiler {
             return;
         }
 
-        let our_id = self.next_span_id();
         let now = Instant::now();
 
         // Calculate approximate start time based on duration
@@ -190,7 +191,7 @@ impl FluxelProfiler {
         let parent_span_id = parent_id.and_then(|id| id.parse().ok());
 
         let completed = CompletedSpan {
-            id: our_id,
+            id: span_id,
             parent_id: parent_span_id,
             name,
             target: "frontend".to_string(),
@@ -358,10 +359,28 @@ where
         };
 
         // Get parent ID
-        let parent_id = ctx
+        let mut parent_id = ctx
             .span(&id)
             .and_then(|span| span.parent())
             .and_then(|parent| self.get_id(&parent.id()));
+
+        // Check for trace_parent field override from frontend
+        // This connects frontend spans to backend spans
+        for (key, value) in &data.fields {
+            if key == "trace_parent" {
+                // Parse "Some("123")" -> 123
+                // Or "123" if recorded directly
+                let clean_value = value
+                    .trim_start_matches("Some(")
+                    .trim_end_matches(')')
+                    .trim_matches('"');
+                
+                if let Ok(pid) = clean_value.parse::<u64>() {
+                    parent_id = Some(pid);
+                }
+                break;
+            }
+        }
 
         let end_time = Instant::now();
         let duration_ns = end_time.duration_since(data.start_time).as_nanos() as u64;

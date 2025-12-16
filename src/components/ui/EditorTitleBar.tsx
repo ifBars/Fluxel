@@ -101,7 +101,12 @@ function EditorTitleBar({ onCloseProject }: EditorTitleBarProps) {
         outputLines.push(`Error: ${result.error}`);
       }
       setOutput(outputLines);
-      finishBuild(result.success ? 'success' : 'error');
+      // Pass BuildResult diagnostics and duration to store
+      finishBuild(
+        result.success ? 'success' : 'error',
+        result.diagnostics,
+        result.durationMs
+      );
     } catch (error) {
       appendOutput(`Build error: ${error}`);
       finishBuild('error');
@@ -122,7 +127,11 @@ function EditorTitleBar({ onCloseProject }: EditorTitleBarProps) {
         outputLines.push(`Error: ${result.error}`);
       }
       setOutput(outputLines);
-      finishBuild(result.success ? 'success' : 'error');
+      finishBuild(
+        result.success ? 'success' : 'error',
+        result.diagnostics,
+        result.durationMs
+      );
     } catch (error) {
       appendOutput(`Type check error: ${error}`);
       finishBuild('error');

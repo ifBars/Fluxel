@@ -29,6 +29,19 @@ interface GitState {
     reset: () => void;
 }
 
+// Cache for git status results (2 second TTL)
+interface CachedStatus {
+    result: GitStatusResult;
+    timestamp: number;
+}
+
+const statusCache = new Map<string, CachedStatus>();
+const CACHE_TTL = 2000; // 2 seconds
+const DEBOUNCE_DELAY = 200; // 200ms
+
+// Debounce map for pending refresh calls
+const pendingRefreshes = new Map<string, NodeJS.Timeout>();
+
 export const useGitStore = create<GitState>((set, get) => ({
     files: [],
     branch: '',
@@ -39,22 +52,59 @@ export const useGitStore = create<GitState>((set, get) => ({
     setCommitMessage: (message) => set({ commitMessage: message }),
 
     refreshStatus: async (rootPath) => {
-        set({ isLoading: true, error: null });
-        try {
-            const result = await invoke<GitStatusResult>('git_status', { rootPath });
-            set({
-                files: result.files,
-                branch: result.branch,
-                isLoading: false
-            });
-        } catch (error) {
-            set({
-                error: error instanceof Error ? error.message : String(error),
-                isLoading: false,
-                files: [], // Clear files on error (e.g. not a git repo)
-                branch: ''
-            });
+        // Clear any pending debounced call for this path
+        const pendingTimeout = pendingRefreshes.get(rootPath);
+        if (pendingTimeout) {
+            clearTimeout(pendingTimeout);
+            pendingRefreshes.delete(rootPath);
         }
+
+        // Check cache first
+        const cached = statusCache.get(rootPath);
+        if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+            set({
+                files: cached.result.files,
+                branch: cached.result.branch,
+                isLoading: false,
+                error: null
+            });
+            return;
+        }
+
+        // Debounce the actual refresh call
+        return new Promise<void>((resolve, reject) => {
+            const timeoutId = setTimeout(async () => {
+                pendingRefreshes.delete(rootPath);
+                set({ isLoading: true, error: null });
+                
+                try {
+                    const result = await invoke<GitStatusResult>('git_status', { rootPath });
+                    
+                    // Update cache
+                    statusCache.set(rootPath, {
+                        result,
+                        timestamp: Date.now()
+                    });
+                    
+                    set({
+                        files: result.files,
+                        branch: result.branch,
+                        isLoading: false
+                    });
+                    resolve();
+                } catch (error) {
+                    set({
+                        error: error instanceof Error ? error.message : String(error),
+                        isLoading: false,
+                        files: [], // Clear files on error (e.g. not a git repo)
+                        branch: ''
+                    });
+                    reject(error);
+                }
+            }, DEBOUNCE_DELAY);
+            
+            pendingRefreshes.set(rootPath, timeoutId);
+        });
     },
 
     commit: async (rootPath, message, files) => {

@@ -11,12 +11,14 @@ import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker"
 loader.config({ monaco: monacoApi });
 import { useEffect, useCallback, useState, useRef } from "react";
 import { useSettingsStore, useEditorStore, type EditorTab, useProjectStore } from "@/stores";
+import { useProfiler } from "@/hooks/useProfiler";
 import { toFileUri } from "@/lib/languages/typescript";
 import { registerInlineCompletionProvider } from "../../lib/ollama";
 import { registerCSharpLanguage, getCSharpLSPClient, registerCSharpLSPFeatures } from "@/lib/languages/csharp";
 import { configureTypeScriptLanguage, hydrateTypeScriptWorkspace, resetTypeScriptWorkspace } from "@/lib/languages/typescript";
 import { getLazyTypeResolver } from "@/lib/languages/typescript/LazyTypeResolver";
 import { shouldHydrateTypeScriptWorkspace } from "@/lib/services/ProjectManager";
+import { fsPathToLspUri } from "@/lib/languages/base/fileUris";
 import { File, Save, Circle } from "lucide-react";
 
 // Ensure Monaco workers are resolved by Vite/Tauri instead of the default CDN lookup
@@ -65,6 +67,7 @@ interface CodeEditorProps {
 }
 
 export default function CodeEditor({ activeTab }: CodeEditorProps) {
+    const { ProfilerWrapper, startSpan, trackInteraction } = useProfiler('CodeEditor');
     const {
         theme,
         // Font settings
@@ -93,6 +96,8 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
     const lspClientRef = useRef(getCSharpLSPClient());
     const docVersionsRef = useRef<Record<string, number>>({});
     const hydratedProjectRootRef = useRef<string | null>(null);
+    const openedDocsRef = useRef<Set<string>>(new Set());
+    const currentOpenUriRef = useRef<string | null>(null);
 
     // When switching tabs, wait for the new editor instance before revealing a position.
     useEffect(() => {
@@ -311,35 +316,84 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
         }
     }, [currentProject?.rootPath, csharpLspStatus]);
 
-    // Send textDocument/didOpen when C# file is opened
+    // If the server stops/restarts, forget locally-opened documents so we re-send didOpen.
+    useEffect(() => {
+        if (!lspReady) {
+            openedDocsRef.current.clear();
+            currentOpenUriRef.current = null;
+        }
+    }, [lspReady]);
+
+    // Send textDocument/didOpen when C# file is opened and LSP is ready
+    // Only re-run when tab ID, language, or path changes - NOT when content changes
     useEffect(() => {
         const lspClient = lspClientRef.current;
 
-        if (activeTab?.language === 'csharp' && lspReady && activeTab) {
-            const uri = `file:///${activeTab.path.replace(/\\/g, '/')}`;
-            docVersionsRef.current[uri] = 1;
-
-            lspClient.sendNotification('textDocument/didOpen', {
-                textDocument: {
-                    uri,
-                    languageId: 'csharp',
-                    version: 1,
-                    text: activeTab.content,
-                },
-            }).catch((error) => {
-                console.error('[CodeEditor] Failed to send didOpen:', error);
-            });
-
-            // Send didClose when the tab changes or component unmounts
-            return () => {
+        if (activeTab?.language === 'csharp' && lspReady && activeTab && lspClient.getIsStarted()) {
+            // Use standard LSP file URIs for csharp-ls (file:///C:/...), not Monaco's encoded form.
+            const uri = fsPathToLspUri(activeTab.path);
+            
+            // Close previous document if switching to a different one
+            const previousUri = currentOpenUriRef.current;
+            if (previousUri && previousUri !== uri && openedDocsRef.current.has(previousUri)) {
+                console.log('[CodeEditor] Closing previous C# file:', previousUri);
                 lspClient.sendNotification('textDocument/didClose', {
                     textDocument: {
-                        uri,
+                        uri: previousUri,
                     },
                 }).catch((error) => {
                     console.error('[CodeEditor] Failed to send didClose:', error);
                 });
-                delete docVersionsRef.current[uri];
+                openedDocsRef.current.delete(previousUri);
+            }
+            
+            // Only send didOpen if we haven't already opened this document
+            if (!openedDocsRef.current.has(uri)) {
+                const currentVersion = docVersionsRef.current[uri] || 1;
+                docVersionsRef.current[uri] = currentVersion;
+
+                console.log('[CodeEditor] Sending didOpen for C# file:', uri);
+
+                // Send didOpen and only mark as open after it's sent successfully
+                lspClient.sendNotification('textDocument/didOpen', {
+                    textDocument: {
+                        uri,
+                        languageId: 'csharp',
+                        version: currentVersion,
+                        text: activeTab.content,
+                    },
+                }).then(() => {
+                    // Mark as open only after successful send
+                    openedDocsRef.current.add(uri);
+                    currentOpenUriRef.current = uri;
+                    console.log('[CodeEditor] didOpen sent successfully for:', uri);
+                }).catch((error) => {
+                    console.error('[CodeEditor] Failed to send didOpen:', error);
+                    // Don't mark as open if send failed
+                });
+            } else {
+                // Document already open, just update the ref
+                currentOpenUriRef.current = uri;
+            }
+
+            // Send didClose when the tab changes or component unmounts
+            return () => {
+                // Only close if this is still the current URI (not already switched)
+                if (currentOpenUriRef.current === uri && openedDocsRef.current.has(uri)) {
+                    console.log('[CodeEditor] Sending didClose for C# file:', uri);
+                    lspClient.sendNotification('textDocument/didClose', {
+                        textDocument: {
+                            uri,
+                        },
+                    }).catch((error) => {
+                        console.error('[CodeEditor] Failed to send didClose:', error);
+                    });
+                    openedDocsRef.current.delete(uri);
+                    delete docVersionsRef.current[uri];
+                    if (currentOpenUriRef.current === uri) {
+                        currentOpenUriRef.current = null;
+                    }
+                }
             };
         }
     }, [activeTab?.id, activeTab?.language, activeTab?.path, lspReady]);
@@ -402,14 +456,20 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
     // Handle save keyboard shortcut
     const handleSave = useCallback(async () => {
         if (activeTab && !isSaving) {
+            const span = startSpan('save_file', 'frontend_interaction');
             setIsSaving(true);
             try {
+                trackInteraction('save_file_started', { 
+                    fileName: activeTab.path,
+                    language: activeTab.language 
+                });
+                
                 await saveFile(activeTab.id);
 
                 // Notify LSP server of save events for C#
-                if (activeTab.language === 'csharp' && lspReady) {
+                if (activeTab.language === 'csharp' && lspReady && lspClientRef.current.getIsStarted()) {
                     const lspClient = lspClientRef.current;
-                    const uri = `file:///${activeTab.path.replace(/\\/g, '/')}`;
+                    const uri = fsPathToLspUri(activeTab.path);
                     await lspClient.sendNotification('textDocument/didSave', {
                         textDocument: { uri },
                         text: activeTab.content,
@@ -417,36 +477,49 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                         console.error('[CodeEditor] Failed to send didSave:', error);
                     });
                 }
+                
+                trackInteraction('save_file_completed', { 
+                    fileName: activeTab.path,
+                    language: activeTab.language 
+                });
             } finally {
                 setIsSaving(false);
+                await span.end({ fileName: activeTab.path });
             }
         }
-    }, [activeTab, saveFile, isSaving, lspReady]);
+    }, [activeTab, saveFile, isSaving, lspReady, startSpan, trackInteraction]);
 
     // Handle content changes
     const handleEditorChange = useCallback((value: string | undefined) => {
         if (activeTab && value !== undefined) {
             updateContent(activeTab.id, value);
 
-            // Send textDocument/didChange for C# files
-            if (activeTab.language === 'csharp' && lspReady) {
+            // Send textDocument/didChange for C# files (only if document is open)
+            if (activeTab.language === 'csharp' && lspReady && lspClientRef.current.getIsStarted()) {
                 const lspClient = lspClientRef.current;
-                const uri = `file:///${activeTab.path.replace(/\\/g, '/')}`;
-                const nextVersion = (docVersionsRef.current[uri] ?? 1) + 1;
-                docVersionsRef.current[uri] = nextVersion;
-                lspClient.sendNotification('textDocument/didChange', {
-                    textDocument: {
-                        uri,
-                        version: nextVersion,
-                    },
-                    contentChanges: [
-                        {
-                            text: value,
+                const uri = fsPathToLspUri(activeTab.path);
+                
+                // Only send didChange if the document is already open in the LSP
+                if (openedDocsRef.current.has(uri)) {
+                    const nextVersion = (docVersionsRef.current[uri] ?? 1) + 1;
+                    docVersionsRef.current[uri] = nextVersion;
+                    lspClient.sendNotification('textDocument/didChange', {
+                        textDocument: {
+                            uri,
+                            version: nextVersion,
                         },
-                    ],
-                }).catch((error) => {
-                    console.error('[CodeEditor] Failed to send didChange:', error);
-                });
+                        contentChanges: [
+                            {
+                                text: value,
+                            },
+                        ],
+                    }).catch((error) => {
+                        console.error('[CodeEditor] Failed to send didChange:', error);
+                    });
+                } else {
+                    // Document not open yet - didOpen will be sent by the useEffect
+                    console.debug('[CodeEditor] Skipping didChange - document not yet open:', uri);
+                }
             }
 
             // Lazy load types for TypeScript/JavaScript files when imports change
@@ -469,6 +542,8 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
 
     // Handle editor mount (for future extensions)
     const handleEditorMount = useCallback((editor: Monaco.editor.IStandaloneCodeEditor) => {
+        const span = startSpan('editor_mount', 'frontend_render');
+        
         setEditorInstance(editor);
 
         // Override the openCodeEditor handler so "Go to Definition" works across files
@@ -481,6 +556,8 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                 source: any,
                 sideBySide?: boolean
             ) => {
+                const navigationSpan = startSpan('go_to_definition', 'frontend_render');
+                
                 // Try opening in the UI first
                 const targetPath = input.resource.path.startsWith('/')
                     ? input.resource.path.substring(1)
@@ -493,11 +570,18 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                     column: input.options?.selection?.startColumn ?? 1,
                 });
 
+                await navigationSpan.end({ 
+                    targetFile: normalizedPath,
+                    line: String(input.options?.selection?.startLineNumber ?? 1)
+                });
+
                 // Return the editor for that model (if it exists)
                 return originalOpenCodeEditor(input, source, sideBySide);
             };
         }
-    }, [openFile]);
+        
+        span.end();
+    }, [openFile, startSpan]);
 
     // Track cursor position changes
     useEffect(() => {
@@ -580,13 +664,14 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
         const handleKeyDown = (e: KeyboardEvent) => {
             if ((e.ctrlKey || e.metaKey) && e.key === 's') {
                 e.preventDefault();
+                trackInteraction('keyboard_save', { shortcut: 'Ctrl+S' });
                 handleSave();
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [handleSave]);
+    }, [handleSave, trackInteraction]);
 
     // Format file path for breadcrumb display
     const formatPath = (path: string): string[] => {
@@ -617,7 +702,8 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
     const pathParts = formatPath(activeTab.path);
 
     return (
-        <div className="h-full w-full flex flex-col overflow-hidden bg-background">
+        <ProfilerWrapper>
+            <div className="h-full w-full flex flex-col overflow-hidden bg-background">
             {/* Editor Header */}
             <div className="h-8 border-b border-border bg-muted/20 flex items-center justify-between px-3 shrink-0">
                 {/* File Path Breadcrumb */}
@@ -751,6 +837,24 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                                 enabled: autocompleteEnabled,
                             },
                             suggest: {
+                                showKeywords: true,
+                                showSnippets: true,
+                                showClasses: true,
+                                showFunctions: true,
+                                showVariables: true,
+                                showFields: true,
+                                showInterfaces: true,
+                                showModules: true,
+                                showProperties: true,
+                                showEvents: true,
+                                showOperators: true,
+                                showUnits: true,
+                                showValues: true,
+                                showConstants: true,
+                                showEnums: true,
+                                showEnumMembers: true,
+                                showStructs: true,
+                                showTypeParameters: true,
                                 showInlineDetails: true,
                             },
                             fixedOverflowWidgets: true,
@@ -759,5 +863,6 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                 )}
             </div>
         </div>
+        </ProfilerWrapper>
     );
 }

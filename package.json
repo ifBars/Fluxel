@@ -7,7 +7,11 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@exuanbo/file-icons-js": "^3.3.0",
@@ -23,7 +27,7 @@
     "clsx": "^2.1.1",
     "framer-motion": "^12.23.25",
     "ignore": "^5.3.1",
-    "lucide-react": "^0.556.0",
+    "lucide-react": "^0.561.0",
     "material-file-icons": "^2.4.0",
     "monaco-languageclient": "^10.4.0",
     "react": "^19.1.0",
@@ -36,6 +40,7 @@
     "streamdown": "^1.6.10",
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.1.17",
+    "vitest": "^4.0.15",
     "vscode-jsonrpc": "^8.2.1",
     "vscode-languageclient": "^9.0.1",
     "zod": "^4.1.13",
@@ -47,6 +52,8 @@
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
+    "@vitest/ui": "^4.0.15",
+    "happy-dom": "^20.0.11",
     "typescript": "~5.8.3",
     "vite": "^7.0.4"
   }

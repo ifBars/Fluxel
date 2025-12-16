@@ -33,9 +33,9 @@ export const SessionControls: React.FC = () => {
     };
 
     return (
-        <div className="flex items-center gap-4 p-4 border-b border-border bg-card">
+        <div className="flex items-center gap-4 px-4 py-2 border-b border-border bg-card/50">
             {/* Global Toggle */}
-            <div className="flex items-center gap-2 mr-4 border-r border-border pr-4">
+            <div className="flex items-center gap-2 mr-2">
                 <span className="text-sm font-medium">Global Profiling</span>
                 <button
                     onClick={() => toggle()}

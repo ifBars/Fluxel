@@ -21,6 +21,7 @@ export class BaseLSPClient {
     private unlisten: UnlistenFn | null = null;
     private isStarted = false;
     private workspaceRoot?: string;
+    private openDocuments = new Set<string>();
 
     constructor(protected config: LSPClientConfig) {
         this.registerDefaultRequestHandlers();
@@ -99,6 +100,7 @@ export class BaseLSPClient {
             this.isStarted = false;
             this.workspaceRoot = undefined;
             this.pendingRequests.clear();
+            this.openDocuments.clear();
             console.log(`[LSPClient:${this.config.languageId}] Language server stopped`);
         } catch (error) {
             console.error(`[LSPClient:${this.config.languageId}] Error stopping:`, error);
@@ -117,6 +119,14 @@ export class BaseLSPClient {
      */
     getIsStarted(): boolean {
         return this.isStarted;
+    }
+
+    /**
+     * Track whether the client believes a document has been opened with `textDocument/didOpen`.
+     * This is best-effort state to avoid duplicate opens from multiple call sites.
+     */
+    isDocumentOpen(uri: string): boolean {
+        return this.openDocuments.has(uri);
     }
 
     /**
@@ -156,6 +166,19 @@ export class BaseLSPClient {
     async sendNotification(method: string, params: any): Promise<void> {
         if (!this.isStarted) {
             throw new Error('LSP client not started');
+        }
+
+        // Best-effort local tracking for didOpen/didClose to reduce duplicate notifications.
+        try {
+            if (method === 'textDocument/didOpen') {
+                const uri = params?.textDocument?.uri;
+                if (typeof uri === 'string') this.openDocuments.add(uri);
+            } else if (method === 'textDocument/didClose') {
+                const uri = params?.textDocument?.uri;
+                if (typeof uri === 'string') this.openDocuments.delete(uri);
+            }
+        } catch {
+            // Ignore tracking errors
         }
 
         const message: LSPMessage = {
@@ -222,6 +245,17 @@ export class BaseLSPClient {
 
         // Handle server notification
         if (message.method) {
+            // Track diagnostics specifically
+            if (message.method === 'textDocument/publishDiagnostics') {
+                const uri = message.params?.uri;
+                const diagCount = message.params?.diagnostics?.length ?? 0;
+                FrontendProfiler.trackInteraction('lsp_diagnostics_received', {
+                    language: this.config.languageId,
+                    uri: uri ? String(uri) : 'unknown',
+                    count: String(diagCount)
+                });
+            }
+
             const handlers = this.notificationHandlers.get(message.method);
             if (handlers) {
                 handlers.forEach(handler => handler(message.params));
@@ -234,11 +268,42 @@ export class BaseLSPClient {
      * This is a basic implementation that can be overridden by subclasses
      */
     async initialize(workspaceRoot: string): Promise<any> {
+        if (!this.isStarted) {
+            throw new Error('LSP client must be started before initialization');
+        }
+
+        return FrontendProfiler.profileAsync('lsp_initialize', 'lsp_request', async () => {
+            try {
+                console.log(`[LSPClient:${this.config.languageId}] Initializing language server...`);
+
+                const initParams = this.buildInitializeParams(workspaceRoot);
+
+                console.log(`[LSPClient:${this.config.languageId}] Sending initialize request...`);
+                const result = await this.sendRequest('initialize', initParams);
+                console.log(`[LSPClient:${this.config.languageId}] Initialize response received`);
+
+                // Send initialized notification
+                await this.sendNotification('initialized', {});
+                console.log(`[LSPClient:${this.config.languageId}] Initialized notification sent`);
+
+                return result;
+            } catch (error) {
+                console.error(`[LSPClient:${this.config.languageId}] Initialization failed:`, error);
+                throw error;
+            }
+        }, { languageId: this.config.languageId });
+    }
+
+    /**
+     * Build params for the `initialize` request.
+     * Subclasses can override to customize URI normalization, workspace folders, and init options.
+     */
+    protected buildInitializeParams(workspaceRoot: string): any {
         const normalizedRoot = workspaceRoot.replace(/\\/g, '/');
         const workspaceName = normalizedRoot.split('/').pop() || 'workspace';
         const rootUri = `file:///${normalizedRoot}`;
 
-        const initParams = {
+        return {
             processId: null,
             rootPath: normalizedRoot,
             rootUri: rootUri,
@@ -250,13 +315,6 @@ export class BaseLSPClient {
                 },
             ],
         };
-
-        const result = await this.sendRequest('initialize', initParams);
-
-        // Send initialized notification
-        await this.sendNotification('initialized', {});
-
-        return result;
     }
 
     /**
@@ -314,12 +372,15 @@ export class BaseLSPClient {
     protected registerDefaultRequestHandlers(): void {
         // Handle dynamic capability registration
         this.onRequest('client/registerCapability', async (params: any) => {
-            console.log(`[LSPClient:${this.config.languageId}] Received capability registration:`,
-                params?.registrations?.map((r: any) => r.method).join(', ') || 'unknown');
+            const registrations = params?.registrations || [];
+            const methods = registrations.map((r: any) => r.method || r.methodName || 'unknown').join(', ');
+            console.log(`[LSPClient:${this.config.languageId}] Received capability registration: ${methods || 'none'}`);
+            // Accept all capability registrations - the server is telling us what it supports
             return null;
         });
 
         this.onRequest('client/unregisterCapability', async (_params: any) => {
+            console.log(`[LSPClient:${this.config.languageId}] Received capability unregistration`);
             return null;
         });
 

@@ -5,6 +5,7 @@ import { streamChat } from '@/lib/ollama/ollamaChatClient';
 import type { OllamaChatMessage, OllamaToolCall } from '@/lib/ollama/ollamaChatClient';
 import { SYSTEM_PROMPT } from '@/lib/agent/systemPrompt';
 import { tools } from '@/lib/agent/tools';
+import { useProfiler } from '@/hooks/useProfiler';
 
 /**
  * Parse tool calls that appear as JSON in text content.
@@ -83,6 +84,7 @@ function parseToolCallsFromText(content: string): {
 }
 
 export function InputArea() {
+    const { startSpan, trackInteraction, ProfilerWrapper } = useProfiler('AgentInputArea');
     const [input, setInput] = useState('');
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -109,6 +111,13 @@ export function InputArea() {
         const userMessage = input.trim();
         setInput('');
 
+        // Track user interaction
+        trackInteraction('message_sent', {
+            length: userMessage.length.toString(),
+            hasContext: (attachedContext.length > 0).toString(),
+            model
+        });
+
         // Create conversation if none active
         if (!activeConversationId) {
             createConversation();
@@ -134,6 +143,9 @@ export function InputArea() {
 
         const controller = new AbortController();
         abortControllerRef.current = controller;
+        
+        // Start profiling the entire turn
+        const turnSpan = startSpan('process_turn', 'frontend_network');
 
         try {
             // Get fresh conversation state
@@ -189,6 +201,8 @@ export function InputArea() {
                 loopCount++;
                 let accumulatedContent = '';
                 const collectedToolCalls: any[] = []; // OllamaToolCall[]
+                
+                const streamSpan = startSpan(`llm_stream_response_loop_${loopCount}`, 'frontend_network');
 
                 const response = streamChat(
                     {
@@ -214,6 +228,11 @@ export function InputArea() {
                         collectedToolCalls.push(...chunk.message.tool_calls);
                     }
                 }
+                
+                await streamSpan.end({ 
+                    contentLength: accumulatedContent.length.toString(),
+                    toolCalls: collectedToolCalls.length.toString()
+                });
 
                 // Fallback: Check if model returned tool calls as JSON in text content
                 // Some models don't use the structured tool_calls field
@@ -255,17 +274,24 @@ export function InputArea() {
                     for (const call of collectedToolCalls) {
                         const tool = tools.find(t => t.function.name === call.function.name);
                         let resultString = '';
+                        
+                        const toolSpan = startSpan(`execute_tool:${call.function.name}`, 'frontend_network');
 
                         if (tool) {
                             try {
                                 // Optional: User toast "Running tool..."
+                                trackInteraction('tool_execution_start', { tool: call.function.name });
                                 const result = await tool.execute(call.function.arguments);
                                 resultString = result;
+                                await toolSpan.end({ success: 'true', resultLength: result.length.toString() });
                             } catch (e) {
-                                resultString = `Error executing tool: ${e}`;
+                                const errorMessage = e instanceof Error ? e.message : String(e);
+                                resultString = `Error executing tool: ${errorMessage}`;
+                                await toolSpan.end({ success: 'false', error: errorMessage });
                             }
                         } else {
                             resultString = `Error: Tool ${call.function.name} not found.`;
+                            await toolSpan.end({ success: 'false', error: 'tool_not_found' });
                         }
 
                         // Add tool result to UI
@@ -287,8 +313,18 @@ export function InputArea() {
                     keepGoing = false;
                 }
             }
+            
+            await turnSpan.end({ 
+                loops: loopCount.toString(), 
+                success: 'true' 
+            });
 
         } catch (error) {
+            await turnSpan.end({ 
+                success: 'false', 
+                error: error instanceof Error ? error.message : String(error) 
+            });
+            
             if (error instanceof Error && error.name !== 'AbortError') {
                 console.error('Chat error:', error);
                 addMessage({
@@ -314,14 +350,18 @@ export function InputArea() {
         appendStreamingContent,
         clearStreaming,
         createConversation,
+        startSpan,
+        trackInteraction,
+        tools // Added dependency
     ]);
 
     const handleStopGeneration = useCallback(() => {
         if (abortControllerRef.current) {
+            trackInteraction('stop_generation');
             abortControllerRef.current.abort();
             abortControllerRef.current = null;
         }
-    }, []);
+    }, [trackInteraction]);
 
     const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -340,78 +380,80 @@ export function InputArea() {
     };
 
     return (
-        <div className="border-t border-border p-3 bg-card">
-            {/* Context Chips */}
-            {attachedContext.length > 0 && (
-                <div className="flex flex-wrap gap-1 mb-2">
-                    {attachedContext.map(ctx => (
-                        <span
-                            key={ctx.path}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs"
-                        >
-                            {ctx.path.split(/[\\/]/).pop()}
-                            <button
-                                onClick={() => removeFile(ctx.path)}
-                                className="hover:text-destructive"
+        <ProfilerWrapper>
+            <div className="border-t border-border p-3 bg-card">
+                {/* Context Chips */}
+                {attachedContext.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-2">
+                        {attachedContext.map(ctx => (
+                            <span
+                                key={ctx.path}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs"
                             >
-                                <X className="w-3 h-3" />
-                            </button>
-                        </span>
-                    ))}
-                </div>
-            )}
+                                {ctx.path.split(/[\\/]/).pop()}
+                                <button
+                                    onClick={() => removeFile(ctx.path)}
+                                    className="hover:text-destructive"
+                                >
+                                    <X className="w-3 h-3" />
+                                </button>
+                            </span>
+                        ))}
+                    </div>
+                )}
 
-            {/* Input Row */}
-            <div className="flex items-end gap-2">
-                <div className="flex-1 relative">
-                    <textarea
-                        ref={textareaRef}
-                        value={input}
-                        onChange={handleInputChange}
-                        onKeyDown={handleKeyDown}
-                        placeholder="Ask Fluxel Agent..."
-                        rows={1}
-                        disabled={isGenerating}
-                        className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed custom-scrollbar"
-                        style={{ maxHeight: '200px' }}
-                    />
-                    <div className="absolute right-2 bottom-2 flex items-center gap-1">
+                {/* Input Row */}
+                <div className="flex items-end gap-2">
+                    <div className="flex-1 relative">
+                        <textarea
+                            ref={textareaRef}
+                            value={input}
+                            onChange={handleInputChange}
+                            onKeyDown={handleKeyDown}
+                            placeholder="Ask Fluxel Agent..."
+                            rows={1}
+                            disabled={isGenerating}
+                            className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed custom-scrollbar"
+                            style={{ maxHeight: '200px' }}
+                        />
+                        <div className="absolute right-2 bottom-2 flex items-center gap-1">
+                            <button
+                                className="p-1 hover:bg-muted rounded transition-colors"
+                                title="Attach file (coming soon)"
+                                disabled
+                            >
+                                <Paperclip className="w-4 h-4 text-muted-foreground opacity-50" />
+                            </button>
+                        </div>
+                    </div>
+
+                    {isGenerating ? (
                         <button
-                            className="p-1 hover:bg-muted rounded transition-colors"
-                            title="Attach file (coming soon)"
-                            disabled
+                            onClick={handleStopGeneration}
+                            className="shrink-0 p-2 rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
+                            title="Stop generation"
                         >
-                            <Paperclip className="w-4 h-4 text-muted-foreground opacity-50" />
+                            <StopCircle className="w-5 h-5" />
                         </button>
+                    ) : (
+                        <button
+                            onClick={handleSendMessage}
+                            disabled={!input.trim()}
+                            className="shrink-0 p-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            title="Send message (Enter)"
+                        >
+                            <Send className="w-5 h-5" />
+                        </button>
+                    )}
+                </div>
+
+                {/* Model info moved to AgentPanel header */}
+                <div className="mt-1 flex justify-end">
+                    <div className="text-xs text-muted-foreground bg-muted/30 px-2 py-1 rounded">
+                        Temp: {temperature}
                     </div>
                 </div>
-
-                {isGenerating ? (
-                    <button
-                        onClick={handleStopGeneration}
-                        className="shrink-0 p-2 rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
-                        title="Stop generation"
-                    >
-                        <StopCircle className="w-5 h-5" />
-                    </button>
-                ) : (
-                    <button
-                        onClick={handleSendMessage}
-                        disabled={!input.trim()}
-                        className="shrink-0 p-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        title="Send message (Enter)"
-                    >
-                        <Send className="w-5 h-5" />
-                    </button>
-                )}
             </div>
-
-            {/* Model info moved to AgentPanel header */}
-            <div className="mt-1 flex justify-end">
-                <div className="text-xs text-muted-foreground bg-muted/30 px-2 py-1 rounded">
-                    Temp: {temperature}
-                </div>
-            </div>
-        </div>
+        </ProfilerWrapper>
     );
 }

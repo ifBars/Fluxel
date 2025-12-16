@@ -1,24 +1,36 @@
-import { useState, useRef, useMemo, useCallback, memo } from "react";
+import { useState, useRef, useMemo, useCallback, memo, lazy, Suspense, useEffect } from "react";
 import { Panel, PanelGroup, PanelResizeHandle, ImperativePanelHandle } from "react-resizable-panels";
 import { useWorkbenchStore, useEditorStore, useSettingsStore, densityConfigs, useBuildPanelStore, useTypeLoadingStore, useInspectorStore, useCSharpStore, useAgentStore } from "@/stores";
+import { FrontendProfiler } from "@/lib/services/FrontendProfiler";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useProfiler } from "@/hooks/useProfiler";
 import ActivityBar from "./ActivityBar";
 import Sidebar from "./SideBar";
 import SettingsDialog from "./SettingsDialog";
-import BuildPanel from "./BuildPanel";
 import EditorGroup from "@/components/editor/EditorGroup";
-import { InspectorPanel } from "@/components/inspector";
-import { ProfilerPanel } from "./ProfilerPanel";
-import { AgentPanel } from "@/components/agent";
+
+
+// Lazy load conditional panels to reduce initial bundle size
+const BuildPanel = lazy(() => import("./BuildPanel"));
+const InspectorPanel = lazy(() => import("@/components/inspector").then(mod => ({ default: mod.InspectorPanel })));
+const AgentPanel = lazy(() => import("@/components/agent").then(mod => ({ default: mod.AgentPanel })));
 
 function Workbench() {
-    // Use shallow selectors to prevent unnecessary re-renders
+    // Track time from render start to mount completion (captures store hydration)
+    const initSpanRef = useRef<ReturnType<typeof FrontendProfiler.startSpan> | null>(null);
+    if (!initSpanRef.current) {
+        initSpanRef.current = FrontendProfiler.startSpan('workbench_init', 'frontend_render');
+    }
+
+    // Use the profiler hook - ProfilerWrapper is extracted on line 57
+    useProfiler('Workbench');
+
+    // Use individual selectors - Zustand already optimizes these well
+    // Grouped selectors with shallow can cause infinite loops if selector functions aren't stable
     const setSidebarOpen = useWorkbenchStore((state) => state.setSidebarOpen);
     const sidebarDefaultSize = useWorkbenchStore((state) => state.sidebarDefaultSize);
     const defaultSidebarOpen = useWorkbenchStore((state) => state.defaultSidebarOpen);
 
-    // Select actual data instead of functions to prevent re-renders on every store update
     const tabs = useEditorStore((state) => state.tabs);
     const activeTabId = useEditorStore((state) => state.activeTabId);
     const cursorPosition = useEditorStore((state) => state.cursorPosition);
@@ -27,6 +39,7 @@ function Workbench() {
     const tabSize = useSettingsStore((state) => state.tabSize);
     const wordWrap = useSettingsStore((state) => state.wordWrap);
 
+    // Simple single-value selectors
     const isBuildPanelOpen = useBuildPanelStore((state) => state.isOpen);
     const isLoading = useTypeLoadingStore((state) => state.isLoading);
     const loadingMessage = useTypeLoadingStore((state) => state.loadingMessage);
@@ -62,6 +75,22 @@ function Workbench() {
 
     // Enable keyboard shortcuts
     useKeyboardShortcuts(sidebarPanelRef);
+
+    // End init span after mount effects complete
+    useEffect(() => {
+        if (initSpanRef.current) {
+            // Profile store selector evaluations
+            const selectorSpan = FrontendProfiler.startSpan('evaluate:storeSelectors', 'frontend_render');
+            const selectorCount = 10; // Count of store selectors used
+            selectorSpan.end({ count: String(selectorCount) });
+            
+            initSpanRef.current.end({
+                storeSelectorsCount: String(selectorCount),
+                lazyPanelsLoaded: [isBuildPanelOpen, isInspectorOpen, isAgentOpen].filter(Boolean).length.toString()
+            });
+            initSpanRef.current = null;
+        }
+    }, [isBuildPanelOpen, isInspectorOpen, isAgentOpen]);
 
     return (
         <ProfilerWrapper>
@@ -132,7 +161,9 @@ function Workbench() {
                                             minSize={10}
                                             maxSize={50}
                                         >
-                                            <BuildPanel />
+                                            <Suspense fallback={<div className="flex items-center justify-center h-full">Loading...</div>}>
+                                                <BuildPanel />
+                                            </Suspense>
                                         </Panel>
                                     </>
                                 )}
@@ -157,7 +188,9 @@ function Workbench() {
                                     collapsible
                                     collapsedSize={0}
                                 >
-                                    <InspectorPanel />
+                                    <Suspense fallback={<div className="flex items-center justify-center h-full">Loading...</div>}>
+                                        <InspectorPanel />
+                                    </Suspense>
                                 </Panel>
                             </>
                         )}
@@ -179,7 +212,9 @@ function Workbench() {
                                     collapsible
                                     collapsedSize={0}
                                 >
-                                    <AgentPanel />
+                                    <Suspense fallback={<div className="flex items-center justify-center h-full">Loading...</div>}>
+                                        <AgentPanel />
+                                    </Suspense>
                                 </Panel>
                             </>
                         )}
@@ -289,8 +324,7 @@ function Workbench() {
                 {/* Settings Modal */}
                 <SettingsDialog isOpen={isSettingsOpen} onClose={handleSettingsClose} />
 
-                {/* Profiler Panel */}
-                <ProfilerPanel />
+
             </div>
         </ProfilerWrapper>
     );
