@@ -41,7 +41,10 @@ fn resolves_exports_with_conditions() {
     write_file(&pkg_dir.join("cjs.js"), "module.exports = { hello: 1 };");
 
     let importer = project_root.join("src/index.ts");
-    write_file(&importer, "import { hello } from 'pkg'; console.log(hello);");
+    write_file(
+        &importer,
+        "import { hello } from 'pkg'; console.log(hello);",
+    );
 
     let result = resolve_module_native(
         ResolveRequest {
@@ -74,7 +77,10 @@ fn discovers_typings_with_types_field() {
   "types": "types/index.d.ts"
 }"#,
     );
-    write_file(&pkg_dir.join("types/index.d.ts"), "export interface Foo { value: number }");
+    write_file(
+        &pkg_dir.join("types/index.d.ts"),
+        "export interface Foo { value: number }",
+    );
 
     let typings = discover_typings_native("foo", &project_root).unwrap();
     assert_eq!(typings.package_name, "foo");
