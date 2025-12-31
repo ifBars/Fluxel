@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo, useCallback, memo, lazy, Suspense, useEffect } from "react";
-import { Panel, PanelGroup, PanelResizeHandle, ImperativePanelHandle } from "react-resizable-panels";
+import { Panel, Group, Separator, usePanelRef } from "react-resizable-panels";
 import { useWorkbenchStore, useEditorStore, useSettingsStore, densityConfigs, useBuildPanelStore, useTypeLoadingStore, useInspectorStore, useCSharpStore, useAgentStore } from "@/stores";
 import { FrontendProfiler } from "@/lib/services/FrontendProfiler";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
@@ -33,7 +33,6 @@ function Workbench() {
     // Store selectors - no individual profiling to reduce overhead
     // Profiling overhead (~0.05-0.1ms per span) exceeds selector execution time (<0.01ms each)
     // The overall workbench_init span captures the total time
-    const setSidebarOpen = useWorkbenchStore((state) => state.setSidebarOpen);
     const sidebarDefaultSize = useWorkbenchStore((state) => state.sidebarDefaultSize);
     const defaultSidebarOpen = useWorkbenchStore((state) => state.defaultSidebarOpen);
 
@@ -65,9 +64,9 @@ function Workbench() {
     }, [activeTab]);
 
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-    const sidebarPanelRef = useRef<ImperativePanelHandle>(null);
-    const buildPanelRef = useRef<ImperativePanelHandle>(null);
-    const inspectorPanelRef = useRef<ImperativePanelHandle>(null);
+    const sidebarPanelRef = usePanelRef();
+    const buildPanelRef = usePanelRef();
+    const inspectorPanelRef = usePanelRef();
     const { ProfilerWrapper } = useProfiler('Workbench');
 
     // Density config is a simple object lookup - no need to profile
@@ -76,8 +75,6 @@ function Workbench() {
     // Callbacks - React already optimizes these, profiling adds overhead
     const handleSettingsClick = useCallback(() => setIsSettingsOpen(true), []);
     const handleSettingsClose = useCallback(() => setIsSettingsOpen(false), []);
-    const handleSidebarCollapse = useCallback(() => setSidebarOpen(false), [setSidebarOpen]);
-    const handleSidebarExpand = useCallback(() => setSidebarOpen(true), [setSidebarOpen]);
 
     // Keyboard shortcuts hook - no need to profile hook initialization
     useKeyboardShortcuts(sidebarPanelRef);
@@ -86,7 +83,7 @@ function Workbench() {
     useEffect(() => {
         FrontendProfiler.trackInteraction('ActivityBar:init', { component: 'ActivityBar' });
         FrontendProfiler.trackInteraction('EditorGroup:init', { component: 'EditorGroup' });
-        FrontendProfiler.trackInteraction('PanelGroup:init:init', { component: 'PanelGroup:init' });
+        FrontendProfiler.trackInteraction('Group:init:init', { component: 'Group:init' });
     }, []);
 
     // End init span after mount effects complete
@@ -126,22 +123,20 @@ function Workbench() {
                     />
 
                     {/* Main Resizable Area */}
-                    <PanelGroup direction="horizontal" className="flex-1">
+                    <Group orientation="horizontal" className="flex-1">
                         {/* Sidebar Panel */}
                         <Panel
-                            ref={sidebarPanelRef}
+                            panelRef={sidebarPanelRef}
                             defaultSize={defaultSidebarOpen ? sidebarDefaultSize : 0}
                             minSize={densityConfig.sidebarMinSize}
                             maxSize={densityConfig.sidebarMaxSize}
                             collapsible
                             collapsedSize={0}
-                            onCollapse={handleSidebarCollapse}
-                            onExpand={handleSidebarExpand}
                             className="bg-muted/10 border-r border-border"
                         >
                             <Sidebar />
                         </Panel>
-                        <PanelResizeHandle
+                        <Separator
                             className="panel-resize-handle bg-border hover:bg-primary transition-colors cursor-col-resize active:bg-primary z-20 transition-all opacity-60 hover:opacity-100"
                             style={{
                                 width: densityConfig.panelHandleWidth,
@@ -151,7 +146,7 @@ function Workbench() {
 
                         {/* Editor + Build Panel Area (Vertical Split) */}
                         <Panel minSize={30}>
-                            <PanelGroup direction="vertical">
+                            <Group orientation="vertical">
                                 {/* Editor Area */}
                                 <Panel minSize={20}>
                                     <EditorGroup />
@@ -160,7 +155,7 @@ function Workbench() {
                                 {/* Build Panel (Collapsible) */}
                                 {isBuildPanelOpen && (
                                     <>
-                                        <PanelResizeHandle
+                                        <Separator
                                             className="group panel-resize-handle bg-transparent cursor-row-resize z-50 flex items-center justify-center outline-none"
                                             style={{
                                                 height: '10px',
@@ -177,9 +172,9 @@ function Workbench() {
                                                     height: densityConfig.panelHandleWidth,
                                                 }}
                                             />
-                                        </PanelResizeHandle>
+                                        </Separator>
                                         <Panel
-                                            ref={buildPanelRef}
+                                            panelRef={buildPanelRef}
                                             defaultSize={25}
                                             minSize={10}
                                             maxSize={50}
@@ -190,13 +185,13 @@ function Workbench() {
                                         </Panel>
                                     </>
                                 )}
-                            </PanelGroup>
+                            </Group>
                         </Panel>
 
                         {/* Inspector Panel (Right Sidebar) */}
                         {isInspectorOpen && (
                             <>
-                                <PanelResizeHandle
+                                <Separator
                                     className="panel-resize-handle bg-border hover:bg-primary transition-colors cursor-col-resize active:bg-primary z-20 transition-all opacity-60 hover:opacity-100"
                                     style={{
                                         width: densityConfig.panelHandleWidth,
@@ -204,7 +199,7 @@ function Workbench() {
                                     }}
                                 />
                                 <Panel
-                                    ref={inspectorPanelRef}
+                                    panelRef={inspectorPanelRef}
                                     defaultSize={20}
                                     minSize={15}
                                     maxSize={35}
@@ -221,7 +216,7 @@ function Workbench() {
                         {/* Agent Panel (Right Sidebar) */}
                         {isAgentOpen && (
                             <>
-                                <PanelResizeHandle
+                                <Separator
                                     className="panel-resize-handle bg-border hover:bg-primary transition-colors cursor-col-resize active:bg-primary z-20 transition-all opacity-60 hover:opacity-100"
                                     style={{
                                         width: densityConfig.panelHandleWidth,
@@ -241,7 +236,7 @@ function Workbench() {
                                 </Panel>
                             </>
                         )}
-                    </PanelGroup>
+                    </Group>
                 </div>
 
                 {/* Status Bar */}

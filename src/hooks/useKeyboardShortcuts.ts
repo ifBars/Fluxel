@@ -1,8 +1,8 @@
 import { useEffect, RefObject } from 'react';
-import { ImperativePanelHandle } from 'react-resizable-panels';
+import type { PanelImperativeHandle } from 'react-resizable-panels';
 import { useWorkbenchStore, useBuildPanelStore, useAgentStore, useDiagnosticsStore } from '@/stores';
 
-export function useKeyboardShortcuts(sidebarPanelRef: RefObject<ImperativePanelHandle | null>) {
+export function useKeyboardShortcuts(sidebarPanelRef: RefObject<PanelImperativeHandle | null>) {
     const { setActiveActivity } = useWorkbenchStore();
 
     useEffect(() => {
