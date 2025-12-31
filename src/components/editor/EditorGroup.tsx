@@ -1,4 +1,4 @@
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { Panel, Group, Separator } from "react-resizable-panels";
 import { useWorkbenchStore, useEditorStore } from "@/stores";
 import CodeEditor from "./CodeEditor";
 import VisualEditor from "./VisualEditor";
@@ -86,11 +86,11 @@ export default function EditorGroup() {
 
                         {editorMode === 'split' && (
                             tabs.length > 0 ? (
-                                <PanelGroup direction="horizontal">
+                                <Group orientation="horizontal">
                                     <Panel defaultSize={50} minSize={20}>
                                         <CodeEditor activeTab={activeTab} />
                                     </Panel>
-                                    <PanelResizeHandle 
+                                    <Separator 
                                         className="bg-border hover:bg-primary transition-colors"
                                         style={{
                                             width: 'var(--panel-handle-width, 4px)',
@@ -100,7 +100,7 @@ export default function EditorGroup() {
                                     <Panel defaultSize={50} minSize={20}>
                                         <VisualEditor />
                                     </Panel>
-                                </PanelGroup>
+                                </Group>
                             ) : (
                                 <EmptyEditorState />
                             )

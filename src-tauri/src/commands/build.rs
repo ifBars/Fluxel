@@ -211,7 +211,7 @@ pub async fn get_project_configurations(
     trace_parent: Option<String>,
 ) -> Result<Vec<BuildConfiguration>, String> {
     let _ = trace_parent; // Suppress unused warning
-    // Check cache first
+                          // Check cache first
     if let Some(cached_configs) = cache.get(&workspace_root).await {
         #[cfg(feature = "profiling")]
         tracing::info!("Using cached configurations");

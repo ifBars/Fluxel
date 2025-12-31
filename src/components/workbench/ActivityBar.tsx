@@ -1,11 +1,11 @@
-import { RefObject, useEffect } from "react";
+import { useEffect, RefObject } from "react";
 import { Files, Search, GitBranch, Settings, Activity, Bot } from "lucide-react";
-import { ImperativePanelHandle } from "react-resizable-panels";
+import type { PanelImperativeHandle } from "react-resizable-panels";
 import { useWorkbenchStore, type ActivityItem, useProfilerStore, useAgentStore } from "@/stores";
 
 interface ActivityBarProps {
     onSettingsClick: () => void;
-    sidebarPanelRef: RefObject<ImperativePanelHandle | null>;
+    sidebarPanelRef: RefObject<PanelImperativeHandle | null>;
 }
 
 export default function ActivityBar({ onSettingsClick, sidebarPanelRef }: ActivityBarProps) {
