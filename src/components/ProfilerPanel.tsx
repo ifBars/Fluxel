@@ -5,7 +5,7 @@ import { SpanTimeline } from '@/components/workbench/profiler/SpanTimeline';
 import { ProfilerTabs } from '@/components/workbench/profiler/ProfilerTabs';
 import { X, Maximize2, Minimize2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { Panel, Group, Separator } from "react-resizable-panels";
 
 export const ProfilerPanel: React.FC = () => {
     const {
@@ -121,7 +121,7 @@ export const ProfilerPanel: React.FC = () => {
 
             {/* Main Content Area */}
             <div className="flex-1 flex flex-col min-h-0 relative">
-                <PanelGroup direction="vertical">
+                <Group orientation="vertical">
                     {/* Timeline - Top Section */}
                     <Panel defaultSize={60} minSize={20}>
                         <div className="h-full w-full relative">
@@ -129,7 +129,7 @@ export const ProfilerPanel: React.FC = () => {
                         </div>
                     </Panel>
 
-                    <PanelResizeHandle
+                    <Separator
                         className="group panel-resize-handle bg-transparent cursor-row-resize z-50 flex items-center justify-center outline-none"
                         style={{
                             height: '10px',
@@ -146,7 +146,7 @@ export const ProfilerPanel: React.FC = () => {
                                 height: densityConfig.panelHandleWidth,
                             }}
                         />
-                    </PanelResizeHandle>
+                    </Separator>
 
                     {/* Details/Tabs - Bottom Section */}
                     <Panel defaultSize={40} minSize={20}>
@@ -154,7 +154,7 @@ export const ProfilerPanel: React.FC = () => {
                             <ProfilerTabs />
                         </div>
                     </Panel>
-                </PanelGroup>
+                </Group>
             </div>
 
             {/* Status Bar */}
