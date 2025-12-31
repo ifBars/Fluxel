@@ -12,6 +12,7 @@ loader.config({ monaco: monacoApi });
 import { useEffect, useCallback, useState, useRef } from "react";
 import { useSettingsStore, useEditorStore, type EditorTab, useProjectStore } from "@/stores";
 import { useProfiler } from "@/hooks/useProfiler";
+import { usePluginLanguageActivation } from "@/hooks/usePlugins";
 import { toFileUri } from "@/lib/languages/typescript";
 import { registerInlineCompletionProvider } from "../../lib/ollama";
 import { registerCSharpLanguage, getCSharpLSPClient, registerCSharpLSPFeatures } from "@/lib/languages/csharp";
@@ -69,6 +70,10 @@ interface CodeEditorProps {
 
 export default function CodeEditor({ activeTab }: CodeEditorProps) {
     const { ProfilerWrapper, startSpan, trackInteraction } = useProfiler('CodeEditor');
+    
+    // Trigger plugin activation for the active file's language
+    usePluginLanguageActivation(activeTab?.language ?? null);
+    
     const {
         theme,
         // Font settings

@@ -120,7 +120,11 @@ pub fn run() {
             services::process_manager::kill_all_child_processes,
             // Terminal Commands
             commands::terminal::execute_shell_command,
-            commands::terminal::kill_shell_process
+            commands::terminal::kill_shell_process,
+            // Plugin Loader Commands
+            services::plugin_loader::discover_community_plugins,
+            services::plugin_loader::get_community_plugins_path,
+            services::plugin_loader::validate_plugin_directory
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

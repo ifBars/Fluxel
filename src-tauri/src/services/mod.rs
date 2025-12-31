@@ -7,12 +7,14 @@
 //! - `batch_file_reader` - Batch file reading for efficient type loading
 //! - `git` - Git operations (status, commit, push, pull)
 //! - `node_resolver` - Node.js module resolution service
+//! - `plugin_loader` - Community plugin discovery and loading
 //! - `process_manager` - Child process lifecycle management
 //! - `project_detector` - Project type detection
 
 pub mod batch_file_reader;
 pub mod git;
 pub mod node_resolver;
+pub mod plugin_loader;
 pub mod process_manager;
 pub mod project_detector;
 

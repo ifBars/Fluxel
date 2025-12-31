@@ -1,12 +1,16 @@
 import { memo, useEffect, useRef } from "react";
 import Workbench from "../workbench/Workbench";
 import { useProfiler } from "@/hooks/useProfiler";
+import { usePlugins } from "@/hooks/usePlugins";
 import { FrontendProfiler } from "@/lib/services/FrontendProfiler";
 
 function EditorPage() {
     const { ProfilerWrapper } = useProfiler('EditorPage');
     const mountSpanRef = useRef<ReturnType<typeof FrontendProfiler.startSpan> | null>(null);
     const moduleLoadedTime = useRef<number>(performance.now());
+    
+    // Initialize plugin system when editor loads
+    usePlugins({ autoInit: true, loadCommunity: true });
     
     // Track component initialization (module just loaded and function called)
     if (!mountSpanRef.current) {
