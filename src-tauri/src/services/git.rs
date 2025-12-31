@@ -38,9 +38,9 @@ pub async fn git_status(root_path: String) -> Result<GitStatusResult, String> {
         let mut status_opts = StatusOptions::new();
         status_opts
             .include_untracked(true)
-            .include_ignored(false)      // Skip ignored files for performance
-            .exclude_submodules(true)    // Skip submodule status checks
-            .no_refresh(false);          // Use index cache when possible
+            .include_ignored(false) // Skip ignored files for performance
+            .exclude_submodules(true) // Skip submodule status checks
+            .no_refresh(false); // Use index cache when possible
 
         let statuses = repo
             .statuses(Some(&mut status_opts))

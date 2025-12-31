@@ -374,7 +374,7 @@ where
                     .trim_start_matches("Some(")
                     .trim_end_matches(')')
                     .trim_matches('"');
-                
+
                 if let Ok(pid) = clean_value.parse::<u64>() {
                     parent_id = Some(pid);
                 }

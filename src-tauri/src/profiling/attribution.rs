@@ -209,7 +209,7 @@ impl AttributionEngine {
         depth: usize,
     ) -> SpanTreeNode {
         let children = children_map.get(&span.id).cloned().unwrap_or_default();
-        
+
         // Sort children by start time for proper flame graph ordering
         let mut sorted_children = children;
         sorted_children.sort_by(|a, b| {
@@ -262,7 +262,14 @@ mod comprehensive_tests {
         // Expected self-time for root: 100 - 60 - 30 = 10ms
         let root = make_span("1", None, SpanCategory::TauriCommand, 0.0, 100.0, "root");
         let child1 = make_span("2", Some("1"), SpanCategory::FileIo, 10.0, 60.0, "child1");
-        let child2 = make_span("3", Some("1"), SpanCategory::GitOperation, 70.0, 30.0, "child2");
+        let child2 = make_span(
+            "3",
+            Some("1"),
+            SpanCategory::GitOperation,
+            70.0,
+            30.0,
+            "child2",
+        );
 
         let spans = vec![root.clone(), child1, child2];
         let report = AttributionEngine::analyze(root, &spans);
@@ -271,9 +278,13 @@ mod comprehensive_tests {
         assert!(report.tree.is_some());
         let tree = report.tree.unwrap();
         assert_eq!(tree.children.len(), 2);
-        
+
         // Root should have 10ms self-time (100 - 60 - 30)
-        assert!((tree.self_time_ms - 10.0).abs() < 0.01, "Root self-time should be ~10ms, got {}", tree.self_time_ms);
+        assert!(
+            (tree.self_time_ms - 10.0).abs() < 0.01,
+            "Root self-time should be ~10ms, got {}",
+            tree.self_time_ms
+        );
     }
 
     #[test]
@@ -281,8 +292,22 @@ mod comprehensive_tests {
         // Create a deep tree: root -> a -> b -> c
         let root = make_span("1", None, SpanCategory::TauriCommand, 0.0, 100.0, "root");
         let a = make_span("2", Some("1"), SpanCategory::FileIo, 5.0, 80.0, "level_a");
-        let b = make_span("3", Some("2"), SpanCategory::BackendOperation, 10.0, 60.0, "level_b");
-        let c = make_span("4", Some("3"), SpanCategory::LspRequest, 15.0, 40.0, "level_c");
+        let b = make_span(
+            "3",
+            Some("2"),
+            SpanCategory::BackendOperation,
+            10.0,
+            60.0,
+            "level_b",
+        );
+        let c = make_span(
+            "4",
+            Some("3"),
+            SpanCategory::LspRequest,
+            15.0,
+            40.0,
+            "level_c",
+        );
 
         let spans = vec![root.clone(), a.clone(), b.clone(), c.clone()];
         let report = AttributionEngine::analyze(root, &spans);
@@ -306,8 +331,22 @@ mod comprehensive_tests {
     fn test_critical_path_identification() {
         // Critical path should be: root -> slow_child -> deep
         let root = make_span("1", None, SpanCategory::TauriCommand, 0.0, 100.0, "root");
-        let fast = make_span("2", Some("1"), SpanCategory::FileIo, 5.0, 10.0, "fast_child");
-        let slow = make_span("3", Some("1"), SpanCategory::BackendOperation, 20.0, 80.0, "slow_child");
+        let fast = make_span(
+            "2",
+            Some("1"),
+            SpanCategory::FileIo,
+            5.0,
+            10.0,
+            "fast_child",
+        );
+        let slow = make_span(
+            "3",
+            Some("1"),
+            SpanCategory::BackendOperation,
+            20.0,
+            80.0,
+            "slow_child",
+        );
         let deep = make_span("4", Some("3"), SpanCategory::LspRequest, 25.0, 60.0, "deep");
 
         let spans = vec![root.clone(), fast, slow.clone(), deep.clone()];
@@ -323,8 +362,22 @@ mod comprehensive_tests {
     fn test_hotspot_detection() {
         let root = make_span("1", None, SpanCategory::TauriCommand, 0.0, 100.0, "root");
         let fast = make_span("2", Some("1"), SpanCategory::FileIo, 5.0, 5.0, "fast");
-        let medium = make_span("3", Some("1"), SpanCategory::BackendOperation, 15.0, 30.0, "medium");
-        let slow = make_span("4", Some("1"), SpanCategory::LspRequest, 50.0, 50.0, "slow_hotspot");
+        let medium = make_span(
+            "3",
+            Some("1"),
+            SpanCategory::BackendOperation,
+            15.0,
+            30.0,
+            "medium",
+        );
+        let slow = make_span(
+            "4",
+            Some("1"),
+            SpanCategory::LspRequest,
+            50.0,
+            50.0,
+            "slow_hotspot",
+        );
 
         let spans = vec![root.clone(), fast, medium, slow.clone()];
         let report = AttributionEngine::analyze(root, &spans);
@@ -339,17 +392,26 @@ mod comprehensive_tests {
         let root = make_span("1", None, SpanCategory::TauriCommand, 0.0, 100.0, "root");
         let file1 = make_span("2", Some("1"), SpanCategory::FileIo, 5.0, 30.0, "file_op1");
         let file2 = make_span("3", Some("1"), SpanCategory::FileIo, 40.0, 20.0, "file_op2");
-        let git = make_span("4", Some("1"), SpanCategory::GitOperation, 65.0, 25.0, "git_op");
+        let git = make_span(
+            "4",
+            Some("1"),
+            SpanCategory::GitOperation,
+            65.0,
+            25.0,
+            "git_op",
+        );
 
         let spans = vec![root.clone(), file1, file2, git];
         let report = AttributionEngine::analyze(root, &spans);
 
         assert_eq!(report.breakdowns.len(), 3);
 
-        let file_io_breakdown = report.breakdowns.iter()
+        let file_io_breakdown = report
+            .breakdowns
+            .iter()
             .find(|b| matches!(b.category, SpanCategory::FileIo))
             .expect("FileIo category should exist");
-        
+
         assert_eq!(file_io_breakdown.span_count, 2);
         assert!((file_io_breakdown.self_time_ms - 50.0).abs() < 0.01);
     }
@@ -359,7 +421,14 @@ mod comprehensive_tests {
         use std::time::Instant;
 
         let mut spans = Vec::new();
-        let root = make_span("root", None, SpanCategory::TauriCommand, 0.0, 1000.0, "root");
+        let root = make_span(
+            "root",
+            None,
+            SpanCategory::TauriCommand,
+            0.0,
+            1000.0,
+            "root",
+        );
         spans.push(root.clone());
 
         for i in 0..10 {
@@ -370,7 +439,7 @@ mod comprehensive_tests {
                 SpanCategory::BackendOperation,
                 (i * 10) as f64,
                 90.0,
-                &format!("child_{}", i)
+                &format!("child_{}", i),
             );
             spans.push(child);
 
@@ -382,7 +451,7 @@ mod comprehensive_tests {
                     SpanCategory::FileIo,
                     (i * 10 + j) as f64,
                     8.0,
-                    &format!("grandchild_{}_{}", i, j)
+                    &format!("grandchild_{}_{}", i, j),
                 );
                 spans.push(grandchild);
             }
@@ -393,8 +462,12 @@ mod comprehensive_tests {
         let elapsed = start.elapsed();
 
         // Analysis should complete quickly
-        assert!(elapsed.as_millis() < 50, "Analysis took too long: {:?}", elapsed);
-        
+        assert!(
+            elapsed.as_millis() < 50,
+            "Analysis took too long: {:?}",
+            elapsed
+        );
+
         assert_eq!(spans.len(), 111);
         let tree = report.tree.unwrap();
         assert_eq!(tree.children.len(), 10);

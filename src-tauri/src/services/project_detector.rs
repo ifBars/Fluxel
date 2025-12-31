@@ -77,8 +77,7 @@ fn detect_node_info(root: &Path) -> NodeInfo {
 }
 
 fn detect_dotnet_info(root: &Path) -> DotnetInfo {
-    let solution_path = find_solution_file(root)
-        .map(|p| p.to_string_lossy().replace('\\', "/"));
+    let solution_path = find_solution_file(root).map(|p| p.to_string_lossy().replace('\\', "/"));
     let project_path = find_project_file(root).map(|p| p.to_string_lossy().replace('\\', "/"));
 
     DotnetInfo {
@@ -118,13 +117,16 @@ fn build_system_hint(kind: &ProjectKind, node: &NodeInfo) -> Option<String> {
 }
 
 #[tauri::command]
-pub async fn detect_project_profile(workspace_root: String, trace_parent: Option<String>) -> Result<ProjectProfile, String> {
+pub async fn detect_project_profile(
+    workspace_root: String,
+    trace_parent: Option<String>,
+) -> Result<ProjectProfile, String> {
     #[cfg(not(feature = "profiling"))]
     let _ = trace_parent; // Suppress unused warning when profiling is disabled
-    
+
     #[cfg(feature = "profiling")]
     let _span = tracing::span!(tracing::Level::INFO, "detect_project_profile", workspace_root = %workspace_root, trace_parent = ?trace_parent).entered();
-    
+
     let root = PathBuf::from(&workspace_root);
     if !root.is_dir() {
         return Err(format!(
@@ -138,18 +140,20 @@ pub async fn detect_project_profile(workspace_root: String, trace_parent: Option
 
     spawn_blocking(move || {
         #[cfg(feature = "profiling")]
-        let _blocking_span = tracing::span!(tracing::Level::INFO, "project_detection_blocking").entered();
-        
+        let _blocking_span =
+            tracing::span!(tracing::Level::INFO, "project_detection_blocking").entered();
+
         // Clone root for parallel detection
         let root_for_dotnet = root.clone();
         let root_for_node = root.clone();
-        
+
         // Use rayon for CPU-bound parallel file system checks
         // This is more appropriate than async since we're doing synchronous IO
         let (dotnet, node) = rayon::join(
             || {
                 #[cfg(feature = "profiling")]
-                let _dotnet_span = tracing::span!(tracing::Level::DEBUG, "detect_dotnet_info").entered();
+                let _dotnet_span =
+                    tracing::span!(tracing::Level::DEBUG, "detect_dotnet_info").entered();
                 let result = detect_dotnet_info(&root_for_dotnet);
                 #[cfg(feature = "profiling")]
                 drop(_dotnet_span);
@@ -157,14 +161,15 @@ pub async fn detect_project_profile(workspace_root: String, trace_parent: Option
             },
             || {
                 #[cfg(feature = "profiling")]
-                let _node_span = tracing::span!(tracing::Level::DEBUG, "detect_node_info").entered();
+                let _node_span =
+                    tracing::span!(tracing::Level::DEBUG, "detect_node_info").entered();
                 let result = detect_node_info(&root_for_node);
                 #[cfg(feature = "profiling")]
                 drop(_node_span);
                 result
-            }
+            },
         );
-        
+
         let kind = project_kind(&dotnet, &node);
         let hint = build_system_hint(&kind, &node);
 
@@ -179,4 +184,3 @@ pub async fn detect_project_profile(workspace_root: String, trace_parent: Option
     .await
     .map_err(|e| format!("Failed to detect project: {e}"))?
 }
-
