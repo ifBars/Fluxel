@@ -15,7 +15,7 @@ export class LanguageRegistry {
     private factories = new Map<string, LanguageProviderFactory>();
     private monaco: MonacoInstance | null = null;
 
-    private constructor() {}
+    private constructor() { }
 
     /**
      * Get the singleton instance
@@ -39,6 +39,10 @@ export class LanguageRegistry {
      * Register a language provider factory
      */
     registerFactory(languageId: string, factory: LanguageProviderFactory): void {
+        if (this.factories.has(languageId)) {
+            console.log(`[LanguageRegistry] Factory for ${languageId} already registered, skipping`);
+            return;
+        }
         this.factories.set(languageId, factory);
         console.log(`[LanguageRegistry] Registered factory for: ${languageId}`);
     }

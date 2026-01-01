@@ -15,7 +15,7 @@ import { useProfiler } from "@/hooks/useProfiler";
 import { usePluginLanguageActivation } from "@/hooks/usePlugins";
 import { toFileUri } from "@/lib/languages/typescript";
 import { registerInlineCompletionProvider } from "../../lib/ollama";
-import { CSharpProvider, getCSharpLSPClient, registerCSharpColorThemes } from "@/lib/languages/csharp";
+import { getCSharpLSPClient, registerCSharpColorThemes } from "@/lib/languages/csharp";
 import { configureTypeScriptLanguage, hydrateTypeScriptWorkspace, resetTypeScriptWorkspace } from "@/lib/languages/typescript";
 import { hasTypeScriptIndicators } from "@/lib/languages/typescript/TypeLoader";
 import { getLazyTypeResolver } from "@/lib/languages/typescript/LazyTypeResolver";
@@ -74,7 +74,7 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
 
     // Trigger plugin activation for the active file's language
     usePluginLanguageActivation(activeTab?.language ?? null);
-    
+
     const {
         theme,
         // Font settings
@@ -258,7 +258,7 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                 // The main hydration effect will handle loading (or already has)
                 return;
             }
-            
+
             // If we reach here, the project profile says it's not a TypeScript project,
             // but the user just opened a TypeScript file. Load types on-demand anyway.
             // This handles cases where tsconfig.json is missing but .ts files exist.
@@ -312,29 +312,12 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
         };
     }, [monaco, activeTab?.id, activeTab?.language, currentProject?.rootPath, projectInitStatus, projectProfile]);
 
-    // Initialize language registry and register C# provider
+    // Initialize language registry (lightweight check, ensure singleton is ready)
     useEffect(() => {
         if (!monaco) return;
-
-        // Initialize the language registry with Monaco instance
         const registry = getLanguageRegistry();
         registry.initialize(monaco);
-
-        // Register C# provider factory
-        registry.registerFactory('csharp', (monacoInstance) => new CSharpProvider(monacoInstance));
-
-        // Start C# provider (this registers language config, LSP features, etc.)
-        // We don't pass workspace root here because it will be started by ProjectManager
-        void registry.startProvider('csharp').catch((error) => {
-            console.error('[CodeEditor] Failed to start C# provider:', error);
-        });
-
-        return () => {
-            // Cleanup is handled by the registry dispose method
-            void registry.stopProvider('csharp').catch((error) => {
-                console.error('[CodeEditor] Failed to stop C# provider:', error);
-            });
-        };
+        // Note: Provider registration and startup is now handled by LanguageController
     }, [monaco]);
 
     // Define custom Fluxel themes and register all C# color themes
@@ -414,7 +397,7 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
         if (activeTab?.language === 'csharp' && lspReady && activeTab && lspClient.getIsStarted()) {
             // Use standard LSP file URIs for csharp-ls (file:///C:/...), not Monaco's encoded form.
             const uri = fsPathToLspUri(activeTab.path);
-            
+
             // Close previous document if switching to a different one
             const previousUri = currentOpenUriRef.current;
             if (previousUri && previousUri !== uri && openedDocsRef.current.has(previousUri)) {
@@ -427,7 +410,7 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                 });
                 openedDocsRef.current.delete(previousUri);
             }
-            
+
             // Only send didOpen if we haven't already opened this document
             if (!openedDocsRef.current.has(uri)) {
                 const currentVersion = docVersionsRef.current[uri] || 1;
@@ -536,11 +519,11 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
             const span = startSpan('save_file', 'frontend_interaction');
             setIsSaving(true);
             try {
-                trackInteraction('save_file_started', { 
+                trackInteraction('save_file_started', {
                     fileName: activeTab.path,
-                    language: activeTab.language 
+                    language: activeTab.language
                 });
-                
+
                 await saveFile(activeTab.id);
 
                 // Notify LSP server of save events for C#
@@ -554,10 +537,10 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                         console.error('[CodeEditor] Failed to send didSave:', error);
                     });
                 }
-                
-                trackInteraction('save_file_completed', { 
+
+                trackInteraction('save_file_completed', {
                     fileName: activeTab.path,
-                    language: activeTab.language 
+                    language: activeTab.language
                 });
             } finally {
                 setIsSaving(false);
@@ -575,7 +558,7 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
             if (activeTab.language === 'csharp' && lspReady && lspClientRef.current.getIsStarted()) {
                 const lspClient = lspClientRef.current;
                 const uri = fsPathToLspUri(activeTab.path);
-                
+
                 // Only send didChange if the document is already open in the LSP
                 if (openedDocsRef.current.has(uri)) {
                     const nextVersion = (docVersionsRef.current[uri] ?? 1) + 1;
@@ -619,7 +602,7 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
     // Handle editor mount (for future extensions)
     const handleEditorMount = useCallback((editor: Monaco.editor.IStandaloneCodeEditor) => {
         const span = startSpan('editor_mount', 'frontend_render');
-        
+
         setEditorInstance(editor);
 
         // Override the openCodeEditor handler so "Go to Definition" works across files
@@ -633,7 +616,7 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                 sideBySide?: boolean
             ) => {
                 const navigationSpan = startSpan('go_to_definition', 'frontend_render');
-                
+
                 // Try opening in the UI first
                 const targetPath = input.resource.path.startsWith('/')
                     ? input.resource.path.substring(1)
@@ -646,7 +629,7 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                     column: input.options?.selection?.startColumn ?? 1,
                 });
 
-                await navigationSpan.end({ 
+                await navigationSpan.end({
                     targetFile: normalizedPath,
                     line: String(input.options?.selection?.startLineNumber ?? 1)
                 });
@@ -668,7 +651,7 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                 }
             }
         });
-        
+
         span.end();
 
         // Clean up listener when editor unmounts
@@ -840,168 +823,168 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
     return (
         <ProfilerWrapper>
             <div className="h-full w-full flex flex-col overflow-hidden bg-background">
-            {/* Editor Header */}
-            <div className="h-8 border-b border-border bg-muted/20 flex items-center justify-between px-3 shrink-0">
-                {/* File Path Breadcrumb */}
-                <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                    <File className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0">
-                        {pathParts.map((part, index) => (
-                            <div key={index} className="flex items-center gap-1.5">
-                                {index > 0 && (
-                                    <span className="text-muted-foreground/40">/</span>
-                                )}
-                                <span className="truncate">{part}</span>
-                            </div>
-                        ))}
+                {/* Editor Header */}
+                <div className="h-8 border-b border-border bg-muted/20 flex items-center justify-between px-3 shrink-0">
+                    {/* File Path Breadcrumb */}
+                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                        <File className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0">
+                            {pathParts.map((part, index) => (
+                                <div key={index} className="flex items-center gap-1.5">
+                                    {index > 0 && (
+                                        <span className="text-muted-foreground/40">/</span>
+                                    )}
+                                    <span className="truncate">{part}</span>
+                                </div>
+                            ))}
+                        </div>
+                        {dirty && (
+                            <Circle className="w-2 h-2 fill-primary text-primary shrink-0 ml-1.5" />
+                        )}
                     </div>
-                    {dirty && (
-                        <Circle className="w-2 h-2 fill-primary text-primary shrink-0 ml-1.5" />
-                    )}
-                </div>
 
-                {/* Save Button */}
-                <button
-                    onClick={handleSave}
-                    disabled={!dirty || isSaving}
-                    className={`
+                    {/* Save Button */}
+                    <button
+                        onClick={handleSave}
+                        disabled={!dirty || isSaving}
+                        className={`
                         flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium
                         transition-all shrink-0
                         ${dirty && !isSaving
-                            ? 'bg-primary/10 text-primary hover:bg-primary/20'
-                            : 'text-muted-foreground opacity-50 cursor-not-allowed'
-                        }
+                                ? 'bg-primary/10 text-primary hover:bg-primary/20'
+                                : 'text-muted-foreground opacity-50 cursor-not-allowed'
+                            }
                     `}
-                    title={dirty ? "Save (Ctrl+S)" : "No changes to save"}
-                >
-                    <Save className="w-3 h-3" />
-                    <span>{isSaving ? "Saving..." : "Save"}</span>
-                </button>
-            </div>
+                        title={dirty ? "Save (Ctrl+S)" : "No changes to save"}
+                    >
+                        <Save className="w-3 h-3" />
+                        <span>{isSaving ? "Saving..." : "Save"}</span>
+                    </button>
+                </div>
 
-            {/* Monaco Editor (Code or Diff) */}
-            <div ref={containerRef} className="flex-1 overflow-hidden relative">
-                {activeTab.type === 'diff' ? (
-                    <>
-                        <DiffEditor
-                        key="diff-editor"
-                        height="100%"
-                        original={activeTab.diffBaseContent}
-                        modified={activeTab.content}
-                        language={activeTab.language}
-                        theme={theme === "dark" ? "fluxel-dark" : "fluxel-light"}
-                        onMount={(editor) => {
-                            setDiffEditorInstance(editor);
-                        }}
-                        options={{
-                            // Minimap
-                            minimap: { enabled: showMinimap, side: minimapSide, scale: minimapScale, maxColumn: minimapMaxColumn, showSlider: minimapShowSlider },
-                            // Font
-                            fontSize: fontSize,
-                            fontFamily: `'${fontFamily}', monospace`,
-                            lineHeight: lineHeight,
-                            fontLigatures: fontLigatures,
-                            fontWeight: fontWeight,
-                            letterSpacing: letterSpacing,
-                            // Scrolling
-                            smoothScrolling: smoothScrolling,
-                            wordWrap: wordWrap,
-                            wordWrapColumn: wordWrapColumn,
-                            lineNumbers: showLineNumbers ? lineNumbers : 'off',
-                            renderSideBySide: true,
-                            readOnly: true, // Diff view is read-only for now
-                        }}
-                    />
-                    </>
-                ) : (
-                    <>
-                        <Editor
-                        key={activeTab.id}
-                        height="100%"
-                        path={toFileUri(activeTab.path)}
-                        language={activeTab.language}
-                        value={activeTab.content}
-                        onChange={handleEditorChange}
-                        onMount={handleEditorMount}
-                        theme={theme === "dark" ? "fluxel-dark" : "fluxel-light"}
-                        options={{
-                            // Minimap
-                            minimap: { enabled: showMinimap, side: minimapSide, scale: minimapScale, maxColumn: minimapMaxColumn, showSlider: minimapShowSlider },
-                            // Font
-                            fontSize: fontSize,
-                            fontFamily: `'${fontFamily}', monospace`,
-                            lineHeight: lineHeight,
-                            fontLigatures: fontLigatures,
-                            fontWeight: fontWeight,
-                            letterSpacing: letterSpacing,
-                            // Cursor
-                            cursorStyle: cursorStyle,
-                            cursorBlinking: cursorBlinking,
-                            cursorWidth: cursorWidth,
-                            cursorSmoothCaretAnimation: cursorSmoothCaretAnimation,
-                            // Layout
-                            glyphMargin: glyphMargin,
-                            // Line Numbers & Highlight
-                            lineNumbers: showLineNumbers ? lineNumbers : 'off',
-                            renderLineHighlight: renderLineHighlight,
-                            // Whitespace & Indentation
-                            tabSize: tabSize,
-                            insertSpaces: insertSpaces,
-                            renderWhitespace: renderWhitespace,
-                            guides: {
-                                bracketPairs: bracketPairGuides,
-                                indentation: renderIndentGuides,
-                                highlightActiveIndentation: highlightActiveIndentGuide,
-                            },
-                            // Brackets
-                            bracketPairColorization: { enabled: bracketPairColorization },
-                            // Folding
-                            folding: folding,
-                            foldingHighlight: foldingHighlight,
-                            // Scrolling
-                            smoothScrolling: smoothScrolling,
-                            scrollBeyondLastLine: scrollBeyondLastLine,
-                            stickyScroll: { enabled: stickyScroll },
-                            // Word Wrap
-                            wordWrap: wordWrap,
-                            wordWrapColumn: wordWrapColumn,
-                            // Auto Closing
-                            autoClosingBrackets: autoClosingBrackets,
-                            autoClosingQuotes: autoClosingQuotes,
-                            // Formatting
-                            formatOnPaste: formatOnPaste,
-                            // Autocomplete
-                            inlineSuggest: {
-                                enabled: autocompleteEnabled,
-                            },
-                            suggest: {
-                                showKeywords: true,
-                                showSnippets: true,
-                                showClasses: true,
-                                showFunctions: true,
-                                showVariables: true,
-                                showFields: true,
-                                showInterfaces: true,
-                                showModules: true,
-                                showProperties: true,
-                                showEvents: true,
-                                showOperators: true,
-                                showUnits: true,
-                                showValues: true,
-                                showConstants: true,
-                                showEnums: true,
-                                showEnumMembers: true,
-                                showStructs: true,
-                                showTypeParameters: true,
-                                showInlineDetails: true,
-                            },
-                            fixedOverflowWidgets: true,
-                        }}
-                    />
-                    </>
-                )}
+                {/* Monaco Editor (Code or Diff) */}
+                <div ref={containerRef} className="flex-1 overflow-hidden relative">
+                    {activeTab.type === 'diff' ? (
+                        <>
+                            <DiffEditor
+                                key="diff-editor"
+                                height="100%"
+                                original={activeTab.diffBaseContent}
+                                modified={activeTab.content}
+                                language={activeTab.language}
+                                theme={theme === "dark" ? "fluxel-dark" : "fluxel-light"}
+                                onMount={(editor) => {
+                                    setDiffEditorInstance(editor);
+                                }}
+                                options={{
+                                    // Minimap
+                                    minimap: { enabled: showMinimap, side: minimapSide, scale: minimapScale, maxColumn: minimapMaxColumn, showSlider: minimapShowSlider },
+                                    // Font
+                                    fontSize: fontSize,
+                                    fontFamily: `'${fontFamily}', monospace`,
+                                    lineHeight: lineHeight,
+                                    fontLigatures: fontLigatures,
+                                    fontWeight: fontWeight,
+                                    letterSpacing: letterSpacing,
+                                    // Scrolling
+                                    smoothScrolling: smoothScrolling,
+                                    wordWrap: wordWrap,
+                                    wordWrapColumn: wordWrapColumn,
+                                    lineNumbers: showLineNumbers ? lineNumbers : 'off',
+                                    renderSideBySide: true,
+                                    readOnly: true, // Diff view is read-only for now
+                                }}
+                            />
+                        </>
+                    ) : (
+                        <>
+                            <Editor
+                                key={activeTab.id}
+                                height="100%"
+                                path={toFileUri(activeTab.path)}
+                                language={activeTab.language}
+                                value={activeTab.content}
+                                onChange={handleEditorChange}
+                                onMount={handleEditorMount}
+                                theme={theme === "dark" ? "fluxel-dark" : "fluxel-light"}
+                                options={{
+                                    // Minimap
+                                    minimap: { enabled: showMinimap, side: minimapSide, scale: minimapScale, maxColumn: minimapMaxColumn, showSlider: minimapShowSlider },
+                                    // Font
+                                    fontSize: fontSize,
+                                    fontFamily: `'${fontFamily}', monospace`,
+                                    lineHeight: lineHeight,
+                                    fontLigatures: fontLigatures,
+                                    fontWeight: fontWeight,
+                                    letterSpacing: letterSpacing,
+                                    // Cursor
+                                    cursorStyle: cursorStyle,
+                                    cursorBlinking: cursorBlinking,
+                                    cursorWidth: cursorWidth,
+                                    cursorSmoothCaretAnimation: cursorSmoothCaretAnimation,
+                                    // Layout
+                                    glyphMargin: glyphMargin,
+                                    // Line Numbers & Highlight
+                                    lineNumbers: showLineNumbers ? lineNumbers : 'off',
+                                    renderLineHighlight: renderLineHighlight,
+                                    // Whitespace & Indentation
+                                    tabSize: tabSize,
+                                    insertSpaces: insertSpaces,
+                                    renderWhitespace: renderWhitespace,
+                                    guides: {
+                                        bracketPairs: bracketPairGuides,
+                                        indentation: renderIndentGuides,
+                                        highlightActiveIndentation: highlightActiveIndentGuide,
+                                    },
+                                    // Brackets
+                                    bracketPairColorization: { enabled: bracketPairColorization },
+                                    // Folding
+                                    folding: folding,
+                                    foldingHighlight: foldingHighlight,
+                                    // Scrolling
+                                    smoothScrolling: smoothScrolling,
+                                    scrollBeyondLastLine: scrollBeyondLastLine,
+                                    stickyScroll: { enabled: stickyScroll },
+                                    // Word Wrap
+                                    wordWrap: wordWrap,
+                                    wordWrapColumn: wordWrapColumn,
+                                    // Auto Closing
+                                    autoClosingBrackets: autoClosingBrackets,
+                                    autoClosingQuotes: autoClosingQuotes,
+                                    // Formatting
+                                    formatOnPaste: formatOnPaste,
+                                    // Autocomplete
+                                    inlineSuggest: {
+                                        enabled: autocompleteEnabled,
+                                    },
+                                    suggest: {
+                                        showKeywords: true,
+                                        showSnippets: true,
+                                        showClasses: true,
+                                        showFunctions: true,
+                                        showVariables: true,
+                                        showFields: true,
+                                        showInterfaces: true,
+                                        showModules: true,
+                                        showProperties: true,
+                                        showEvents: true,
+                                        showOperators: true,
+                                        showUnits: true,
+                                        showValues: true,
+                                        showConstants: true,
+                                        showEnums: true,
+                                        showEnumMembers: true,
+                                        showStructs: true,
+                                        showTypeParameters: true,
+                                        showInlineDetails: true,
+                                    },
+                                    fixedOverflowWidgets: true,
+                                }}
+                            />
+                        </>
+                    )}
+                </div>
             </div>
-        </div>
         </ProfilerWrapper>
     );
 }

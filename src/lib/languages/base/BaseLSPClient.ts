@@ -20,8 +20,11 @@ export class BaseLSPClient {
     private requestHandlers = new Map<string, LSPRequestHandler>();
     private unlisten: UnlistenFn | null = null;
     private isStarted = false;
+    private isInitialized = false;
     private workspaceRoot?: string;
     private openDocuments = new Set<string>();
+    private startPromise: Promise<void> | null = null;
+    private initializePromise: Promise<any> | null = null;
 
     constructor(protected config: LSPClientConfig) {
         this.registerDefaultRequestHandlers();
@@ -38,7 +41,13 @@ export class BaseLSPClient {
      * Start the LSP client and language server
      */
     async start(workspaceRoot?: string): Promise<void> {
-        await FrontendProfiler.profileAsync('lsp_start', 'lsp_request', async () => {
+        // If a start is already in progress, wait for it to complete
+        if (this.startPromise) {
+            console.log(`[LSPClient:${this.config.languageId}] Start already in progress, joining existing promise...`);
+            return this.startPromise;
+        }
+
+        this.startPromise = FrontendProfiler.profileAsync('lsp_start', 'lsp_request', async () => {
             // Restart if workspace changes
             if (this.isStarted && workspaceRoot && this.workspaceRoot && workspaceRoot !== this.workspaceRoot) {
                 await this.stop();
@@ -69,6 +78,12 @@ export class BaseLSPClient {
                 throw error;
             }
         }, { languageId: this.config.languageId, ...(workspaceRoot && { workspaceRoot }) });
+
+        try {
+            await this.startPromise;
+        } finally {
+            this.startPromise = null;
+        }
     }
 
     /**
@@ -98,9 +113,12 @@ export class BaseLSPClient {
             }
 
             this.isStarted = false;
+            this.isInitialized = false;
             this.workspaceRoot = undefined;
             this.pendingRequests.clear();
             this.openDocuments.clear();
+            this.startPromise = null;
+            this.initializePromise = null;
             console.log(`[LSPClient:${this.config.languageId}] Language server stopped`);
         } catch (error) {
             console.error(`[LSPClient:${this.config.languageId}] Error stopping:`, error);
@@ -272,7 +290,18 @@ export class BaseLSPClient {
             throw new Error('LSP client must be started before initialization');
         }
 
-        return FrontendProfiler.profileAsync('lsp_initialize', 'lsp_request', async () => {
+        if (this.isInitialized) {
+            console.log(`[LSPClient:${this.config.languageId}] Already initialized`);
+            return Promise.resolve();
+        }
+
+        // If an initialization is already in progress, wait for it to complete
+        if (this.initializePromise) {
+            console.log(`[LSPClient:${this.config.languageId}] Initialize already in progress, joining existing promise...`);
+            return this.initializePromise;
+        }
+
+        this.initializePromise = FrontendProfiler.profileAsync('lsp_initialize', 'lsp_request', async () => {
             try {
                 console.log(`[LSPClient:${this.config.languageId}] Initializing language server...`);
 
@@ -286,12 +315,20 @@ export class BaseLSPClient {
                 await this.sendNotification('initialized', {});
                 console.log(`[LSPClient:${this.config.languageId}] Initialized notification sent`);
 
+                this.isInitialized = true;
+
                 return result;
             } catch (error) {
                 console.error(`[LSPClient:${this.config.languageId}] Initialization failed:`, error);
                 throw error;
             }
         }, { languageId: this.config.languageId });
+
+        try {
+            return await this.initializePromise;
+        } finally {
+            this.initializePromise = null;
+        }
     }
 
     /**

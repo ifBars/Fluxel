@@ -6,8 +6,8 @@
 use std::path::PathBuf;
 
 use crate::languages::lsp_manager::{
-    check_csharp_ls_installed, find_project_file, find_solution_file, get_path_with_dotnet_tools,
-    install_csharp_ls, LSPServerConfig, LSPState,
+    check_csharp_ls_installed, get_path_with_dotnet_tools, install_csharp_ls, LSPServerConfig,
+    LSPState,
 };
 
 /// Start the C# language server (csharp-ls)
@@ -52,8 +52,13 @@ pub async fn start_csharp_ls(
         .filter(|p| p.is_dir());
 
     // Build arguments - find solution or project file
-    let mut args = Vec::new();
+    // Build arguments - start with empty args
+    // We intentionally DO NOT pass -s (solution) here because it causes csharp-ls to load MSBuild inputs
+    // before the LSP initialize handler runs, which triggers "MSBuildLocator.RegisterInstance was called, but MSBuild assemblies were already loaded"
+    // The solution will be provided via the workspace/configuration request handled by the client.
+    let args = Vec::new();
 
+    /*
     if let Some(ref root) = working_dir {
         // Try to find solution file first, then fall back to .csproj
         if let Some(solution) = find_solution_file(root) {
@@ -74,6 +79,7 @@ pub async fn start_csharp_ls(
             println!("[Tauri:csharp] No .sln or .csproj found, csharp-ls will auto-discover");
         }
     }
+    */
 
     // Build environment with dotnet tools path
     let mut env = Vec::new();

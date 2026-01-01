@@ -59,11 +59,12 @@ export default function BuildPanel() {
     return (
         <ProfilerWrapper>
             <div className="flex flex-col h-full bg-card resize-none overflow-hidden">
-                {/* Header */}
                 <div
                     className="flex items-center justify-between border-b border-border bg-muted/30 shrink-0"
                     style={{
-                        height: 'var(--build-panel-header-height, 2.25rem)',
+                        height: 'calc(2.25rem + var(--density-padding-sm, 0.5rem))',
+                        paddingLeft: 'var(--density-padding-md, 0.75rem)',
+                        paddingRight: 'var(--density-padding-md, 0.75rem)',
                     }}
                 >
                     <div className="flex items-center h-full">
@@ -108,30 +109,24 @@ export default function BuildPanel() {
                         Terminal
                     </button>
                 </div>
-
-                <div
-                    className="flex items-center px-3"
-                    style={{ gap: 'var(--build-panel-header-gap, 0.5rem)' }}
+                <button
+                    onClick={() => {
+                        trackInteraction('panel_closed');
+                        closePanel();
+                    }}
+                    className="rounded hover:bg-muted transition-colors"
+                    style={{ padding: 'var(--build-panel-button-padding, 0.25rem)' }}
+                    aria-label="Close panel"
                 >
-                    <button
-                        onClick={() => {
-                            trackInteraction('panel_closed');
-                            closePanel();
-                        }}
-                        className="rounded hover:bg-muted transition-colors"
-                        style={{ padding: 'var(--build-panel-button-padding, 0.25rem)' }}
-                        aria-label="Close panel"
-                    >
-                        <X style={{
-                            width: 'var(--build-panel-header-icon-size, 1rem)',
-                            height: 'var(--build-panel-header-icon-size, 1rem)'
-                        }} className="text-muted-foreground" />
-                    </button>
+                    <X style={{
+                        width: 'var(--build-panel-header-icon-size, 1rem)',
+                        height: 'var(--build-panel-header-icon-size, 1rem)'
+                    }} className="text-muted-foreground" />
+                </button>
                 </div>
-            </div>
 
-            {/* Content Area */}
-            <div className="flex-1 overflow-hidden relative">
+                {/* Content Area */}
+                <div className="flex-1 overflow-hidden relative">
                     <div className={`absolute inset-0 ${activeTab === 'problems' ? 'z-10' : 'z-0 invisible'}`}>
                         <ProblemsView />
                     </div>

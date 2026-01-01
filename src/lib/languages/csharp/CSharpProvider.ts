@@ -17,11 +17,18 @@ export class CSharpProvider extends BaseLanguageProvider {
         this.lspClient = getCSharpLSPClient();
     }
 
+    private startPromise: Promise<void> | null = null;
+
     /**
      * Start the C# provider
      */
     async start(workspaceRoot?: string): Promise<void> {
-        await FrontendProfiler.profileAsync('csharp_provider_start', 'frontend_render', async () => {
+        if (this.startPromise) {
+            console.log('[CSharp] Start already in progress, joining existing promise...');
+            return this.startPromise;
+        }
+
+        this.startPromise = FrontendProfiler.profileAsync('csharp_provider_start', 'frontend_render', async () => {
             if (this.started) {
                 console.log('[CSharp] Already started');
                 return;
@@ -50,6 +57,12 @@ export class CSharpProvider extends BaseLanguageProvider {
                 throw error;
             }
         });
+
+        try {
+            await this.startPromise;
+        } finally {
+            this.startPromise = null;
+        }
     }
 
     /**
