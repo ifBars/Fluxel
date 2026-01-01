@@ -1,12 +1,16 @@
 import { useState, useRef, useMemo, useCallback, memo, lazy, Suspense, useEffect } from "react";
 import { Panel, Group, Separator, usePanelRef } from "react-resizable-panels";
-import { useWorkbenchStore, useEditorStore, useSettingsStore, densityConfigs, useBuildPanelStore, useTypeLoadingStore, useInspectorStore, useCSharpStore, useAgentStore } from "@/stores";
+import { useWorkbenchStore, useEditorStore, useSettingsStore, densityConfigs, useBuildPanelStore, useTypeLoadingStore, useInspectorStore, useCSharpStore, useAgentStore, useNavigationStore, useDebugStore } from "@/stores";
 import { FrontendProfiler } from "@/lib/services/FrontendProfiler";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { useDefaultCommands } from "@/hooks/useCommands";
 import { useProfiler } from "@/hooks/useProfiler";
 import ActivityBar from "./ActivityBar";
 import Sidebar from "./SideBar";
 import SettingsDialog from "./SettingsDialog";
+import CommandPalette from "./CommandPalette";
+import SymbolSearchDialog from "./SymbolSearchDialog";
+import QuickOutline from "./QuickOutline";
 import EditorGroup from "@/components/editor/EditorGroup";
 
 
@@ -14,6 +18,7 @@ import EditorGroup from "@/components/editor/EditorGroup";
 const BuildPanel = lazy(() => import("./BuildPanel"));
 const InspectorPanel = lazy(() => import("@/components/inspector").then(mod => ({ default: mod.InspectorPanel })));
 const AgentPanel = lazy(() => import("@/components/agent").then(mod => ({ default: mod.AgentPanel })));
+const DebugPanel = lazy(() => import("./DebugPanel"));
 
 function Workbench() {
     // Track time from render start to mount completion (captures store hydration)
@@ -51,6 +56,13 @@ function Workbench() {
     const isInspectorOpen = useInspectorStore((state) => state.isInspectorOpen);
     const isLoadingBuildConfigs = useCSharpStore((state) => state.isLoadingConfigs);
     const isAgentOpen = useAgentStore((state) => state.isOpen);
+    const isDebugOpen = useDebugStore((state) => state.isPanelOpen);
+    
+    // Navigation dialogs
+    const isSymbolSearchOpen = useNavigationStore((state) => state.isSymbolSearchOpen);
+    const closeSymbolSearch = useNavigationStore((state) => state.closeSymbolSearch);
+    const isQuickOutlineOpen = useNavigationStore((state) => state.isQuickOutlineOpen);
+    const closeQuickOutline = useNavigationStore((state) => state.closeQuickOutline);
 
     // UseMemo hooks - React already optimizes these, profiling adds overhead
     // Only profile if computation is expensive (these are simple lookups)
@@ -78,6 +90,9 @@ function Workbench() {
 
     // Keyboard shortcuts hook - no need to profile hook initialization
     useKeyboardShortcuts(sidebarPanelRef);
+    
+    // Register default commands for command palette
+    useDefaultCommands();
 
     // Combine component initialization tracking into a single useEffect to reduce hook overhead
     useEffect(() => {
@@ -236,6 +251,30 @@ function Workbench() {
                                 </Panel>
                             </>
                         )}
+                        
+                        {/* Debug Panel (Right Sidebar) */}
+                        {isDebugOpen && (
+                            <>
+                                <Separator
+                                    className="panel-resize-handle bg-border hover:bg-primary transition-colors cursor-col-resize active:bg-primary z-20 transition-all opacity-60 hover:opacity-100"
+                                    style={{
+                                        width: densityConfig.panelHandleWidth,
+                                        minWidth: densityConfig.panelHandleWidth,
+                                    }}
+                                />
+                                <Panel
+                                    defaultSize={25}
+                                    minSize={20}
+                                    maxSize={40}
+                                    collapsible
+                                    collapsedSize={0}
+                                >
+                                    <Suspense fallback={<div className="flex items-center justify-center h-full">Loading...</div>}>
+                                        <DebugPanel />
+                                    </Suspense>
+                                </Panel>
+                            </>
+                        )}
                     </Group>
                 </div>
 
@@ -341,8 +380,13 @@ function Workbench() {
 
                 {/* Settings Modal */}
                 <SettingsDialog isOpen={isSettingsOpen} onClose={handleSettingsClose} />
-
-
+                
+                {/* Command Palette */}
+                <CommandPalette />
+                
+                {/* Navigation Dialogs */}
+                <SymbolSearchDialog isOpen={isSymbolSearchOpen} onClose={closeSymbolSearch} />
+                <QuickOutline isOpen={isQuickOutlineOpen} onClose={closeQuickOutline} />
             </div>
         </ProfilerWrapper>
     );

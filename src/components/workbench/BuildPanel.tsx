@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { X, Loader2, CheckCircle2, XCircle, Terminal, Copy, Check, Hammer, AlertCircle, AlertTriangle, ExternalLink } from 'lucide-react';
 import { useBuildPanelStore, useTerminalStore, useDiagnosticsStore, useProjectStore } from '@/stores';
+import TerminalTabs from './TerminalTabs';
 import type { Diagnostic } from '@/stores/diagnostics/useDiagnosticsStore';
 import ScrollableArea from '@/components/ui/scrollable-area';
 import ProblemsView from './ProblemsView';
@@ -393,21 +394,116 @@ function BuildView() {
 }
 
 function TerminalView({ projectProfile }: { projectProfile: any }) {
-    const {
-        entries,
-        history,
-        historyIndex,
-        currentCommand,
-        isRunning,
-        executeCommand,
-        setHistoryIndex,
-        clearTerminal,
-        killProcess
-    } = useTerminalStore();
+    // Multi-terminal support
+    const terminals = useTerminalStore(state => state.terminals);
+    const activeTerminalId = useTerminalStore(state => state.activeTerminalId);
+    const layout = useTerminalStore(state => state.layout);
+    const splitTerminalId = useTerminalStore(state => state.splitTerminalId);
+    const createTerminal = useTerminalStore(state => state.createTerminal);
+    const executeCommand = useTerminalStore(state => state.executeCommand);
+    const setHistoryIndex = useTerminalStore(state => state.setHistoryIndex);
+    const clearTerminal = useTerminalStore(state => state.clearTerminal);
+    const killProcess = useTerminalStore(state => state.killProcess);
+    const initListeners = useTerminalStore(state => state.initListeners);
+    
+    // Initialize listeners and create first terminal if needed
+    useEffect(() => {
+        initListeners();
+        if (terminals.length === 0) {
+            createTerminal();
+        }
+    }, [initListeners, terminals.length, createTerminal]);
+    
+    const activeTerminal = terminals.find(t => t.id === activeTerminalId);
+    const splitTerminal = splitTerminalId ? terminals.find(t => t.id === splitTerminalId) : null;
+    
+    // Render single or split terminal view
+    if (layout !== 'single' && splitTerminal) {
+        const isHorizontal = layout === 'split-horizontal';
+        return (
+            <div className={cn(
+                "flex h-full",
+                isHorizontal ? "flex-row" : "flex-col"
+            )}>
+                <TerminalTabs />
+                <div className="flex-1 flex" style={{ flexDirection: isHorizontal ? 'row' : 'column' }}>
+                    <div className="flex-1 min-w-0 min-h-0">
+                        {activeTerminal && (
+                            <SingleTerminalView
+                                terminal={activeTerminal}
+                                projectProfile={projectProfile}
+                                executeCommand={executeCommand}
+                                setHistoryIndex={setHistoryIndex}
+                                clearTerminal={clearTerminal}
+                                killProcess={killProcess}
+                            />
+                        )}
+                    </div>
+                    <div className={cn(
+                        "shrink-0",
+                        isHorizontal ? "w-px bg-border" : "h-px bg-border"
+                    )} />
+                    <div className="flex-1 min-w-0 min-h-0">
+                        <SingleTerminalView
+                            terminal={splitTerminal}
+                            projectProfile={projectProfile}
+                            executeCommand={executeCommand}
+                            setHistoryIndex={setHistoryIndex}
+                            clearTerminal={clearTerminal}
+                            killProcess={killProcess}
+                        />
+                    </div>
+                </div>
+            </div>
+        );
+    }
+    
+    return (
+        <div className="flex flex-col h-full">
+            <TerminalTabs />
+            <div className="flex-1 min-h-0">
+                {activeTerminal ? (
+                    <SingleTerminalView
+                        terminal={activeTerminal}
+                        projectProfile={projectProfile}
+                        executeCommand={executeCommand}
+                        setHistoryIndex={setHistoryIndex}
+                        clearTerminal={clearTerminal}
+                        killProcess={killProcess}
+                    />
+                ) : (
+                    <div className="flex items-center justify-center h-full text-muted-foreground">
+                        No terminal. Click + to create one.
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
 
+// Single terminal instance view
+interface SingleTerminalViewProps {
+    terminal: import('@/stores/terminal/useTerminalStore').TerminalInstance;
+    projectProfile: any;
+    executeCommand: (terminalId: string, command: string) => Promise<void>;
+    setHistoryIndex: (terminalId: string, index: number) => void;
+    clearTerminal: (terminalId?: string) => void;
+    killProcess: (terminalId?: string) => Promise<void>;
+}
+
+function SingleTerminalView({ 
+    terminal, 
+    projectProfile, 
+    executeCommand, 
+    setHistoryIndex, 
+    clearTerminal, 
+    killProcess 
+}: SingleTerminalViewProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const [inputValue, setInputValue] = useState('');
+    
+    const { entries, history, historyIndex, isRunning, currentCommand } = terminal;
 
     // Auto-scroll logic
     useEffect(() => {
@@ -418,7 +514,6 @@ function TerminalView({ projectProfile }: { projectProfile: any }) {
 
     // Focus input on click
     const handleContainerClick = () => {
-        // Only focus if user isn't selecting text
         const selection = window.getSelection();
         if (selection && selection.toString().length === 0) {
             inputRef.current?.focus();
@@ -430,52 +525,18 @@ function TerminalView({ projectProfile }: { projectProfile: any }) {
             e.preventDefault();
             if (!inputValue.trim()) return;
 
-            executeCommand(inputValue);
+            executeCommand(terminal.id, inputValue);
             setInputValue('');
         } else if (e.key === 'ArrowUp') {
             e.preventDefault();
             if (history.length > 0) {
-                const newIndex = Math.min(historyIndex + 1, history.length - 1);
-                setHistoryIndex(newIndex);
-                // history is stored chronological, but usually ArrowUp goes to previous command (last item)
-                // Let's assume history[history.length - 1] is the most recent.
-                // So index 0 is most recent? or index 0 is oldest?
-                // Standard: history stores [cmd1, cmd2, cmd3].
-                // ArrowUp 1st time -> cmd3. Index = 0 (offset from end?) or Index = 2?
-                // Let's implement simpler: historyIndex points to the index in the array.
-                // Initial historyIndex = -1.
-                // ArrowUp:
-                // if -1, set to length - 1.
-                // else set to index - 1.
-
-                // Let's re-logic history navigation
-                // We need to track the current visual index.
-                // Since I used useTerminalStore state for historyIndex, I should use that or local state if I didn't want it persisted.
-                // But store has `historyIndex`. Let's assume it works like this:
-                // -1: New command line.
-                // 0..N: Index in history array.
-
-                // My logic in store was: setHistoryIndex(index).
-                // Let's adjust slightly:
-                // Up Arrow: move valid index towards 0?
-                // Let's use local logic for now as it's UI state mostly.
-                // Actually, store state `historyIndex` is fine if we want persistence across toggles.
-
-                // Standard terminal:
-                // History: [a, b, c]
-                // Input: "" (Index -1)
-                // Up -> "c" (Index 2)
-                // Up -> "b" (Index 1)
-                // Down -> "c" (Index 2)
-                // Down -> "" (Index -1)
-
                 let idx = historyIndex;
                 if (idx === -1) {
                     idx = history.length - 1;
                 } else {
                     idx = Math.max(0, idx - 1);
                 }
-                setHistoryIndex(idx);
+                setHistoryIndex(terminal.id, idx);
                 setInputValue(history[idx] || '');
             }
         } else if (e.key === 'ArrowDown') {
@@ -483,26 +544,24 @@ function TerminalView({ projectProfile }: { projectProfile: any }) {
             if (historyIndex !== -1) {
                 const idx = historyIndex + 1;
                 if (idx >= history.length) {
-                    setHistoryIndex(-1);
+                    setHistoryIndex(terminal.id, -1);
                     setInputValue('');
                 } else {
-                    setHistoryIndex(idx);
+                    setHistoryIndex(terminal.id, idx);
                     setInputValue(history[idx]);
                 }
             }
         } else if (e.key === 'c' && e.ctrlKey) {
-            // Handle Ctrl+C to cancel? Command is native, we can't easily kill it unless we have the handle.
-            // But we can clear the input.
             if (isRunning) {
                 e.preventDefault();
-                killProcess();
+                killProcess(terminal.id);
             } else if (inputValue) {
                 setInputValue('');
-                setHistoryIndex(-1);
+                setHistoryIndex(terminal.id, -1);
             }
         } else if (e.key === 'l' && e.ctrlKey) {
             e.preventDefault();
-            clearTerminal();
+            clearTerminal(terminal.id);
         }
     };
 

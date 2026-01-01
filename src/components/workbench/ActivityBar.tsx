@@ -1,7 +1,7 @@
 import { useEffect, RefObject } from "react";
-import { Files, Search, GitBranch, Settings, Activity, Bot } from "lucide-react";
+import { Files, Search, GitBranch, Settings, Activity, Bot, Bug } from "lucide-react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
-import { useWorkbenchStore, type ActivityItem, useProfilerStore, useAgentStore } from "@/stores";
+import { useWorkbenchStore, type ActivityItem, useProfilerStore, useAgentStore, useDebugStore } from "@/stores";
 
 interface ActivityBarProps {
     onSettingsClick: () => void;
@@ -12,6 +12,7 @@ export default function ActivityBar({ onSettingsClick, sidebarPanelRef }: Activi
     const { activeActivity, setActiveActivity, isSidebarOpen } = useWorkbenchStore();
     const { isPanelOpen: isProfilerOpen, togglePanel: toggleProfiler, isAvailable: isProfilerAvailable, initialize } = useProfilerStore();
     const { isOpen: isAgentOpen, togglePanel: toggleAgent } = useAgentStore();
+    const { isPanelOpen: isDebugOpen, togglePanel: toggleDebug } = useDebugStore();
 
     // Initialize profiler store to check availability
     useEffect(() => {
@@ -75,6 +76,12 @@ export default function ActivityBar({ onSettingsClick, sidebarPanelRef }: Activi
                     marginBottom: 'var(--density-padding-md, 0.75rem)',
                 }}
             >
+                <ActivityButton
+                    icon={<Bug style={{ width: 'var(--activity-bar-icon-size, 1.25rem)', height: 'var(--activity-bar-icon-size, 1.25rem)' }} />}
+                    label="Debug"
+                    isActive={isDebugOpen}
+                    onClick={() => toggleDebug()}
+                />
                 {isProfilerAvailable && (
                     <ActivityButton
                         icon={<Activity style={{ width: 'var(--activity-bar-icon-size, 1.25rem)', height: 'var(--activity-bar-icon-size, 1.25rem)' }} />}

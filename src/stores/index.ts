@@ -9,3 +9,6 @@ export * from './profiler';
 export * from './terminal';
 export * from './agent/useAgentStore';
 export * from './plugins';
+export * from './commands';
+export * from './navigation';
+export * from './debug';

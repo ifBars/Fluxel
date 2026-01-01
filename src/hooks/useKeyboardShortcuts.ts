@@ -1,6 +1,6 @@
 import { useEffect, RefObject } from 'react';
 import type { PanelImperativeHandle } from 'react-resizable-panels';
-import { useWorkbenchStore, useBuildPanelStore, useAgentStore, useDiagnosticsStore } from '@/stores';
+import { useWorkbenchStore, useBuildPanelStore, useAgentStore, useDiagnosticsStore, useCommandStore, useNavigationStore } from '@/stores';
 
 export function useKeyboardShortcuts(sidebarPanelRef: RefObject<PanelImperativeHandle | null>) {
     const { setActiveActivity } = useWorkbenchStore();
@@ -102,10 +102,24 @@ export function useKeyboardShortcuts(sidebarPanelRef: RefObject<PanelImperativeH
 
 
 
-            // Ctrl/Cmd + Shift + P: Command Palette (mapped to Search for now)
+            // Ctrl/Cmd + Shift + P: Command Palette
             if (modifier && event.shiftKey && (event.key === 'p' || event.key === 'P')) {
                 event.preventDefault();
-                setActiveActivity('search');
+                useCommandStore.getState().togglePalette();
+                return;
+            }
+            
+            // Ctrl/Cmd + T: Go to Symbol in Workspace
+            if (modifier && !event.shiftKey && (event.key === 't' || event.key === 'T')) {
+                event.preventDefault();
+                useNavigationStore.getState().toggleSymbolSearch();
+                return;
+            }
+            
+            // Ctrl/Cmd + Shift + O: Go to Symbol in File (Quick Outline)
+            if (modifier && event.shiftKey && (event.key === 'o' || event.key === 'O')) {
+                event.preventDefault();
+                useNavigationStore.getState().toggleQuickOutline();
                 return;
             }
 
