@@ -83,7 +83,7 @@ export function useDefaultCommands() {
                 shortcut: 'Ctrl+Z',
                 description: 'Undo last action',
                 execute: () => {
-                    useEditorStore.getState().setPendingAction('undo');
+                    useEditorStore.getState().triggerAction('undo');
                 },
             },
             {
@@ -93,7 +93,7 @@ export function useDefaultCommands() {
                 shortcut: 'Ctrl+Shift+Z',
                 description: 'Redo last undone action',
                 execute: () => {
-                    useEditorStore.getState().setPendingAction('redo');
+                    useEditorStore.getState().triggerAction('redo');
                 },
             },
             {
@@ -103,7 +103,7 @@ export function useDefaultCommands() {
                 shortcut: 'Ctrl+F',
                 description: 'Find in current file',
                 execute: () => {
-                    useEditorStore.getState().setPendingAction('find');
+                    useEditorStore.getState().triggerAction('find');
                 },
             },
             {
@@ -113,7 +113,7 @@ export function useDefaultCommands() {
                 shortcut: 'Ctrl+H',
                 description: 'Find and replace in current file',
                 execute: () => {
-                    useEditorStore.getState().setPendingAction('replace');
+                    useEditorStore.getState().triggerAction('replace');
                 },
             },
             {
@@ -124,7 +124,7 @@ export function useDefaultCommands() {
                 description: 'Format the current document',
                 when: () => !!useEditorStore.getState().activeTabId,
                 execute: () => {
-                    useEditorStore.getState().setPendingAction('formatDocument');
+                    useEditorStore.getState().triggerAction('formatDocument');
                 },
             },
 
@@ -203,7 +203,7 @@ export function useDefaultCommands() {
                 description: 'Go to a specific line number',
                 when: () => !!useEditorStore.getState().activeTabId,
                 execute: () => {
-                    useEditorStore.getState().setPendingAction('gotoLine');
+                    useEditorStore.getState().triggerAction('gotoLine');
                 },
             },
             {

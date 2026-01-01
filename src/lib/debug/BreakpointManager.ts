@@ -36,11 +36,9 @@ export class BreakpointManager {
         this.editor = editor;
 
         // Subscribe to breakpoint changes
-        this.unsubscribe = useDebugStore.subscribe(
-            (state) => state.breakpoints,
-            (breakpoints) => this.syncDecorations(breakpoints),
-            { equalityFn: (a, b) => a === b }
-        );
+        this.unsubscribe = useDebugStore.subscribe((state) => {
+            this.syncDecorations(state.breakpoints);
+        });
 
         // Initial sync
         this.syncDecorations(useDebugStore.getState().breakpoints);

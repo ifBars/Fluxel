@@ -245,7 +245,6 @@ function QuickOutline({ isOpen, onClose }: QuickOutlineProps) {
                 }
                 
                 // Get document symbols
-                const languageId = model.getLanguageId();
                 const providers = monaco.languages.DocumentSymbolProviderRegistry?.ordered(model) || [];
                 
                 if (providers.length === 0) {

@@ -120,7 +120,7 @@ function SymbolSearchDialog({ isOpen, onClose }: SymbolSearchDialogProps) {
     
     const inputRef = useRef<HTMLInputElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
-    const searchTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+    const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     
     const openFile = useEditorStore(state => state.openFile);
     const projectRoot = useProjectStore(state => state.currentProject?.rootPath ?? null);
