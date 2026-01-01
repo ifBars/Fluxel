@@ -15,12 +15,13 @@ import { useProfiler } from "@/hooks/useProfiler";
 import { usePluginLanguageActivation } from "@/hooks/usePlugins";
 import { toFileUri } from "@/lib/languages/typescript";
 import { registerInlineCompletionProvider } from "../../lib/ollama";
-import { registerCSharpLanguage, getCSharpLSPClient, registerCSharpLSPFeatures } from "@/lib/languages/csharp";
+import { CSharpProvider, getCSharpLSPClient, registerCSharpColorThemes } from "@/lib/languages/csharp";
 import { configureTypeScriptLanguage, hydrateTypeScriptWorkspace, resetTypeScriptWorkspace } from "@/lib/languages/typescript";
 import { hasTypeScriptIndicators } from "@/lib/languages/typescript/TypeLoader";
 import { getLazyTypeResolver } from "@/lib/languages/typescript/LazyTypeResolver";
 import { shouldHydrateTypeScriptWorkspace } from "@/lib/services/ProjectManager";
 import { fsPathToLspUri } from "@/lib/languages/base/fileUris";
+import { getLanguageRegistry } from "@/lib/languages/registry";
 import { File, Save, Circle } from "lucide-react";
 
 // Ensure Monaco workers are resolved by Vite/Tauri instead of the default CDN lookup
@@ -69,7 +70,6 @@ interface CodeEditorProps {
 }
 
 export default function CodeEditor({ activeTab }: CodeEditorProps) {
-    console.log('[CodeEditor] Component render - activeTab:', activeTab?.filename, 'type:', activeTab?.type, 'hasActiveTab:', !!activeTab);
     const { ProfilerWrapper, startSpan, trackInteraction } = useProfiler('CodeEditor');
 
     // Trigger plugin activation for the active file's language
@@ -99,13 +99,14 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
     const monaco = useMonaco() as unknown as typeof Monaco;
     const [isSaving, setIsSaving] = useState(false);
     const [editorInstance, setEditorInstance] = useState<Monaco.editor.IStandaloneCodeEditor | null>(null);
-    const diffEditorRef = useRef<Monaco.editor.IStandaloneDiffEditor | null>(null);
+    const [diffEditorInstance, setDiffEditorInstance] = useState<Monaco.editor.IStandaloneDiffEditor | null>(null);
     const autocompleteDisposableRef = useRef<{ dispose: () => void } | null>(null);
     const lspClientRef = useRef(getCSharpLSPClient());
     const docVersionsRef = useRef<Record<string, number>>({});
     const hydratedProjectRootRef = useRef<string | null>(null);
     const openedDocsRef = useRef<Set<string>>(new Set());
     const currentOpenUriRef = useRef<string | null>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
 
     // When switching tabs, wait for the new editor instance before revealing a position.
     useEffect(() => {
@@ -117,15 +118,36 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
         // before the DiffEditor finished resetting, causing:
         // "TextModel got disposed before DiffEditorWidget model got reset" error.
         if (activeTab?.type !== 'diff') {
-            diffEditorRef.current = null;
+            setDiffEditorInstance(null);
         }
     }, [activeTab?.id, activeTab?.type]);
 
     // Configure Monaco TypeScript to behave like VSCode (full IntelliSense)
     useEffect(() => {
         if (!monaco) return;
-        configureTypeScriptLanguage(monaco);
-    }, [monaco]);
+
+        // Only configure TypeScript language for TS/JS/mixed projects
+        // Skip for pure C# projects to avoid polluting editor with TS/JS options
+        const shouldConfigureTS = !currentProject ||
+            projectProfile?.kind === 'javascript' ||
+            projectProfile?.kind === 'mixed';
+
+        if (shouldConfigureTS) {
+            if (import.meta.env.DEV) {
+                console.log('[CodeEditor] Configuring TypeScript language', {
+                    hasProject: !!currentProject,
+                    projectKind: projectProfile?.kind,
+                    projectRoot: currentProject?.rootPath
+                });
+            }
+            configureTypeScriptLanguage(monaco);
+        } else if (import.meta.env.DEV) {
+            console.log('[CodeEditor] Skipping TypeScript configuration for C# project', {
+                projectKind: projectProfile?.kind,
+                projectRoot: currentProject?.rootPath
+            });
+        }
+    }, [monaco, currentProject?.rootPath, projectProfile?.kind]);
 
     // Hydrate Monaco with project types/models when the workspace changes
     useEffect(() => {
@@ -290,97 +312,36 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
         };
     }, [monaco, activeTab?.id, activeTab?.language, currentProject?.rootPath, projectInitStatus, projectProfile]);
 
-    // Register C# language configuration and LSP features
+    // Initialize language registry and register C# provider
     useEffect(() => {
         if (!monaco) return;
-        registerCSharpLanguage(monaco);
-        const lspFeatures = registerCSharpLSPFeatures(monaco);
+
+        // Initialize the language registry with Monaco instance
+        const registry = getLanguageRegistry();
+        registry.initialize(monaco);
+
+        // Register C# provider factory
+        registry.registerFactory('csharp', (monacoInstance) => new CSharpProvider(monacoInstance));
+
+        // Start C# provider (this registers language config, LSP features, etc.)
+        // We don't pass workspace root here because it will be started by ProjectManager
+        void registry.startProvider('csharp').catch((error) => {
+            console.error('[CodeEditor] Failed to start C# provider:', error);
+        });
 
         return () => {
-            lspFeatures.dispose();
+            // Cleanup is handled by the registry dispose method
+            void registry.stopProvider('csharp').catch((error) => {
+                console.error('[CodeEditor] Failed to stop C# provider:', error);
+            });
         };
     }, [monaco]);
 
-    // Define custom Fluxel themes
+    // Define custom Fluxel themes and register all C# color themes
     useEffect(() => {
         if (!monaco) return;
 
-        // Define custom themes and force apply whenever Monaco loads or theme changes.
-        monaco.editor.defineTheme("fluxel-dark", {
-            base: "vs-dark",
-            inherit: true,
-            rules: [
-                // C# syntax highlighting rules
-                { token: 'keyword', foreground: 'c586c0', fontStyle: 'bold' },
-                { token: 'keyword.type', foreground: '4ec9b0' },
-                { token: 'keyword.preprocessor', foreground: '9b9b9b' },
-                { token: 'string', foreground: 'ce9178' },
-                { token: 'string.escape', foreground: 'd7ba7d' },
-                { token: 'string.char', foreground: 'ce9178' },
-                { token: 'string.invalid', foreground: 'f44747' },
-                { token: 'number', foreground: 'b5cea8' },
-                { token: 'number.hex', foreground: 'b5cea8' },
-                { token: 'number.binary', foreground: 'b5cea8' },
-                { token: 'number.float', foreground: 'b5cea8' },
-                { token: 'comment', foreground: '6a9955', fontStyle: 'italic' },
-                { token: 'comment.doc', foreground: '6a9955', fontStyle: 'italic' },
-                { token: 'operator', foreground: 'd4d4d4' },
-                { token: 'delimiter', foreground: 'd4d4d4' },
-                { token: 'delimiter.angle', foreground: 'd4d4d4' },
-                { token: 'delimiter.square', foreground: 'd4d4d4' },
-                { token: 'delimiter.parenthesis', foreground: 'd4d4d4' },
-                { token: 'attribute', foreground: '4fc1ff' },
-                // Type names (class names, interface names, etc.) - distinct cyan/teal color
-                { token: 'type.identifier', foreground: '4ec9b0', fontStyle: 'bold' },
-                // Regular identifiers (variable names, method names) - lighter blue
-                { token: 'identifier', foreground: '9cdcfe' },
-            ],
-            colors: {
-                "editor.background": "#1a1a1a",
-                "editorCursor.foreground": "#f97316",
-                "editor.selectionBackground": "#f9731633",
-                "editorLineNumber.activeForeground": "#f97316",
-                "editor.lineHighlightBackground": "#ffffff08",
-            },
-        });
-
-        monaco.editor.defineTheme("fluxel-light", {
-            base: "vs",
-            inherit: true,
-            rules: [
-                // C# syntax highlighting rules
-                { token: 'keyword', foreground: '0000ff', fontStyle: 'bold' },
-                { token: 'keyword.type', foreground: '0078d4' },
-                { token: 'keyword.preprocessor', foreground: '808080' },
-                { token: 'string', foreground: 'a31515' },
-                { token: 'string.escape', foreground: 'bf8803' },
-                { token: 'string.char', foreground: 'a31515' },
-                { token: 'string.invalid', foreground: 'cd3131' },
-                { token: 'number', foreground: '098658' },
-                { token: 'number.hex', foreground: '098658' },
-                { token: 'number.binary', foreground: '098658' },
-                { token: 'number.float', foreground: '098658' },
-                { token: 'comment', foreground: '008000', fontStyle: 'italic' },
-                { token: 'comment.doc', foreground: '008000', fontStyle: 'italic' },
-                { token: 'operator', foreground: '000000' },
-                { token: 'delimiter', foreground: '000000' },
-                { token: 'delimiter.angle', foreground: '000000' },
-                { token: 'delimiter.square', foreground: '000000' },
-                { token: 'delimiter.parenthesis', foreground: '000000' },
-                { token: 'attribute', foreground: '2b91af' },
-                // Type names (class names, interface names, etc.) - distinct blue/teal color
-                { token: 'type.identifier', foreground: '0078d4', fontStyle: 'bold' },
-                // Regular identifiers (variable names, method names) - darker blue
-                { token: 'identifier', foreground: '001080' },
-            ],
-            colors: {
-                "editor.background": "#fafafa",
-                "editorCursor.foreground": "#f97316",
-                "editor.selectionBackground": "#f9731633",
-                "editorLineNumber.activeForeground": "#f97316",
-            },
-        });
-
+        registerCSharpColorThemes(monaco);
         monaco.editor.setTheme(theme === "dark" ? "fluxel-dark" : "fluxel-light");
     }, [monaco, theme]);
 
@@ -457,7 +418,6 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
             // Close previous document if switching to a different one
             const previousUri = currentOpenUriRef.current;
             if (previousUri && previousUri !== uri && openedDocsRef.current.has(previousUri)) {
-                console.log('[CodeEditor] Closing previous C# file:', previousUri);
                 lspClient.sendNotification('textDocument/didClose', {
                     textDocument: {
                         uri: previousUri,
@@ -473,8 +433,6 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                 const currentVersion = docVersionsRef.current[uri] || 1;
                 docVersionsRef.current[uri] = currentVersion;
 
-                console.log('[CodeEditor] Sending didOpen for C# file:', uri);
-
                 // Send didOpen and only mark as open after it's sent successfully
                 lspClient.sendNotification('textDocument/didOpen', {
                     textDocument: {
@@ -487,7 +445,6 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                     // Mark as open only after successful send
                     openedDocsRef.current.add(uri);
                     currentOpenUriRef.current = uri;
-                    console.log('[CodeEditor] didOpen sent successfully for:', uri);
                 }).catch((error) => {
                     console.error('[CodeEditor] Failed to send didOpen:', error);
                     // Don't mark as open if send failed
@@ -501,7 +458,6 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
             return () => {
                 // Only close if this is still the current URI (not already switched)
                 if (currentOpenUriRef.current === uri && openedDocsRef.current.has(uri)) {
-                    console.log('[CodeEditor] Sending didClose for C# file:', uri);
                     lspClient.sendNotification('textDocument/didClose', {
                         textDocument: {
                             uri,
@@ -639,7 +595,6 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                     });
                 } else {
                     // Document not open yet - didOpen will be sent by the useEffect
-                    console.debug('[CodeEditor] Skipping didChange - document not yet open:', uri);
                 }
             }
 
@@ -653,8 +608,8 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                 const resolver = getLazyTypeResolver(monaco, currentProject.rootPath);
                 if (resolver) {
                     // Debounced call to avoid excessive processing
-                    resolver.ensureTypesForFile(value).catch((error) => {
-                        console.debug('[CodeEditor] LazyTypeResolver error:', error);
+                    resolver.ensureTypesForFile(value).catch(() => {
+                        // Ignore errors during lazy loading
                     });
                 }
             }
@@ -700,9 +655,27 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                 return originalOpenCodeEditor(input, source, sideBySide);
             };
         }
+
+        // Fix line number click offset issue by listening to mouse events on the gutter
+        const mouseDownListener = editor.onMouseDown((e) => {
+            // Only handle clicks on line numbers (gutter)
+            if (e.target.type === monaco.editor.MouseTargetType.GUTTER_LINE_NUMBERS) {
+                const lineNumber = e.target.position?.lineNumber;
+                if (lineNumber) {
+                    // Set selection to the clicked line
+                    editor.setSelection(new monaco.Range(lineNumber, 1, lineNumber, 1));
+                    editor.revealLineInCenter(lineNumber);
+                }
+            }
+        });
         
         span.end();
-    }, [openFile, startSpan]);
+
+        // Clean up listener when editor unmounts
+        return () => {
+            mouseDownListener.dispose();
+        };
+    }, [openFile, startSpan, monaco]);
 
     // Track cursor position changes
     useEffect(() => {
@@ -756,6 +729,48 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
         };
     }, [editorInstance, activeTab, setCursorPosition]);
 
+    // Manual layout handling with requestAnimationFrame to avoid ResizeObserver loop
+    useEffect(() => {
+        if (!containerRef.current || !editorInstance) return;
+
+        let animationFrameId: number;
+
+        const observer = new ResizeObserver(() => {
+            cancelAnimationFrame(animationFrameId);
+            animationFrameId = requestAnimationFrame(() => {
+                editorInstance.layout();
+            });
+        });
+
+        observer.observe(containerRef.current);
+
+        return () => {
+            observer.disconnect();
+            cancelAnimationFrame(animationFrameId);
+        };
+    }, [editorInstance]);
+
+    // Manual layout handling for DiffEditor with requestAnimationFrame
+    useEffect(() => {
+        if (!containerRef.current || !diffEditorInstance) return;
+
+        let animationFrameId: number;
+
+        const observer = new ResizeObserver(() => {
+            cancelAnimationFrame(animationFrameId);
+            animationFrameId = requestAnimationFrame(() => {
+                diffEditorInstance.layout();
+            });
+        });
+
+        observer.observe(containerRef.current);
+
+        return () => {
+            observer.disconnect();
+            cancelAnimationFrame(animationFrameId);
+        };
+    }, [diffEditorInstance]);
+
 
     // Reveal pending selection/line when requested (e.g., from search results)
     useEffect(() => {
@@ -804,7 +819,6 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
 
     // Show placeholder if no active tab
     if (!activeTab) {
-        console.log('[CodeEditor] Rendering placeholder - no active tab');
         return (
             <div className="h-full w-full flex flex-col bg-background">
                 <div className="flex-1 flex items-center justify-center text-muted-foreground">
@@ -866,10 +880,9 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
             </div>
 
             {/* Monaco Editor (Code or Diff) */}
-            <div className="flex-1 overflow-hidden relative">
+            <div ref={containerRef} className="flex-1 overflow-hidden relative">
                 {activeTab.type === 'diff' ? (
                     <>
-                        {console.log('[CodeEditor] Rendering DiffEditor - original length:', activeTab.diffBaseContent?.length, 'modified length:', activeTab.content.length)}
                         <DiffEditor
                         key="diff-editor"
                         height="100%"
@@ -878,13 +891,7 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                         language={activeTab.language}
                         theme={theme === "dark" ? "fluxel-dark" : "fluxel-light"}
                         onMount={(editor) => {
-                            console.log('[CodeEditor] DiffEditor onMount called - editor:', !!editor);
-                            diffEditorRef.current = editor;
-                            const originalModel = editor.getOriginalEditor().getModel();
-                            const modifiedModel = editor.getModifiedEditor().getModel();
-                            console.log('[CodeEditor] DiffEditor models - original:', !!originalModel, 'modified:', !!modifiedModel);
-                            if (originalModel) console.log('[CodeEditor] Original model line count:', originalModel.getLineCount());
-                            if (modifiedModel) console.log('[CodeEditor] Modified model line count:', modifiedModel.getLineCount());
+                            setDiffEditorInstance(editor);
                         }}
                         options={{
                             // Minimap
@@ -898,8 +905,6 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                             letterSpacing: letterSpacing,
                             // Scrolling
                             smoothScrolling: smoothScrolling,
-                            padding: { top: 8, bottom: 8 },
-                            automaticLayout: true,
                             wordWrap: wordWrap,
                             wordWrapColumn: wordWrapColumn,
                             lineNumbers: showLineNumbers ? lineNumbers : 'off',
@@ -910,7 +915,6 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                     </>
                 ) : (
                     <>
-                        {console.log('[CodeEditor] Rendering regular Editor - content length:', activeTab.content.length)}
                         <Editor
                         key={activeTab.id}
                         height="100%"
@@ -936,8 +940,6 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                             cursorWidth: cursorWidth,
                             cursorSmoothCaretAnimation: cursorSmoothCaretAnimation,
                             // Layout
-                            padding: { top: 8, bottom: 8 },
-                            automaticLayout: true,
                             glyphMargin: glyphMargin,
                             // Line Numbers & Highlight
                             lineNumbers: showLineNumbers ? lineNumbers : 'off',

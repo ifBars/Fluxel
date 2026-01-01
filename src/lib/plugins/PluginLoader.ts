@@ -45,6 +45,13 @@ export class PluginLoader {
      * Register a core plugin (bundled at build time)
      */
     registerCorePlugin(plugin: FluxelPlugin): void {
+        // Check if plugin is already registered to prevent duplicates
+        const existingIndex = this.corePlugins.findIndex(p => p.id === plugin.id);
+        if (existingIndex !== -1) {
+            console.log(`[PluginLoader] Core plugin ${plugin.id} is already registered, skipping`);
+            return;
+        }
+        
         this.corePlugins.push(plugin);
         console.log(`[PluginLoader] Registered core plugin: ${plugin.id}`);
     }

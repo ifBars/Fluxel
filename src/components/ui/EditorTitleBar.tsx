@@ -321,13 +321,55 @@ const EditorTitleBarMemo = memo(EditorTitleBar);
  */
 function EditorTitleBarCenter() {
   const currentProject = useProjectStore((state) => state.currentProject);
+  const projectProfile = useProjectStore((state) => state.projectProfile);
+  const projectInitStatus = useProjectStore((state) => state.projectInitStatus);
+  const projectInitError = useProjectStore((state) => state.projectInitError);
   const configurations = useCSharpStore((state) => state.configurations);
   const selectedConfiguration = useCSharpStore((state) => state.selectedConfiguration);
   const setSelectedConfiguration = useCSharpStore((state) => state.setSelectedConfiguration);
   const isLoadingConfigs = useCSharpStore((state) => state.isLoadingConfigs);
 
+  // Debug logging for C# configuration selector
+  if (import.meta.env.DEV) {
+    const cSharpStoreState = useCSharpStore.getState() as any;
+    console.log('[EditorTitleBarCenter] Render state', {
+      hasCurrentProject: !!currentProject,
+      projectInitStatus,
+      projectInitError,
+      projectProfileKind: projectProfile?.kind,
+      projectRoot: projectProfile?.root_path,
+      configurationsCount: configurations.length,
+      configurations: configurations,
+      isLoadingConfigs,
+      selectedConfiguration,
+      lastLoadedWorkspace: cSharpStoreState.lastLoadedWorkspace,
+    });
+  }
+
   if (!currentProject) {
+    if (import.meta.env.DEV) {
+      console.log('[EditorTitleBarCenter] No current project, returning null');
+    }
     return null;
+  }
+
+  // Show C# selector if we have configurations, regardless of projectProfile state
+  // This handles the case where detection fails but configs were already loaded
+  const hasCSharpConfigs = configurations.length > 0;
+  const isCSharpProject = projectProfile?.kind === 'dotnet' || projectProfile?.kind === 'mixed';
+
+  // Debug: Determine if we should show C# selector
+  const shouldShowCSharpSelector = hasCSharpConfigs || isCSharpProject;
+
+  if (import.meta.env.DEV) {
+    console.log('[EditorTitleBarCenter] Visibility decision', {
+      projectProfileKind: projectProfile?.kind,
+      isCSharpProject,
+      hasCSharpConfigs,
+      shouldShowCSharpSelector,
+      configsLength: configurations.length,
+      isLoadingConfigs,
+    });
   }
 
   return (
@@ -342,7 +384,7 @@ function EditorTitleBarCenter() {
           <span className="text-xs text-muted-foreground/50 italic">Loading configs...</span>
         </div>
       )}
-      {!isLoadingConfigs && configurations.length > 0 && (
+      {!isLoadingConfigs && hasCSharpConfigs && (
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground/70">|</span>
           <TitlebarDropdown
@@ -356,6 +398,26 @@ function EditorTitleBarCenter() {
             width="auto"
             align="center"
           />
+        </div>
+      )}
+      {!isLoadingConfigs && configurations.length === 0 && isCSharpProject && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground/70">|</span>
+          <span className="text-xs text-yellow-600 dark:text-yellow-400" title="No build configurations found">
+            No configs
+          </span>
+        </div>
+      )}
+      {/* Show detection error indicator when detection fails and no configs loaded */}
+      {projectInitStatus === 'error' && configurations.length === 0 && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground/70">|</span>
+          <span
+            className="text-xs text-red-500 dark:text-red-400 cursor-help"
+            title={projectInitError || 'Project detection failed'}
+          >
+            ⚠ Detection failed
+          </span>
         </div>
       )}
     </>

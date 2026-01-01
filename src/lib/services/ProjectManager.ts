@@ -29,24 +29,24 @@ export function shouldLoadCSharpConfigurations(profile: ProjectProfile | null): 
  */
 export function shouldHydrateTypeScriptWorkspace(profile: ProjectProfile | null): profile is ProjectProfile {
   if (!profile) return false;
-  
+
   // For pure C# projects, never hydrate TypeScript services regardless of package.json presence
   if (profile.kind === 'dotnet') {
     return false;
   }
-  
+
   // For JavaScript projects, hydrate if they have Node.js artifacts
   if (profile.kind === 'javascript') {
     const hasNodeArtifacts = profile.node.has_package_json || profile.node.has_tsconfig || profile.node.has_jsconfig;
     return hasNodeArtifacts;
   }
-  
+
   // For mixed projects, hydrate if they have TypeScript-specific artifacts
   if (profile.kind === 'mixed') {
     const hasTypeScriptArtifacts = profile.node.has_tsconfig || profile.node.has_jsconfig;
     return hasTypeScriptArtifacts;
   }
-  
+
   // Unknown projects - hydrate if they have TypeScript artifacts
   const hasTypeScriptArtifacts = profile.node.has_tsconfig || profile.node.has_jsconfig;
   return hasTypeScriptArtifacts;
@@ -59,17 +59,39 @@ function resetCSharpConfigurations(): void {
 
 async function orchestrateProjectServices(profile: ProjectProfile): Promise<void> {
   await FrontendProfiler.profileAsync('orchestrateProjectServices', 'workspace', async () => {
+    if (import.meta.env.DEV) {
+      console.log('[ProjectManager] Orchestrating services for project:', {
+        kind: profile.kind,
+        rootPath: profile.root_path,
+        hasCsproj: !!profile.dotnet.project_path,
+        hasSln: !!profile.dotnet.solution_path,
+        shouldLoadCSharp: shouldLoadCSharpConfigurations(profile),
+        shouldHydrateTS: shouldHydrateTypeScriptWorkspace(profile)
+      });
+    }
+
     if (shouldLoadCSharpConfigurations(profile)) {
       if (lastCSharpConfigRoot !== profile.root_path) {
         lastCSharpConfigRoot = profile.root_path;
         try {
           await useCSharpStore.getState().loadProjectConfigurations(profile.root_path);
+          if (import.meta.env.DEV) {
+            console.log('[ProjectManager] C# configurations loaded successfully', {
+              rootPath: profile.root_path,
+              kind: profile.kind
+            });
+          }
         } catch (error) {
           lastCSharpConfigRoot = null;
           console.error('[ProjectManager] Failed to load C# configurations:', error);
         }
       }
     } else if (lastCSharpConfigRoot) {
+      if (import.meta.env.DEV) {
+        console.log('[ProjectManager] Resetting C# configurations', {
+          previousRoot: lastCSharpConfigRoot
+        });
+      }
       resetCSharpConfigurations();
     }
   }, { profileKind: profile.kind, rootPath: profile.root_path });
@@ -80,26 +102,76 @@ async function handleProjectLifecycle(snapshot: ProjectLifecycleSnapshot, previo
   const parentId = FrontendProfiler.getCurrentParentId();
 
   await FrontendProfiler.profileAsync('handleProjectLifecycle', 'workspace', async () => {
+    if (import.meta.env.DEV) {
+      console.log('[ProjectManager] handleProjectLifecycle called', {
+        rootPath: snapshot.rootPath,
+        status: snapshot.status,
+        hasProfile: !!snapshot.profile,
+        projectChanged,
+        previousRootPath: previous?.rootPath,
+        profileKind: snapshot.profile?.kind,
+      });
+    }
+
     if (!snapshot.rootPath) {
+      if (import.meta.env.DEV) {
+        console.log('[ProjectManager] No root path, resetting C# configs');
+      }
       resetCSharpConfigurations();
       return;
     }
 
     if (projectChanged) {
+      if (import.meta.env.DEV) {
+        console.log('[ProjectManager] Project changed, resetting C# configs');
+      }
       resetCSharpConfigurations();
     }
 
     if (snapshot.status !== 'ready' || !snapshot.profile) {
+      if (import.meta.env.DEV) {
+        console.log('[ProjectManager] Status not ready or no profile, checking for fallback', {
+          status: snapshot.status,
+          hasProfile: !!snapshot.profile,
+          hasRootPath: !!snapshot.rootPath,
+        });
+      }
+
+      // Fallback: If detection errored but we have a root path, try loading C# configs anyway
+      // This handles cases where the detection command fails but the project is actually C#
+      if (snapshot.status === 'error' && snapshot.rootPath && lastCSharpConfigRoot !== snapshot.rootPath) {
+        if (import.meta.env.DEV) {
+          console.log('[ProjectManager] Detection failed, attempting fallback C# config loading for:', snapshot.rootPath);
+        }
+        lastCSharpConfigRoot = snapshot.rootPath;
+        try {
+          await useCSharpStore.getState().loadProjectConfigurations(snapshot.rootPath);
+          if (import.meta.env.DEV) {
+            console.log('[ProjectManager] Fallback C# configuration load succeeded');
+          }
+        } catch (error) {
+          lastCSharpConfigRoot = null;
+          console.warn('[ProjectManager] Fallback C# configuration load failed:', error);
+        }
+      }
       return;
     }
 
+    if (import.meta.env.DEV && snapshot.profile) {
+      const profile = snapshot.profile as ProjectProfile;
+      console.log('[ProjectManager] About to orchestrate services', {
+        profileKind: profile.kind,
+        rootPath: profile.root_path,
+      });
+    }
+
     await orchestrateProjectServices(snapshot.profile);
-  }, { 
+  }, {
     rootPath: snapshot.rootPath || 'none',
     status: snapshot.status,
     projectChanged: String(projectChanged),
     hasProfile: String(snapshot.profile !== null),
-    parentId 
+    parentId
   });
 }
 
@@ -111,7 +183,7 @@ export function initializeProjectOrchestrator(): void {
   lifecycleSubscribed = true;
 
   let prevSnapshot: ProjectLifecycleSnapshot | undefined;
-  
+
   useProjectStore.subscribe((state) => {
     const snapshot: ProjectLifecycleSnapshot = {
       rootPath: state.currentProject?.rootPath ?? null,
@@ -133,7 +205,7 @@ export function initializeProjectOrchestrator(): void {
  * @param options.waitForDirectory - If true, waits for loadDirectory to complete before resolving (default: false)
  */
 export async function openWorkspace(
-  rootPath: string, 
+  rootPath: string,
   options?: { waitForDirectory?: boolean }
 ): Promise<void> {
   initializeProjectOrchestrator();
@@ -152,7 +224,7 @@ export async function openWorkspace(
     // Profile store subscription handlers that run after openProject
     const storeUpdateSpan = FrontendProfiler.startSpan('store:openProject', 'workspace');
     useProjectStore.getState().openProject(normalizedRoot);
-    
+
     // Store subscriptions run synchronously, but we need to track them
     // Use a microtask to capture subscription handler execution
     Promise.resolve().then(() => {
@@ -166,7 +238,7 @@ export async function openWorkspace(
     // Note: loadDirectory already profiles itself internally, so no outer wrapper needed.
     // We pass explicit parent ID since we may be firing and forgetting (leaving the span context)
     const loadDirPromise = useFileSystemStore.getState().loadDirectory(normalizedRoot, parentId);
-    
+
     if (options?.waitForDirectory) {
       // Wait for directory to load before proceeding to view switch
       // This eliminates the gap between loadDirectory and workbench_init

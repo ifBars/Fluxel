@@ -9,3 +9,4 @@ export * from './BuildManager';
 export * from './Config';
 export * from './Monarch';
 export * from './WorkspaceSymbols';
+export * from './ColorThemes';

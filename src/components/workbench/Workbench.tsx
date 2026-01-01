@@ -164,10 +164,10 @@ function Workbench() {
                         />
 
                         {/* Editor + Build Panel Area (Vertical Split) */}
-                        <Panel id="main-content" minSize={30}>
-                            <Group id="editor-build-group" orientation="vertical">
+                        <Panel id="main-content" minSize={30} defaultSize={100} className="flex flex-col">
+                            <Group id="editor-build-group" orientation="vertical" className="flex-1 h-full">
                                 {/* Editor Area */}
-                                <Panel id="editor" minSize={20}>
+                                <Panel id="editor" minSize={20} defaultSize={100} className="h-full">
                                     <EditorGroup />
                                 </Panel>
 
@@ -195,9 +195,10 @@ function Workbench() {
                                         <Panel
                                             id="build-panel"
                                             panelRef={buildPanelRef}
-                                            defaultSize={25}
-                                            minSize={10}
-                                            maxSize={50}
+                                            defaultSize={35}
+                                            minSize={15}
+                                            maxSize={80}
+                                            className="h-full"
                                         >
                                             <Suspense fallback={<div className="flex items-center justify-center h-full">Loading...</div>}>
                                                 <BuildPanel />
@@ -221,9 +222,9 @@ function Workbench() {
                                 <Panel
                                     id="inspector"
                                     panelRef={inspectorPanelRef}
-                                    defaultSize="300px"
-                                    minSize="200px"
-                                    maxSize="800px"
+                                    minSize="250px"
+                                    maxSize="600px"
+                                    defaultSize="350px"
                                     collapsible
                                     collapsedSize={0}
                                 >
@@ -246,9 +247,9 @@ function Workbench() {
                                 />
                                 <Panel
                                     id="agent"
-                                    defaultSize="400px"
                                     minSize="300px"
-                                    maxSize="900px"
+                                    maxSize="700px"
+                                    defaultSize="400px"
                                     collapsible
                                     collapsedSize={0}
                                 >
@@ -271,9 +272,9 @@ function Workbench() {
                                 />
                                 <Panel
                                     id="debug"
-                                    defaultSize="400px"
                                     minSize="300px"
-                                    maxSize="900px"
+                                    maxSize="700px"
+                                    defaultSize="400px"
                                     collapsible
                                     collapsedSize={0}
                                 >

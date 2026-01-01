@@ -208,26 +208,41 @@ export function getCSharpLSPClient(): CSharpLSPClient {
 }
 
 /**
- * Attempt to find a .sln file near the workspace root (depth 2)
+ * Attempt to find a .sln file near the workspace root (depth 3 to match backend)
  */
 async function findSolutionFile(workspaceRoot?: string): Promise<string | null> {
     if (!workspaceRoot) return null;
 
     return FrontendProfiler.profileAsync('find_solution_file', 'frontend_render', async () => {
         try {
-            const entries = await readDir(workspaceRoot);
+            // Check root directory first
+            const rootEntries = await readDir(workspaceRoot);
+            const rootSln = rootEntries.find((entry) => entry.name?.toLowerCase().endsWith('.sln') && !entry.isDirectory);
+            if (rootSln && rootSln.name) {
+                return normalizePath(`${workspaceRoot}/${rootSln.name}`);
+            }
 
-            for (const entry of entries) {
-                if (!entry.name) continue;
-                const fullPath = normalizePath(`${workspaceRoot}/${entry.name}`);
-                if (entry.isDirectory) {
-                    const childEntries = await readDir(fullPath);
-                    const found = childEntries.find((child) => child.name?.toLowerCase().endsWith('.sln'));
-                    if (found && found.name) {
-                        return normalizePath(`${fullPath}/${found.name}`);
+            // Search depth 1
+            for (const entry of rootEntries) {
+                if (!entry.name || !entry.isDirectory) continue;
+                const depth1Path = normalizePath(`${workspaceRoot}/${entry.name}`);
+                
+                const depth1Entries = await readDir(depth1Path);
+                const depth1Sln = depth1Entries.find((child) => child.name?.toLowerCase().endsWith('.sln') && !child.isDirectory);
+                if (depth1Sln && depth1Sln.name) {
+                    return normalizePath(`${depth1Path}/${depth1Sln.name}`);
+                }
+
+                // Search depth 2
+                for (const depth1Entry of depth1Entries) {
+                    if (!depth1Entry.name || !depth1Entry.isDirectory) continue;
+                    const depth2Path = normalizePath(`${depth1Path}/${depth1Entry.name}`);
+                    
+                    const depth2Entries = await readDir(depth2Path);
+                    const depth2Sln = depth2Entries.find((child) => child.name?.toLowerCase().endsWith('.sln') && !child.isDirectory);
+                    if (depth2Sln && depth2Sln.name) {
+                        return normalizePath(`${depth2Path}/${depth2Sln.name}`);
                     }
-                } else if (entry.name.toLowerCase().endsWith('.sln')) {
-                    return fullPath;
                 }
             }
         } catch (error) {
@@ -239,7 +254,7 @@ async function findSolutionFile(workspaceRoot?: string): Promise<string | null> 
 }
 
 /**
- * Find a .sln (preferred) or .csproj file near the workspace root (depth 2).
+ * Find a .sln (preferred) or .csproj file near the workspace root (depth 3 to match backend).
  */
 async function findSolutionOrProjectFile(workspaceRoot?: string): Promise<string | null> {
     if (!workspaceRoot) return null;
@@ -249,19 +264,34 @@ async function findSolutionOrProjectFile(workspaceRoot?: string): Promise<string
         if (solution) return solution;
 
         try {
-            const entries = await readDir(workspaceRoot);
+            // Check root directory first
+            const rootEntries = await readDir(workspaceRoot);
+            const rootCsproj = rootEntries.find((entry) => entry.name?.toLowerCase().endsWith('.csproj') && !entry.isDirectory);
+            if (rootCsproj && rootCsproj.name) {
+                return normalizePath(`${workspaceRoot}/${rootCsproj.name}`);
+            }
 
-            for (const entry of entries) {
-                if (!entry.name) continue;
-                const fullPath = normalizePath(`${workspaceRoot}/${entry.name}`);
-                if (entry.isDirectory) {
-                    const childEntries = await readDir(fullPath);
-                    const found = childEntries.find((child) => child.name?.toLowerCase().endsWith('.csproj'));
-                    if (found && found.name) {
-                        return normalizePath(`${fullPath}/${found.name}`);
+            // Search depth 1
+            for (const entry of rootEntries) {
+                if (!entry.name || !entry.isDirectory) continue;
+                const depth1Path = normalizePath(`${workspaceRoot}/${entry.name}`);
+                
+                const depth1Entries = await readDir(depth1Path);
+                const depth1Csproj = depth1Entries.find((child) => child.name?.toLowerCase().endsWith('.csproj') && !child.isDirectory);
+                if (depth1Csproj && depth1Csproj.name) {
+                    return normalizePath(`${depth1Path}/${depth1Csproj.name}`);
+                }
+
+                // Search depth 2
+                for (const depth1Entry of depth1Entries) {
+                    if (!depth1Entry.name || !depth1Entry.isDirectory) continue;
+                    const depth2Path = normalizePath(`${depth1Path}/${depth1Entry.name}`);
+                    
+                    const depth2Entries = await readDir(depth2Path);
+                    const depth2Csproj = depth2Entries.find((child) => child.name?.toLowerCase().endsWith('.csproj') && !child.isDirectory);
+                    if (depth2Csproj && depth2Csproj.name) {
+                        return normalizePath(`${depth2Path}/${depth2Csproj.name}`);
                     }
-                } else if (entry.name.toLowerCase().endsWith('.csproj')) {
-                    return fullPath;
                 }
             }
         } catch (error) {

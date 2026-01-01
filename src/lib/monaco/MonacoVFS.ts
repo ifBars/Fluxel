@@ -99,6 +99,11 @@ export class MonacoVfs {
                 return "javascript";
             case "json":
                 return "json";
+            case "cs":
+            case "csx":
+                return "csharp";
+            case "razor":
+                return "razor";
             default:
                 return "plaintext";
         }

@@ -90,9 +90,9 @@ export interface DensityConfig {
 
 export const densityConfigs: Record<UIDensity, DensityConfig> = {
     compact: {
-        sidebarDefaultSize: '200px',
-        sidebarMinSize: '150px',
-        sidebarMaxSize: '400px',
+        sidebarDefaultSize: '125px',
+        sidebarMinSize: '100px',
+        sidebarMaxSize: '250px',
         radius: '0.5rem',
         radiusSm: '0.4rem',
         radiusLg: '0.8rem',
@@ -132,9 +132,9 @@ export const densityConfigs: Record<UIDensity, DensityConfig> = {
         buildPanelOutputLineHeight: '1.5',
     },
     comfortable: {
-        sidebarDefaultSize: '250px',
-        sidebarMinSize: '200px',
-        sidebarMaxSize: '500px',
+        sidebarDefaultSize: '150px',
+        sidebarMinSize: '125px',
+        sidebarMaxSize: '300px',
         radius: '0.75rem',
         radiusSm: '0.5rem',
         radiusLg: '0.9rem',
@@ -174,9 +174,9 @@ export const densityConfigs: Record<UIDensity, DensityConfig> = {
         buildPanelOutputLineHeight: '1.625',
     },
     spacious: {
-        sidebarDefaultSize: '300px',
-        sidebarMinSize: '250px',
-        sidebarMaxSize: '600px',
+        sidebarDefaultSize: '150px',
+        sidebarMinSize: '125px',
+        sidebarMaxSize: '400px',
         radius: '1rem',
         radiusSm: '0.75rem',
         radiusLg: '1rem',

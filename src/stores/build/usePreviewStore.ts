@@ -44,14 +44,14 @@ export const usePreviewStore = create<PreviewState>((set, get) => ({
     setError: (error) => set({ error }),
     setPort: (port) => set({ port }),
 
-startPreview: async (projectPath: string, autoStart = true) => {
+    startPreview: async (projectPath: string, autoStart = true) => {
         await FrontendProfiler.profileAsync('startPreview', 'tauri_command', async () => {
             set({ isLoading: true, error: null });
 
             // Check project type before starting preview - don't start for pure C# projects
             try {
                 const profile = await invoke<ProjectProfile>('detect_project_profile', {
-                    workspace_root: projectPath,
+                    workspaceRoot: projectPath,
                 });
 
                 if (profile.kind === 'dotnet') {
@@ -69,104 +69,104 @@ startPreview: async (projectPath: string, autoStart = true) => {
             }
 
             try {
-            // Load config metadata to get the configured dev server port
-            const metadata = await getConfigMetadata(projectPath);
-            const configuredPort = metadata?.devServer?.port ?? get().port;
+                // Load config metadata to get the configured dev server port
+                const metadata = await getConfigMetadata(projectPath);
+                const configuredPort = metadata?.devServer?.port ?? get().port;
 
-            // Update port in store if we found a configured port
-            if (metadata?.devServer?.port) {
-                set({ port: configuredPort });
-            }
-
-            // Exclude Tauri app ports (1420 = dev server, 1421 = HMR)
-            const TAURI_PORTS = [1420, 1421];
-
-            // Build list of ports to try, starting with configured port
-            const portsToTry = [
-                configuredPort,
-                ...(configuredPort !== 5173 ? [5173] : []), // Add default Vite port if different
-                5174,
-                3000,
-                3001,
-                8080,
-                4000,
-            ]
-                .filter((p) => !TAURI_PORTS.includes(p)) // Exclude Tauri ports
-                .filter((p, index, arr) => arr.indexOf(p) === index); // Remove duplicates
-
-            for (const testPort of portsToTry) {
-                const url = `http://localhost:${testPort}`;
-
-                try {
-                    // Try to fetch from the URL to check if server is running
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 2000);
-
-                    await fetch(url, {
-                        signal: controller.signal,
-                        mode: 'no-cors' // Allow cross-origin requests
-                    });
-
-                    clearTimeout(timeoutId);
-
-                    // Server is running! (We've already excluded Tauri ports above)
-                    set({
-                        previewUrl: url,
-                        isServerRunning: true,
-                        isLoading: false,
-                        port: testPort
-                    });
-                    return;
-                } catch {
-                    // Port not available, try next
-                    continue;
+                // Update port in store if we found a configured port
+                if (metadata?.devServer?.port) {
+                    set({ port: configuredPort });
                 }
-            }
 
-            // If no server found and we haven't tried auto-starting yet
-            if (autoStart) {
-                set({
-                    isLoading: true,
-                    error: 'Starting dev server (bun run dev)...',
-                    isServerRunning: false,
-                    previewUrl: null
-                });
+                // Exclude Tauri app ports (1420 = dev server, 1421 = HMR)
+                const TAURI_PORTS = [1420, 1421];
 
-                try {
-                    // Kill existing process if any (e.g. from a previous failed/slow attempt)
-                    const existingChild = get().devServerChild;
-                    if (existingChild) {
-                        try {
-                            await existingChild.kill();
-                        } catch (e) {
-                            // Ignore errors if already dead
+                // Build list of ports to try, starting with configured port
+                const portsToTry = [
+                    configuredPort,
+                    ...(configuredPort !== 5173 ? [5173] : []), // Add default Vite port if different
+                    5174,
+                    3000,
+                    3001,
+                    8080,
+                    4000,
+                ]
+                    .filter((p) => !TAURI_PORTS.includes(p)) // Exclude Tauri ports
+                    .filter((p, index, arr) => arr.indexOf(p) === index); // Remove duplicates
+
+                for (const testPort of portsToTry) {
+                    const url = `http://localhost:${testPort}`;
+
+                    try {
+                        // Try to fetch from the URL to check if server is running
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+                        await fetch(url, {
+                            signal: controller.signal,
+                            mode: 'no-cors' // Allow cross-origin requests
+                        });
+
+                        clearTimeout(timeoutId);
+
+                        // Server is running! (We've already excluded Tauri ports above)
+                        set({
+                            previewUrl: url,
+                            isServerRunning: true,
+                            isLoading: false,
+                            port: testPort
+                        });
+                        return;
+                    } catch {
+                        // Port not available, try next
+                        continue;
+                    }
+                }
+
+                // If no server found and we haven't tried auto-starting yet
+                if (autoStart) {
+                    set({
+                        isLoading: true,
+                        error: 'Starting dev server (bun run dev)...',
+                        isServerRunning: false,
+                        previewUrl: null
+                    });
+
+                    try {
+                        // Kill existing process if any (e.g. from a previous failed/slow attempt)
+                        const existingChild = get().devServerChild;
+                        if (existingChild) {
+                            try {
+                                await existingChild.kill();
+                            } catch (e) {
+                                // Ignore errors if already dead
+                            }
                         }
+
+                        console.log('Auto-starting dev server...');
+                        const cmd = Command.create('bun', ['run', 'dev'], { cwd: projectPath });
+                        const child = await cmd.spawn();
+                        set({ devServerChild: child });
+
+                        // Register the process with the backend for cleanup on app exit
+                        if (child.pid) {
+                            await registerProcess(child.pid);
+                        }
+
+                        // Wait for server to start up
+                        await new Promise(resolve => setTimeout(resolve, 3000));
+
+                        // Retry connection (without auto-starting again)
+                        return get().startPreview(projectPath, false);
+                    } catch (err) {
+                        console.error('Failed to auto-start dev server:', err);
+                        set({
+                            error: `Failed to auto-start dev server: ${err}. Please run "bun run dev" manually.`,
+                            isLoading: false
+                        });
+                        return;
                     }
-
-                    console.log('Auto-starting dev server...');
-                    const cmd = Command.create('bun', ['run', 'dev'], { cwd: projectPath });
-                    const child = await cmd.spawn();
-                    set({ devServerChild: child });
-
-                    // Register the process with the backend for cleanup on app exit
-                    if (child.pid) {
-                        await registerProcess(child.pid);
-                    }
-
-                    // Wait for server to start up
-                    await new Promise(resolve => setTimeout(resolve, 3000));
-
-                    // Retry connection (without auto-starting again)
-                    return get().startPreview(projectPath, false);
-                } catch (err) {
-                    console.error('Failed to auto-start dev server:', err);
-                    set({
-                        error: `Failed to auto-start dev server: ${err}. Please run "bun run dev" manually.`,
-                        isLoading: false
-                    });
-                    return;
                 }
-            }
 
                 // No server found
                 set({

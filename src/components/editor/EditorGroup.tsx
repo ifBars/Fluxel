@@ -12,25 +12,8 @@ export default function EditorGroup() {
     const { tabs, getActiveTab } = useEditorStore();
     const activeTab = getActiveTab();
 
-    console.log('[EditorGroup] Render - editorMode:', editorMode, 'tabs count:', tabs.length, 'activeTab:', activeTab?.filename, 'activeTab type:', activeTab?.type);
-
-    // DEBUG: Check if container has dimensions
-    const containerRef = React.useRef<HTMLDivElement>(null);
-    React.useEffect(() => {
-        if (containerRef.current) {
-            const rect = containerRef.current.getBoundingClientRect();
-            console.log('[EditorGroup] Container dimensions:', {
-                width: rect.width,
-                height: rect.height,
-                top: rect.top,
-                left: rect.left,
-                visible: rect.width > 0 && rect.height > 0
-            });
-        }
-    }, [tabs.length, editorMode]);
-
     return (
-        <div ref={containerRef} className="h-full flex flex-col" style={{background: 'lime', minHeight: '200px'}}>
+        <div className="h-full flex flex-col">
             {/* Editor Header / Tabs */}
             <div 
                 className="border-b border-border flex items-center justify-between bg-muted/20"
@@ -88,57 +71,33 @@ export default function EditorGroup() {
             </div>
 
             {/* Editor Content Area */}
-            <div className="flex-1 overflow-hidden relative" style={{border: '3px solid red'}}>
-                {/* DEBUG: Show what mode we're in */}
-                <div className="absolute top-0 left-0 z-[100] bg-yellow-500 text-black px-2 py-1 text-xs font-bold">
-                    Mode: {editorMode} | Tabs: {tabs.length} | Rendering: {
-                        tabs.length === 0 && editorMode !== 'visual' ? 'EMPTY (no tabs)' :
-                        editorMode === 'code' && tabs.length > 0 ? 'CODE EDITOR' :
-                        editorMode === 'code' && tabs.length === 0 ? 'EMPTY (code mode no tabs)' :
-                        editorMode === 'visual' ? 'VISUAL EDITOR' :
-                        editorMode === 'split' && tabs.length > 0 ? 'SPLIT VIEW' :
-                        'EMPTY (split mode no tabs)'
-                    }
-                </div>
+            <div className="flex-1 overflow-hidden relative">
                 {tabs.length === 0 && editorMode !== 'visual' ? (
                     <>
-                        {console.log('[EditorGroup] Rendering: EmptyEditorState (no tabs)')}
-                        <div style={{border: '5px solid purple', height: '100%'}}>
-                            <EmptyEditorState />
-                        </div>
+                        <EmptyEditorState />
                     </>
                 ) : (
                     <>
                         {editorMode === 'code' && (
                             tabs.length > 0 ? (
                                 <>
-                                    {console.log('[EditorGroup] Rendering: CodeEditor in code mode')}
-                                    <div style={{border: '5px solid green', height: '100%'}}>
-                                        <CodeEditor activeTab={activeTab} />
-                                    </div>
+                                    <CodeEditor activeTab={activeTab} />
                                 </>
                             ) : (
-                                <>
-                                    {console.log('[EditorGroup] Rendering: EmptyEditorState in code mode (no tabs)')}
-                                    <div style={{border: '5px solid orange', height: '100%'}}>
-                                        <EmptyEditorState />
-                                    </div>
-                                </>
+                            <>
+                                <EmptyEditorState />
+                            </>
                             )
                         )}
                         {editorMode === 'visual' && (
                             <>
-                                {console.log('[EditorGroup] Rendering: VisualEditor')}
-                                <div style={{border: '5px solid blue', height: '100%'}}>
-                                    <VisualEditor />
-                                </div>
+                                <VisualEditor />
                             </>
                         )}
 
                         {editorMode === 'split' && (
                             tabs.length > 0 ? (
                                 <>
-                                    {console.log('[EditorGroup] Rendering: Split view with CodeEditor and VisualEditor')}
                                     <Group orientation="horizontal">
                                         <Panel defaultSize={50} minSize={20}>
                                             <CodeEditor activeTab={activeTab} />
@@ -157,10 +116,7 @@ export default function EditorGroup() {
                                 </>
                             ) : (
                                 <>
-                                    {console.log('[EditorGroup] Rendering: EmptyEditorState in split mode (no tabs)')}
-                                    <div style={{border: '5px solid cyan', height: '100%'}}>
-                                        <EmptyEditorState />
-                                    </div>
+                                    <EmptyEditorState />
                                 </>
                             )
                         )}
@@ -191,7 +147,6 @@ function ModeToggle({ active, onClick, icon, label }: { active: boolean; onClick
 }
 
 function EmptyEditorState() {
-    console.log('[EmptyEditorState] Rendering empty state');
     return (
         <div className="h-full w-full flex flex-col items-center justify-center bg-background text-muted-foreground">
             <div className="text-center max-w-md px-8">

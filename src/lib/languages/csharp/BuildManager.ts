@@ -81,8 +81,8 @@ export async function buildCSharpProject(
             configuration: configuration,
             traceParent: span.id,
         });
-        await span.end({ 
-            workspaceRoot, 
+        await span.end({
+            workspaceRoot,
             configuration: configuration || 'default',
             success: result.success.toString()
         });

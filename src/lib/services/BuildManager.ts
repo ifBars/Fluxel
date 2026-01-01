@@ -30,7 +30,7 @@ function convertBuildDiagnosticToStoreDiagnostic(
 ): Diagnostic {
     // Extract file name from path
     const fileName = diagnostic.file_path.split(/[/\\]/).pop() || diagnostic.file_path;
-    
+
     return {
         id: `build-${diagnostic.code}-${diagnostic.file_path}-${diagnostic.line}-${diagnostic.column}-${index}`,
         uri: `file://${diagnostic.file_path}`,
@@ -57,13 +57,13 @@ async function detectProjectType(projectRoot: string): Promise<'dotnet' | 'javas
     const span = FrontendProfiler.startSpan('detect_project_type', 'frontend_network');
     try {
         const profile = await invoke<ProjectProfile>('detect_project_profile', {
-            workspace_root: projectRoot,
+            workspaceRoot: projectRoot,
             traceParent: span.id,
         });
 
-        await span.end({ 
+        await span.end({
             projectKind: profile.kind,
-            projectRoot 
+            projectRoot
         });
 
         if (profile.kind === 'dotnet' || profile.kind === 'mixed') return 'dotnet';
@@ -79,7 +79,7 @@ async function detectProjectType(projectRoot: string): Promise<'dotnet' | 'javas
             const hasPackageJson = entries.some(entry => entry.name === 'package.json');
 
             const result = hasCsproj ? 'dotnet' : hasPackageJson ? 'javascript' : 'unknown';
-            await span.end({ 
+            await span.end({
                 projectKind: result,
                 projectRoot,
                 fallback: 'true'
@@ -92,8 +92,8 @@ async function detectProjectType(projectRoot: string): Promise<'dotnet' | 'javas
         }
 
         console.error('Error detecting project type:', error);
-        await span.end({ 
-            error: error instanceof Error ? error.message : 'Unknown error' 
+        await span.end({
+            error: error instanceof Error ? error.message : 'Unknown error'
         });
         return 'unknown';
     }
@@ -118,9 +118,9 @@ export async function executeBuild(options: BuildOptions): Promise<BuildResult> 
         // Manual/Custom build command
         if (buildSystem === 'manual') {
             if (!customBuildCommand || customBuildCommand.trim() === '') {
-                await buildSpan.end({ 
-                    buildSystem, 
-                    error: 'No custom build command' 
+                await buildSpan.end({
+                    buildSystem,
+                    error: 'No custom build command'
                 });
                 return {
                     success: false,
@@ -130,8 +130,8 @@ export async function executeBuild(options: BuildOptions): Promise<BuildResult> 
             }
 
             const result = await executeShellCommand(customBuildCommand, projectRoot);
-            await buildSpan.end({ 
-                buildSystem, 
+            await buildSpan.end({
+                buildSystem,
                 success: result.success.toString(),
                 customCommand: customBuildCommand
             });
@@ -144,8 +144,8 @@ export async function executeBuild(options: BuildOptions): Promise<BuildResult> 
 
             if (projectType === 'dotnet') {
                 const result = await executeDotNetBuild(projectRoot);
-                await buildSpan.end({ 
-                    buildSystem, 
+                await buildSpan.end({
+                    buildSystem,
                     detectedType: projectType,
                     success: result.success.toString(),
                     diagnosticCount: (result.diagnostics?.length || 0).toString()
@@ -154,16 +154,16 @@ export async function executeBuild(options: BuildOptions): Promise<BuildResult> 
             } else if (projectType === 'javascript') {
                 // Default to bun as per user rules
                 const result = await executeBunBuild(projectRoot);
-                await buildSpan.end({ 
-                    buildSystem, 
+                await buildSpan.end({
+                    buildSystem,
                     detectedType: projectType,
                     success: result.success.toString()
                 });
                 return result;
             } else {
-                await buildSpan.end({ 
-                    buildSystem, 
-                    error: 'Could not detect project type' 
+                await buildSpan.end({
+                    buildSystem,
+                    error: 'Could not detect project type'
                 });
                 return {
                     success: false,
@@ -186,9 +186,9 @@ export async function executeBuild(options: BuildOptions): Promise<BuildResult> 
                 result = await executeNpmBuild(projectRoot);
                 break;
             default:
-                await buildSpan.end({ 
-                    buildSystem, 
-                    error: 'Unknown build system' 
+                await buildSpan.end({
+                    buildSystem,
+                    error: 'Unknown build system'
                 });
                 return {
                     success: false,
@@ -197,16 +197,16 @@ export async function executeBuild(options: BuildOptions): Promise<BuildResult> 
                 };
         }
 
-        await buildSpan.end({ 
-            buildSystem, 
+        await buildSpan.end({
+            buildSystem,
             success: result.success.toString(),
             durationMs: result.durationMs?.toString() || 'unknown'
         });
         return result;
     } catch (error) {
-        await buildSpan.end({ 
+        await buildSpan.end({
             buildSystem,
-            error: error instanceof Error ? error.message : 'Unknown error' 
+            error: error instanceof Error ? error.message : 'Unknown error'
         });
         return {
             success: false,
@@ -224,20 +224,20 @@ async function executeDotNetBuild(projectRoot: string): Promise<BuildResult> {
     try {
         const { selectedConfiguration } = useCSharpStore.getState();
         console.log(`[BuildManager] Building with configuration: ${selectedConfiguration || 'default'}`);
-        
+
         const result = await buildCSharpProject(projectRoot, selectedConfiguration || undefined);
-        
+
         // Convert build diagnostics to store format and update the diagnostics store
-        const storeDiagnostics = result.diagnostics.map((diag, index) => 
+        const storeDiagnostics = result.diagnostics.map((diag, index) =>
             convertBuildDiagnosticToStoreDiagnostic(diag, index)
         );
-        
+
         // Update the diagnostics store with build diagnostics
         const { setBuildDiagnostics } = useDiagnosticsStore.getState();
         setBuildDiagnostics(storeDiagnostics);
-        
+
         console.log(`[BuildManager] Build ${result.success ? 'succeeded' : 'failed'} with ${result.diagnostics.length} diagnostics in ${result.duration_ms}ms`);
-        
+
         await span.end({
             success: result.success.toString(),
             diagnosticCount: result.diagnostics.length.toString(),
@@ -267,9 +267,9 @@ async function executeDotNetBuild(projectRoot: string): Promise<BuildResult> {
         // Clear build diagnostics on error
         const { clearBuildDiagnostics } = useDiagnosticsStore.getState();
         clearBuildDiagnostics();
-        
-        await span.end({ 
-            error: error instanceof Error ? error.message : 'Unknown error' 
+
+        await span.end({
+            error: error instanceof Error ? error.message : 'Unknown error'
         });
 
         return {
@@ -338,8 +338,8 @@ async function executeShellCommand(command: string, cwd: string, successMessage?
             };
         }
     } catch (error) {
-        await span.end({ 
-            error: error instanceof Error ? error.message : 'Unknown error' 
+        await span.end({
+            error: error instanceof Error ? error.message : 'Unknown error'
         });
         return {
             success: false,

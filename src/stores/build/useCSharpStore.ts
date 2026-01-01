@@ -51,11 +51,24 @@ export const useCSharpStore = create<CSharpStore>((set, get) => ({
 
             if (!configs || configs.length === 0) {
                 if (import.meta.env.DEV) {
-                    console.warn('[CSharp] No configurations returned, check if .csproj exists');
+                    console.warn('[CSharp] No configurations returned, check if .csproj exists', {
+                        workspaceRoot,
+                        configCount: 0
+                    });
                 }
             }
 
             const selectedConfig = configs.find((c) => c.name === 'Debug')?.name || configs[0]?.name || null;
+
+            if (import.meta.env.DEV) {
+                console.log('[CSharp] About to update store with', {
+                    configsCount: configs.length,
+                    selectedConfig,
+                    lastLoadedWorkspace: get().lastLoadedWorkspace,
+                    currentWorkspaceRoot: workspaceRoot,
+                    loading: true
+                });
+            }
 
             set({
                 configurations: configs,
@@ -63,6 +76,15 @@ export const useCSharpStore = create<CSharpStore>((set, get) => ({
                 lastLoadedWorkspace: workspaceRoot,
                 isLoadingConfigs: false,
             });
+
+            if (import.meta.env.DEV) {
+                console.log('[CSharp] Store updated', {
+                    configs: configs.length,
+                    selected: selectedConfig,
+                    root: workspaceRoot,
+                    newLastLoadedWorkspace: workspaceRoot
+                });
+            }
 
             await span.end({
                 workspaceRoot,
@@ -72,7 +94,13 @@ export const useCSharpStore = create<CSharpStore>((set, get) => ({
             });
 
             if (import.meta.env.DEV) {
-                console.log('[CSharp] Store updated - configs:', configs.length, 'selected:', selectedConfig);
+                const finalState = get();
+                console.log('[CSharp] Final store state verification', {
+                    configurations: finalState.configurations,
+                    selectedConfiguration: finalState.selectedConfiguration,
+                    lastLoadedWorkspace: finalState.lastLoadedWorkspace,
+                    isLoadingConfigs: finalState.isLoadingConfigs,
+                });
             }
         } catch (error) {
             console.error('[CSharp] Failed to load configurations:', error);
@@ -80,7 +108,7 @@ export const useCSharpStore = create<CSharpStore>((set, get) => ({
                 console.error('[CSharp] Error details:', error.message);
             }
             set({ configurations: [], selectedConfiguration: null, lastLoadedWorkspace: null, isLoadingConfigs: false });
-            await span.end({ 
+            await span.end({
                 error: error instanceof Error ? error.message : 'Unknown error',
                 workspaceRoot
             });

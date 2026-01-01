@@ -9,6 +9,10 @@
 - `dist/`, `src-tauri/target/`, `node_modules/`: build artifacts; don’t commit.
 - `my-digital-space/`: separate Vite project (not required for the Fluxel app).
 
+## Making Changes Guidelines
+
+When making changes requested by the user, do NOT write a summary into a file, as this is excessive token usage that we do not need.
+
 ## Build, Test, and Development Commands
 
 This repo is configured to use Bun (see `src-tauri/tauri.conf.json`).

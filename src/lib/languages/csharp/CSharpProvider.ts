@@ -62,12 +62,16 @@ export class CSharpProvider extends BaseLanguageProvider {
             }
 
             try {
-                console.log('[CSharp] Stopping provider...');
+                console.log('[CSharp] Stopping provider (releasing Monaco resources)...');
 
-                // Stop LSP client
-                await this.lspClient.stop();
+                // NOTE: We do NOT stop the LSP client here.
+                // The LSP client lifecycle is managed centrally by the ProjectStore (via useProjectStore).
+                // Stopping it here would kill the server process when the CodeEditor component unmounts
+                // (e.g. switching tabs), which is not desired as the project is still open.
+                //
+                // await this.lspClient.stop(); <--- REMOVED
 
-                // Dispose all resources
+                // Dispose all resources (Monaco providers, listeners)
                 this.dispose();
 
                 this.started = false;

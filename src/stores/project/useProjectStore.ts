@@ -58,47 +58,47 @@ export const useProjectStore = create<ProjectState>()(
 
             openProject: (rootPath: string) => {
                 FrontendProfiler.profileSync('openProject', 'workspace', () => {
-                // If switching workspaces, stop any running C# server first to avoid MSBuild conflicts.
-                const lspClient = getCSharpLSPClient();
-                const previousWorkspace = lspClient.getWorkspaceRoot();
-                if (previousWorkspace && previousWorkspace !== rootPath) {
-                    set({ csharpLspStatus: 'stopped', csharpLspError: undefined });
-                    void FrontendProfiler.profileAsync('csharp_lsp_stop_workspace_switch', 'lsp_request', async () => {
-                        await lspClient.stop();
-                    }, { previousWorkspace, newWorkspace: rootPath }).catch(() => {
-                        // Best-effort; ignore
+                    // If switching workspaces, stop any running C# server first to avoid MSBuild conflicts.
+                    const lspClient = getCSharpLSPClient();
+                    const previousWorkspace = lspClient.getWorkspaceRoot();
+                    if (previousWorkspace && previousWorkspace !== rootPath) {
+                        set({ csharpLspStatus: 'stopped', csharpLspError: undefined });
+                        void FrontendProfiler.profileAsync('csharp_lsp_stop_workspace_switch', 'lsp_request', async () => {
+                            await lspClient.stop();
+                        }, { previousWorkspace, newWorkspace: rootPath }).catch(() => {
+                            // Best-effort; ignore
+                        });
+                    }
+
+                    // Extract project name from path
+                    const name = rootPath.split(/[\\/]/).pop() ?? 'Unknown';
+                    const project: Project = {
+                        name,
+                        rootPath,
+                        lastOpened: new Date(),
+                    };
+
+                    // Update recent projects (remove if exists, add to front)
+                    const recentProjects = get().recentProjects.filter(
+                        (p) => p.rootPath !== rootPath
+                    );
+                    recentProjects.unshift(project);
+
+                    // Keep only MAX_RECENT_PROJECTS
+                    if (recentProjects.length > MAX_RECENT_PROJECTS) {
+                        recentProjects.pop();
+                    }
+
+                    set({
+                        currentProject: project,
+                        recentProjects,
+                        projectProfile: null,
+                        projectInitStatus: 'detecting',
+                        projectInitError: undefined,
                     });
-                }
 
-                // Extract project name from path
-                const name = rootPath.split(/[\\/]/).pop() ?? 'Unknown';
-                const project: Project = {
-                    name,
-                    rootPath,
-                    lastOpened: new Date(),
-                };
-
-                // Update recent projects (remove if exists, add to front)
-                const recentProjects = get().recentProjects.filter(
-                    (p) => p.rootPath !== rootPath
-                );
-                recentProjects.unshift(project);
-
-                // Keep only MAX_RECENT_PROJECTS
-                if (recentProjects.length > MAX_RECENT_PROJECTS) {
-                    recentProjects.pop();
-                }
-
-                set({
-                    currentProject: project,
-                    recentProjects,
-                    projectProfile: null,
-                    projectInitStatus: 'detecting',
-                    projectInitError: undefined,
-                });
-
-                // Kick off detection/services in the background; never block folder opening UX.
-                void get().refreshProjectProfile();
+                    // Kick off detection/services in the background; never block folder opening UX.
+                    void get().refreshProjectProfile();
                 }, { rootPath });
             },
 
@@ -128,60 +128,71 @@ export const useProjectStore = create<ProjectState>()(
 
             refreshProjectProfile: async () => {
                 await FrontendProfiler.profileAsync('refreshProjectProfile', 'workspace', async () => {
-                const project = get().currentProject;
-                if (!project?.rootPath) {
-                    set({
-                        projectProfile: null,
-                        projectInitStatus: 'idle',
-                        projectInitError: undefined,
-                    });
-                    return;
-                }
-
-                set({ projectInitStatus: 'detecting', projectInitError: undefined });
-
-                try {
-                    const detectSpan = FrontendProfiler.startSpan('invoke:detect_project_profile', 'tauri_command');
-                    const profile = await invoke<ProjectProfile>('detect_project_profile', {
-                        workspace_root: project.rootPath,
-                        traceParent: detectSpan.id,
-                    });
-                    await detectSpan.end({ workspaceRoot: project.rootPath });
-
-                    // If project changed during detection, drop the result.
-                    if (get().currentProject?.rootPath !== project.rootPath) {
+                    const project = get().currentProject;
+                    if (!project?.rootPath) {
+                        set({
+                            projectProfile: null,
+                            projectInitStatus: 'idle',
+                            projectInitError: undefined,
+                        });
                         return;
                     }
 
-                    set({ projectProfile: profile, projectInitStatus: 'ready' });
+                    set({ projectInitStatus: 'detecting', projectInitError: undefined });
 
-                    // Proactively start C# services for dotnet/mixed workspaces.
-                    if (profile.kind === 'dotnet' || profile.kind === 'mixed') {
-                        void get().ensureCSharpLspReady();
-                    } else {
-                        const lspClient = getCSharpLSPClient();
-                        if (lspClient.getIsStarted()) {
-                            void (async () => {
-                                try {
-                                    await lspClient.stop();
-                                } catch {
-                                    // ignore
-                                } finally {
-                                    if (get().currentProject?.rootPath === project.rootPath) {
-                                        set({ csharpLspStatus: 'stopped', csharpLspError: undefined });
-                                    }
-                                }
-                            })();
+                    try {
+                        const detectSpan = FrontendProfiler.startSpan('invoke:detect_project_profile', 'tauri_command');
+                        const profile = await invoke<ProjectProfile>('detect_project_profile', {
+                            workspaceRoot: project.rootPath,
+                            traceParent: detectSpan.id,
+                        });
+                        await detectSpan.end({ workspaceRoot: project.rootPath });
+
+                        // If project changed during detection, drop the result.
+                        if (get().currentProject?.rootPath !== project.rootPath) {
+                            return;
                         }
+
+                        set({ projectProfile: profile, projectInitStatus: 'ready' });
+
+                        // Proactively start C# services for dotnet/mixed workspaces.
+                        if (profile.kind === 'dotnet' || profile.kind === 'mixed') {
+                            void get().ensureCSharpLspReady();
+                        } else {
+                            const lspClient = getCSharpLSPClient();
+                            if (lspClient.getIsStarted()) {
+                                void (async () => {
+                                    try {
+                                        await lspClient.stop();
+                                    } catch {
+                                        // ignore
+                                    } finally {
+                                        if (get().currentProject?.rootPath === project.rootPath) {
+                                            set({ csharpLspStatus: 'stopped', csharpLspError: undefined });
+                                        }
+                                    }
+                                })();
+                            }
+                        }
+                    } catch (error) {
+                        if (get().currentProject?.rootPath !== project.rootPath) return;
+
+                        const errorMsg = errorMessage(error);
+                        console.error('[ProjectStore] Project detection failed:', errorMsg);
+
+                        set({
+                            projectInitStatus: 'error',
+                            projectInitError: errorMsg,
+                            projectProfile: null,
+                        });
+
+                        // Fallback: Try to start C# LSP anyway if we can detect C# files exist
+                        // This provides some functionality even when formal detection fails
+                        console.log('[ProjectStore] Attempting fallback C# LSP initialization...');
+                        void get().ensureCSharpLspReady().catch((lspError) => {
+                            console.warn('[ProjectStore] Fallback C# LSP failed:', lspError);
+                        });
                     }
-                } catch (error) {
-                    if (get().currentProject?.rootPath !== project.rootPath) return;
-                    set({
-                        projectInitStatus: 'error',
-                        projectInitError: errorMessage(error),
-                        projectProfile: null,
-                    });
-                }
                 });
             },
 
@@ -189,39 +200,39 @@ export const useProjectStore = create<ProjectState>()(
                 const project = get().currentProject;
                 const rootPath = project?.rootPath;
                 await FrontendProfiler.profileAsync('ensureCSharpLspReady', 'lsp_request', async () => {
-                if (!project?.rootPath) return;
-                if (get().csharpLspStatus === 'starting' || get().csharpLspStatus === 'ready') return;
+                    if (!project?.rootPath) return;
+                    if (get().csharpLspStatus === 'starting' || get().csharpLspStatus === 'ready') return;
 
-                set({ csharpLspStatus: 'starting', csharpLspError: undefined });
+                    set({ csharpLspStatus: 'starting', csharpLspError: undefined });
 
-                const lspClient = getCSharpLSPClient();
-                try {
-                    await lspClient.start(project.rootPath);
-                    await lspClient.initialize(project.rootPath);
-
-                    // If project changed during startup, stop the server we started.
-                    if (get().currentProject?.rootPath !== project.rootPath) {
-                        await lspClient.stop();
-                        return;
-                    }
-
-                    set({ csharpLspStatus: 'ready', csharpLspError: undefined });
-                } catch (error) {
-                    const msg = errorMessage(error);
-
-                    // Best-effort cleanup to avoid zombie processes with loaded MSBuild assemblies.
+                    const lspClient = getCSharpLSPClient();
                     try {
-                        await lspClient.stop();
-                    } catch {
-                        // ignore
-                    }
+                        await lspClient.start(project.rootPath);
+                        await lspClient.initialize(project.rootPath);
 
-                    if (get().currentProject?.rootPath !== project.rootPath) return;
-                    set({
-                        csharpLspStatus: 'error',
-                        csharpLspError: msg,
-                    });
-                }
+                        // If project changed during startup, stop the server we started.
+                        if (get().currentProject?.rootPath !== project.rootPath) {
+                            await lspClient.stop();
+                            return;
+                        }
+
+                        set({ csharpLspStatus: 'ready', csharpLspError: undefined });
+                    } catch (error) {
+                        const msg = errorMessage(error);
+
+                        // Best-effort cleanup to avoid zombie processes with loaded MSBuild assemblies.
+                        try {
+                            await lspClient.stop();
+                        } catch {
+                            // ignore
+                        }
+
+                        if (get().currentProject?.rootPath !== project.rootPath) return;
+                        set({
+                            csharpLspStatus: 'error',
+                            csharpLspError: msg,
+                        });
+                    }
                 }, { ...(rootPath && { rootPath }) });
             },
 
