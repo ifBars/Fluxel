@@ -69,8 +69,9 @@ interface CodeEditorProps {
 }
 
 export default function CodeEditor({ activeTab }: CodeEditorProps) {
+    console.log('[CodeEditor] Component render - activeTab:', activeTab?.filename, 'type:', activeTab?.type, 'hasActiveTab:', !!activeTab);
     const { ProfilerWrapper, startSpan, trackInteraction } = useProfiler('CodeEditor');
-    
+
     // Trigger plugin activation for the active file's language
     usePluginLanguageActivation(activeTab?.language ?? null);
     
@@ -98,6 +99,7 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
     const monaco = useMonaco() as unknown as typeof Monaco;
     const [isSaving, setIsSaving] = useState(false);
     const [editorInstance, setEditorInstance] = useState<Monaco.editor.IStandaloneCodeEditor | null>(null);
+    const diffEditorRef = useRef<Monaco.editor.IStandaloneDiffEditor | null>(null);
     const autocompleteDisposableRef = useRef<{ dispose: () => void } | null>(null);
     const lspClientRef = useRef(getCSharpLSPClient());
     const docVersionsRef = useRef<Record<string, number>>({});
@@ -108,7 +110,16 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
     // When switching tabs, wait for the new editor instance before revealing a position.
     useEffect(() => {
         setEditorInstance(null);
-    }, [activeTab?.id]);
+
+        // Clear the diff editor ref when switching away from diff mode.
+        // The @monaco-editor/react DiffEditor component handles its own disposal via React lifecycle.
+        // Manual disposal here was causing a race condition where models were disposed
+        // before the DiffEditor finished resetting, causing:
+        // "TextModel got disposed before DiffEditorWidget model got reset" error.
+        if (activeTab?.type !== 'diff') {
+            diffEditorRef.current = null;
+        }
+    }, [activeTab?.id, activeTab?.type]);
 
     // Configure Monaco TypeScript to behave like VSCode (full IntelliSense)
     useEffect(() => {
@@ -793,6 +804,7 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
 
     // Show placeholder if no active tab
     if (!activeTab) {
+        console.log('[CodeEditor] Rendering placeholder - no active tab');
         return (
             <div className="h-full w-full flex flex-col bg-background">
                 <div className="flex-1 flex items-center justify-center text-muted-foreground">
@@ -856,13 +868,24 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
             {/* Monaco Editor (Code or Diff) */}
             <div className="flex-1 overflow-hidden relative">
                 {activeTab.type === 'diff' ? (
-                    <DiffEditor
-                        key={activeTab.id}
+                    <>
+                        {console.log('[CodeEditor] Rendering DiffEditor - original length:', activeTab.diffBaseContent?.length, 'modified length:', activeTab.content.length)}
+                        <DiffEditor
+                        key="diff-editor"
                         height="100%"
                         original={activeTab.diffBaseContent}
                         modified={activeTab.content}
                         language={activeTab.language}
                         theme={theme === "dark" ? "fluxel-dark" : "fluxel-light"}
+                        onMount={(editor) => {
+                            console.log('[CodeEditor] DiffEditor onMount called - editor:', !!editor);
+                            diffEditorRef.current = editor;
+                            const originalModel = editor.getOriginalEditor().getModel();
+                            const modifiedModel = editor.getModifiedEditor().getModel();
+                            console.log('[CodeEditor] DiffEditor models - original:', !!originalModel, 'modified:', !!modifiedModel);
+                            if (originalModel) console.log('[CodeEditor] Original model line count:', originalModel.getLineCount());
+                            if (modifiedModel) console.log('[CodeEditor] Modified model line count:', modifiedModel.getLineCount());
+                        }}
                         options={{
                             // Minimap
                             minimap: { enabled: showMinimap, side: minimapSide, scale: minimapScale, maxColumn: minimapMaxColumn, showSlider: minimapShowSlider },
@@ -884,8 +907,11 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                             readOnly: true, // Diff view is read-only for now
                         }}
                     />
+                    </>
                 ) : (
-                    <Editor
+                    <>
+                        {console.log('[CodeEditor] Rendering regular Editor - content length:', activeTab.content.length)}
+                        <Editor
                         key={activeTab.id}
                         height="100%"
                         path={toFileUri(activeTab.path)}
@@ -970,6 +996,7 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                             fixedOverflowWidgets: true,
                         }}
                     />
+                    </>
                 )}
             </div>
         </div>

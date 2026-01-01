@@ -5,6 +5,7 @@ import { FrontendProfiler } from "@/lib/services/FrontendProfiler";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useDefaultCommands } from "@/hooks/useCommands";
 import { useProfiler } from "@/hooks/useProfiler";
+import { clearOldPanelLayouts } from "@/lib/utils/clearPanelLayouts";
 import ActivityBar from "./ActivityBar";
 import Sidebar from "./SideBar";
 import SettingsDialog from "./SettingsDialog";
@@ -38,7 +39,6 @@ function Workbench() {
     // Store selectors - no individual profiling to reduce overhead
     // Profiling overhead (~0.05-0.1ms per span) exceeds selector execution time (<0.01ms each)
     // The overall workbench_init span captures the total time
-    const sidebarDefaultSize = useWorkbenchStore((state) => state.sidebarDefaultSize);
     const defaultSidebarOpen = useWorkbenchStore((state) => state.defaultSidebarOpen);
 
     const tabs = useEditorStore((state) => state.tabs);
@@ -96,6 +96,9 @@ function Workbench() {
 
     // Combine component initialization tracking into a single useEffect to reduce hook overhead
     useEffect(() => {
+        // Clear old v3 panel layouts on first mount (one-time migration)
+        clearOldPanelLayouts();
+        
         FrontendProfiler.trackInteraction('ActivityBar:init', { component: 'ActivityBar' });
         FrontendProfiler.trackInteraction('EditorGroup:init', { component: 'EditorGroup' });
         FrontendProfiler.trackInteraction('Group:init:init', { component: 'Group:init' });
@@ -138,11 +141,12 @@ function Workbench() {
                     />
 
                     {/* Main Resizable Area */}
-                    <Group orientation="horizontal" className="flex-1">
+                    <Group id="workbench-main" orientation="horizontal" className="flex-1">
                         {/* Sidebar Panel */}
                         <Panel
+                            id="sidebar"
                             panelRef={sidebarPanelRef}
-                            defaultSize={defaultSidebarOpen ? sidebarDefaultSize : 0}
+                            defaultSize={defaultSidebarOpen ? densityConfig.sidebarDefaultSize : 0}
                             minSize={densityConfig.sidebarMinSize}
                             maxSize={densityConfig.sidebarMaxSize}
                             collapsible
@@ -160,10 +164,10 @@ function Workbench() {
                         />
 
                         {/* Editor + Build Panel Area (Vertical Split) */}
-                        <Panel minSize={30}>
-                            <Group orientation="vertical">
+                        <Panel id="main-content" minSize={30}>
+                            <Group id="editor-build-group" orientation="vertical">
                                 {/* Editor Area */}
-                                <Panel minSize={20}>
+                                <Panel id="editor" minSize={20}>
                                     <EditorGroup />
                                 </Panel>
 
@@ -171,7 +175,7 @@ function Workbench() {
                                 {isBuildPanelOpen && (
                                     <>
                                         <Separator
-                                            className="group panel-resize-handle bg-transparent cursor-row-resize z-50 flex items-center justify-center outline-none"
+                                            className="group panel-resize-handle bg-transparent cursor-row-resize z-10 flex items-center justify-center outline-none"
                                             style={{
                                                 height: '10px',
                                                 minHeight: '10px',
@@ -189,6 +193,7 @@ function Workbench() {
                                             />
                                         </Separator>
                                         <Panel
+                                            id="build-panel"
                                             panelRef={buildPanelRef}
                                             defaultSize={25}
                                             minSize={10}
@@ -214,10 +219,11 @@ function Workbench() {
                                     }}
                                 />
                                 <Panel
+                                    id="inspector"
                                     panelRef={inspectorPanelRef}
-                                    defaultSize={20}
-                                    minSize={15}
-                                    maxSize={35}
+                                    defaultSize="300px"
+                                    minSize="200px"
+                                    maxSize="800px"
                                     collapsible
                                     collapsedSize={0}
                                 >
@@ -239,9 +245,10 @@ function Workbench() {
                                     }}
                                 />
                                 <Panel
-                                    defaultSize={25}
-                                    minSize={20}
-                                    maxSize={40}
+                                    id="agent"
+                                    defaultSize="400px"
+                                    minSize="300px"
+                                    maxSize="900px"
                                     collapsible
                                     collapsedSize={0}
                                 >
@@ -263,9 +270,10 @@ function Workbench() {
                                     }}
                                 />
                                 <Panel
-                                    defaultSize={25}
-                                    minSize={20}
-                                    maxSize={40}
+                                    id="debug"
+                                    defaultSize="400px"
+                                    minSize="300px"
+                                    maxSize="900px"
                                     collapsible
                                     collapsedSize={0}
                                 >

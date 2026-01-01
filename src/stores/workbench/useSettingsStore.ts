@@ -34,9 +34,9 @@ export type EditorFontWeight = 'normal' | 'bold';
 // Density preset configuration for layout defaults
 export interface DensityConfig {
     // Panel sizing
-    sidebarDefaultSize: number;
-    sidebarMinSize: number;
-    sidebarMaxSize: number;
+    sidebarDefaultSize: string;
+    sidebarMinSize: string;
+    sidebarMaxSize: string;
 
     // Border radius
     radius: string;
@@ -90,9 +90,9 @@ export interface DensityConfig {
 
 export const densityConfigs: Record<UIDensity, DensityConfig> = {
     compact: {
-        sidebarDefaultSize: 10,
-        sidebarMinSize: 7,
-        sidebarMaxSize: 20,
+        sidebarDefaultSize: '200px',
+        sidebarMinSize: '150px',
+        sidebarMaxSize: '400px',
         radius: '0.5rem',
         radiusSm: '0.4rem',
         radiusLg: '0.8rem',
@@ -132,9 +132,9 @@ export const densityConfigs: Record<UIDensity, DensityConfig> = {
         buildPanelOutputLineHeight: '1.5',
     },
     comfortable: {
-        sidebarDefaultSize: 17,
-        sidebarMinSize: 10,
-        sidebarMaxSize: 25,
+        sidebarDefaultSize: '250px',
+        sidebarMinSize: '200px',
+        sidebarMaxSize: '500px',
         radius: '0.75rem',
         radiusSm: '0.5rem',
         radiusLg: '0.9rem',
@@ -174,9 +174,9 @@ export const densityConfigs: Record<UIDensity, DensityConfig> = {
         buildPanelOutputLineHeight: '1.625',
     },
     spacious: {
-        sidebarDefaultSize: 20,
-        sidebarMinSize: 15,
-        sidebarMaxSize: 35,
+        sidebarDefaultSize: '300px',
+        sidebarMinSize: '250px',
+        sidebarMaxSize: '600px',
         radius: '1rem',
         radiusSm: '0.75rem',
         radiusLg: '1rem',

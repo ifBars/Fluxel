@@ -21,7 +21,7 @@ function Sidebar() {
 
     return (
         <ProfilerWrapper>
-            <div className="h-full flex flex-col bg-muted/20 min-w-[14rem]">
+            <div className="h-full flex flex-col bg-muted/20">
                 <div
                     className="flex items-center border-b border-border"
                     style={{

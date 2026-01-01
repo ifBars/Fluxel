@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import { getFileExtension, getFileName, getLanguageFromExtension } from '@/types/fs';
 import { FrontendProfiler } from '@/lib/services/FrontendProfiler';
+import { useWorkbenchStore } from '../workbench/useWorkbenchStore';
 
 export interface EditorTab {
     /** Unique identifier for the tab */
@@ -129,6 +130,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         const targetLine = position?.line ?? 1;
         const targetColumn = position?.column ?? 1;
 
+        // Ensure editor mode is set to 'code' so CodeEditor mounts
+        // This is needed when opening files before the editor has been initialized
+        const { editorMode, setEditorMode } = useWorkbenchStore.getState();
+        console.log('[useEditorStore.openFile] Current editor mode:', editorMode);
+        if (editorMode === 'visual') {
+            console.log('[useEditorStore.openFile] Switching from visual to code mode');
+            setEditorMode('code');
+        }
+
         // Check if file is already open
         const existingTab = tabs.find((t) => t.path === normalizedPath && t.type === 'code');
         if (existingTab) {
@@ -184,38 +194,64 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     },
 
     openDiff: async (path: string, originalContent?: string, modifiedContent?: string) => {
+        console.log('[useEditorStore.openDiff] Called with:', { path, hasOriginal: !!originalContent, hasModified: !!modifiedContent });
         await FrontendProfiler.profileAsync('openDiff', 'file_io', async () => {
         const { tabs, setActiveTab } = get();
         const normalizedPath = path.replace(/\\/g, '/');
-
-        // Check if diff is already open for this file
-        // Note: We intentionally separate code tabs and diff tabs.
-        // A user might want both the code editor and the diff view open.
-        const existingTab = tabs.find((t) => t.path === normalizedPath && t.type === 'diff');
-        if (existingTab) {
-                FrontendProfiler.profileSync('setActiveTab', 'frontend_render', () => {
-            setActiveTab(existingTab.id);
-                });
-            // Verify if content needs update?
-            // For now, assume if it's open, it's fine.
-            return;
-        }
+        console.log('[useEditorStore.openDiff] Normalized path:', normalizedPath);
 
         const filename = getFileName(normalizedPath);
         const extension = getFileExtension(normalizedPath);
         const language = getLanguageFromExtension(extension);
+        console.log('[useEditorStore.openDiff] File info:', { filename, extension, language });
 
         // If modifiedContent is not provided, try to read from disk
         let currentContent = modifiedContent;
         if (currentContent === undefined) {
             try {
+                console.log('[useEditorStore.openDiff] Reading file from disk...');
                     currentContent = await FrontendProfiler.profileAsync('readTextFile', 'file_io', async () => {
                         return await readTextFile(normalizedPath);
                     }, { path: normalizedPath });
+                console.log('[useEditorStore.openDiff] File read successfully, length:', currentContent.length);
             } catch (e) {
-                console.error('Failed to read file for diff:', e);
+                console.error('[useEditorStore.openDiff] Failed to read file for diff:', e);
                 throw new Error(`Failed to read file ${normalizedPath}: ${e}`);
             }
+        }
+
+        // Ensure editor mode is set to 'code' so CodeEditor mounts
+        // This is needed when opening diffs from GitPanel before any file has been opened
+        console.log('[useEditorStore.openDiff] Checking editor mode...');
+        const { editorMode, setEditorMode } = useWorkbenchStore.getState();
+        console.log('[useEditorStore.openDiff] Current editor mode:', editorMode);
+        if (editorMode === 'visual') {
+            console.log('[useEditorStore.openDiff] Switching from visual to code mode');
+            setEditorMode('code');
+        }
+
+        // Check if diff is already open for this file
+        const existingTab = tabs.find((t) => t.path === normalizedPath && t.type === 'diff');
+        console.log('[useEditorStore.openDiff] Existing diff tab found:', !!existingTab);
+        if (existingTab) {
+            console.log('[useEditorStore.openDiff] Updating existing tab:', existingTab.id);
+                FrontendProfiler.profileSync('setActiveTab', 'frontend_render', () => {
+            setActiveTab(existingTab.id);
+                });
+            // Update the tab content if it has changed
+            set((state) => ({
+                tabs: state.tabs.map((t) =>
+                    t.id === existingTab.id
+                        ? {
+                            ...t,
+                            content: currentContent,
+                            diffBaseContent: originalContent || '',
+                            language,
+                        }
+                        : t
+                ),
+            }));
+            return;
         }
 
         const newTab: EditorTab = {
@@ -229,12 +265,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
             type: 'diff',
         };
 
+        console.log('[useEditorStore.openDiff] Creating new diff tab:', newTab);
             FrontendProfiler.profileSync('addTab', 'frontend_render', () => {
         set((state) => ({
             tabs: [...state.tabs, newTab],
             activeTabId: newTab.id,
         }));
             });
+        console.log('[useEditorStore.openDiff] Tab created and set as active');
         }, { path });
     },
 

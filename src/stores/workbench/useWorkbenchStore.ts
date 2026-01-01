@@ -39,7 +39,10 @@ export const useWorkbenchStore = create<WorkbenchState>()(
             toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
             setSidebarOpen: (isOpen) => set({ isSidebarOpen: isOpen }),
             setActiveActivity: (activity) => set({ activeActivity: activity }),
-            setEditorMode: (mode) => set({ editorMode: mode }),
+            setEditorMode: (mode) => {
+                console.log('[useWorkbenchStore.setEditorMode] Changing editor mode to:', mode);
+                set({ editorMode: mode });
+            },
             setDefaultSidebarOpen: (defaultSidebarOpen) => set({ defaultSidebarOpen }),
             setSidebarDefaultSize: (sidebarDefaultSize) => set({ sidebarDefaultSize }),
             setEnablePanelSnap: (enablePanelSnap) => set({ enablePanelSnap }),
