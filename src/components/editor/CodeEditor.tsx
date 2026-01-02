@@ -718,7 +718,14 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
 
         let animationFrameId: number;
 
-        const observer = new ResizeObserver(() => {
+        const observer = new ResizeObserver((entries) => {
+            // Check if any entry has zero dimensions
+            const hasDimensions = entries.some(entry =>
+                entry.contentRect.width > 0 && entry.contentRect.height > 0
+            );
+
+            if (!hasDimensions) return;
+
             cancelAnimationFrame(animationFrameId);
             animationFrameId = requestAnimationFrame(() => {
                 editorInstance.layout();
@@ -739,7 +746,14 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
 
         let animationFrameId: number;
 
-        const observer = new ResizeObserver(() => {
+        const observer = new ResizeObserver((entries) => {
+            // Check if any entry has zero dimensions
+            const hasDimensions = entries.some(entry =>
+                entry.contentRect.width > 0 && entry.contentRect.height > 0
+            );
+
+            if (!hasDimensions) return;
+
             cancelAnimationFrame(animationFrameId);
             animationFrameId = requestAnimationFrame(() => {
                 diffEditorInstance.layout();

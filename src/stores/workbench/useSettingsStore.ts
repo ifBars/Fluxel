@@ -38,6 +38,22 @@ export interface DensityConfig {
     sidebarMinSize: string;
     sidebarMaxSize: string;
 
+    // Build Panel sizing (pixels)
+    buildPanelDefaultSize: string;
+    buildPanelMinSize: string;
+    buildPanelMaxSize: string;
+    editorMinSize: string;
+
+    // Agent Panel sizing
+    agentPanelDefaultSize: string;
+    agentPanelMinSize: string;
+    agentPanelMaxSize: string;
+
+    // Debug Panel sizing
+    debugPanelDefaultSize: string;
+    debugPanelMinSize: string;
+    debugPanelMaxSize: string;
+
     // Border radius
     radius: string;
     radiusSm: string;
@@ -93,6 +109,16 @@ export const densityConfigs: Record<UIDensity, DensityConfig> = {
         sidebarDefaultSize: '125px',
         sidebarMinSize: '100px',
         sidebarMaxSize: '250px',
+        buildPanelDefaultSize: '250px',
+        buildPanelMinSize: '100px',
+        buildPanelMaxSize: '250px',
+        editorMinSize: '50px',
+        agentPanelDefaultSize: '250px',
+        agentPanelMinSize: '150px',
+        agentPanelMaxSize: '500px',
+        debugPanelDefaultSize: '250px',
+        debugPanelMinSize: '150px',
+        debugPanelMaxSize: '500px',
         radius: '0.5rem',
         radiusSm: '0.4rem',
         radiusLg: '0.8rem',
@@ -135,6 +161,16 @@ export const densityConfigs: Record<UIDensity, DensityConfig> = {
         sidebarDefaultSize: '150px',
         sidebarMinSize: '125px',
         sidebarMaxSize: '300px',
+        buildPanelDefaultSize: '250px',
+        buildPanelMinSize: '120px',
+        buildPanelMaxSize: '300px',
+        editorMinSize: '50px',
+        agentPanelDefaultSize: '300px',
+        agentPanelMinSize: '200px',
+        agentPanelMaxSize: '600px',
+        debugPanelDefaultSize: '300px',
+        debugPanelMinSize: '200px',
+        debugPanelMaxSize: '600px',
         radius: '0.75rem',
         radiusSm: '0.5rem',
         radiusLg: '0.9rem',
@@ -177,6 +213,16 @@ export const densityConfigs: Record<UIDensity, DensityConfig> = {
         sidebarDefaultSize: '150px',
         sidebarMinSize: '125px',
         sidebarMaxSize: '400px',
+        buildPanelDefaultSize: '250px',
+        buildPanelMinSize: '140px',
+        buildPanelMaxSize: '400px',
+        editorMinSize: '50px',
+        agentPanelDefaultSize: '350px',
+        agentPanelMinSize: '250px',
+        agentPanelMaxSize: '700px',
+        debugPanelDefaultSize: '350px',
+        debugPanelMinSize: '250px',
+        debugPanelMaxSize: '700px',
         radius: '1rem',
         radiusSm: '0.75rem',
         radiusLg: '1rem',

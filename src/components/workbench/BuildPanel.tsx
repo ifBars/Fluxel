@@ -17,7 +17,7 @@ export default function BuildPanel() {
     // Select underlying state to avoid infinite re-renders from getCounts() returning new objects
     const diagnosticsByFile = useDiagnosticsStore((state) => state.diagnosticsByFile);
     const buildDiagnostics = useDiagnosticsStore((state) => state.buildDiagnostics);
-    
+
     // Compute counts with useMemo to prevent infinite loops
     const counts = useMemo(() => {
         // Combine all LSP diagnostics from all files
@@ -45,7 +45,7 @@ export default function BuildPanel() {
             { errors: 0, warnings: 0, info: 0 }
         );
     }, [diagnosticsByFile, buildDiagnostics]);
-    
+
     const [activeTab, setActiveTab] = useState<Tab>('problems');
     const { trackInteraction, ProfilerWrapper } = useProfiler('BuildPanel');
 
@@ -75,54 +75,54 @@ export default function BuildPanel() {
                                 : 'border-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground'
                                 }`}
                         >
-                        <AlertCircle className="w-3.5 h-3.5" />
-                        Problems
-                        {counts.errors > 0 && (
-                            <Badge variant="error" className="h-4 px-1.5 text-[10px] min-w-[1.25rem] justify-center">
-                                {counts.errors}
-                            </Badge>
-                        )}
-                        {counts.warnings > 0 && (
-                            <Badge variant="warning" className="h-4 px-1.5 text-[10px] min-w-[1.25rem] justify-center">
-                                {counts.warnings}
-                            </Badge>
-                        )}
-                    </button>
+                            <AlertCircle className="w-3.5 h-3.5" />
+                            Problems
+                            {counts.errors > 0 && (
+                                <Badge variant="error" className="h-4 px-1.5 text-[10px] min-w-[1.25rem] justify-center">
+                                    {counts.errors}
+                                </Badge>
+                            )}
+                            {counts.warnings > 0 && (
+                                <Badge variant="warning" className="h-4 px-1.5 text-[10px] min-w-[1.25rem] justify-center">
+                                    {counts.warnings}
+                                </Badge>
+                            )}
+                        </button>
+                        <button
+                            onClick={() => handleTabChange('build')}
+                            className={`px-3 h-full flex items-center gap-2 text-xs font-medium border-b-2 transition-colors ${activeTab === 'build'
+                                ? 'border-primary text-foreground bg-background/50'
+                                : 'border-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                                }`}
+                        >
+                            <Hammer className="w-3.5 h-3.5" />
+                            Build
+                        </button>
+                        <button
+                            onClick={() => handleTabChange('terminal')}
+                            className={`px-3 h-full flex items-center gap-2 text-xs font-medium border-b-2 transition-colors ${activeTab === 'terminal'
+                                ? 'border-primary text-foreground bg-background/50'
+                                : 'border-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                                }`}
+                        >
+                            <Terminal className="w-3.5 h-3.5" />
+                            Terminal
+                        </button>
+                    </div>
                     <button
-                        onClick={() => handleTabChange('build')}
-                        className={`px-3 h-full flex items-center gap-2 text-xs font-medium border-b-2 transition-colors ${activeTab === 'build'
-                            ? 'border-primary text-foreground bg-background/50'
-                            : 'border-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-                            }`}
+                        onClick={() => {
+                            trackInteraction('panel_closed');
+                            closePanel();
+                        }}
+                        className="rounded hover:bg-muted transition-colors"
+                        style={{ padding: 'var(--build-panel-button-padding, 0.25rem)' }}
+                        aria-label="Close panel"
                     >
-                        <Hammer className="w-3.5 h-3.5" />
-                        Build
+                        <X style={{
+                            width: 'var(--build-panel-header-icon-size, 1rem)',
+                            height: 'var(--build-panel-header-icon-size, 1rem)'
+                        }} className="text-muted-foreground" />
                     </button>
-                    <button
-                        onClick={() => handleTabChange('terminal')}
-                        className={`px-3 h-full flex items-center gap-2 text-xs font-medium border-b-2 transition-colors ${activeTab === 'terminal'
-                            ? 'border-primary text-foreground bg-background/50'
-                            : 'border-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-                            }`}
-                    >
-                        <Terminal className="w-3.5 h-3.5" />
-                        Terminal
-                    </button>
-                </div>
-                <button
-                    onClick={() => {
-                        trackInteraction('panel_closed');
-                        closePanel();
-                    }}
-                    className="rounded hover:bg-muted transition-colors"
-                    style={{ padding: 'var(--build-panel-button-padding, 0.25rem)' }}
-                    aria-label="Close panel"
-                >
-                    <X style={{
-                        width: 'var(--build-panel-header-icon-size, 1rem)',
-                        height: 'var(--build-panel-header-icon-size, 1rem)'
-                    }} className="text-muted-foreground" />
-                </button>
                 </div>
 
                 {/* Content Area */}
@@ -196,17 +196,17 @@ function BuildView() {
             await navigator.clipboard.writeText(buildOutput.join('\n'));
             setIsCopied(true);
             setTimeout(() => setIsCopied(false), 2000);
-            await span.end({ 
+            await span.end({
                 outputLines: buildOutput.length.toString(),
                 success: 'true'
             });
-            trackInteraction('build_output_copied', { 
-                lineCount: buildOutput.length.toString() 
+            trackInteraction('build_output_copied', {
+                lineCount: buildOutput.length.toString()
             });
         } catch (err) {
             console.error('Failed to copy text: ', err);
-            await span.end({ 
-                error: err instanceof Error ? err.message : 'Unknown error' 
+            await span.end({
+                error: err instanceof Error ? err.message : 'Unknown error'
             });
         }
     };
@@ -228,14 +228,14 @@ function BuildView() {
             // Find the diagnostic in the store's format (it should already be there from BuildManager)
             // Both BuildDiagnostic and Diagnostic store use 1-based line/column
             const storeDiagnostics = useDiagnosticsStore.getState().getAllDiagnostics();
-            const matchingDiagnostic = storeDiagnostics.find(d => 
+            const matchingDiagnostic = storeDiagnostics.find(d =>
                 d.filePath === diagnostic.file_path &&
                 d.range.startLine === diagnostic.line &&
                 d.range.startColumn === diagnostic.column &&
                 d.code === diagnostic.code &&
                 d.source === 'build'
             );
-            
+
             if (matchingDiagnostic) {
                 await navigateToDiagnostic(matchingDiagnostic);
                 await span.end({ matched: 'true', filePath: diagnostic.file_path });
@@ -311,7 +311,7 @@ function BuildView() {
                             const Icon = diagnostic.severity === 'error' ? AlertCircle : AlertTriangle;
                             const iconColor = diagnostic.severity === 'error' ? 'text-red-500' : 'text-yellow-500';
                             const fileName = diagnostic.file_path.split(/[/\\]/).pop() || diagnostic.file_path;
-                            
+
                             return (
                                 <button
                                     key={index}
@@ -400,7 +400,7 @@ function TerminalView({ projectProfile }: { projectProfile: any }) {
     const clearTerminal = useTerminalStore(state => state.clearTerminal);
     const killProcess = useTerminalStore(state => state.killProcess);
     const initListeners = useTerminalStore(state => state.initListeners);
-    
+
     // Initialize listeners and create first terminal if needed
     useEffect(() => {
         initListeners();
@@ -408,10 +408,10 @@ function TerminalView({ projectProfile }: { projectProfile: any }) {
             createTerminal();
         }
     }, [initListeners, terminals.length, createTerminal]);
-    
+
     const activeTerminal = terminals.find(t => t.id === activeTerminalId);
     const splitTerminal = splitTerminalId ? terminals.find(t => t.id === splitTerminalId) : null;
-    
+
     // Render single or split terminal view
     if (layout !== 'single' && splitTerminal) {
         const isHorizontal = layout === 'split-horizontal';
@@ -452,7 +452,7 @@ function TerminalView({ projectProfile }: { projectProfile: any }) {
             </div>
         );
     }
-    
+
     return (
         <div className="flex flex-col h-full">
             <TerminalTabs />
@@ -486,18 +486,18 @@ interface SingleTerminalViewProps {
     killProcess: (terminalId?: string) => Promise<void>;
 }
 
-function SingleTerminalView({ 
-    terminal, 
-    projectProfile, 
-    executeCommand, 
-    setHistoryIndex, 
-    clearTerminal, 
-    killProcess 
+function SingleTerminalView({
+    terminal,
+    projectProfile,
+    executeCommand,
+    setHistoryIndex,
+    clearTerminal,
+    killProcess
 }: SingleTerminalViewProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const [inputValue, setInputValue] = useState('');
-    
+
     const { entries, history, historyIndex, isRunning, currentCommand } = terminal;
 
     // Auto-scroll logic
@@ -593,6 +593,8 @@ function SingleTerminalView({
                     <span className="text-muted-foreground mr-2 font-bold select-none">$</span>
                     <input
                         ref={inputRef}
+                        id={`terminal-input-${terminal.id}`}
+                        name={`terminal-input-${terminal.id}`}
                         type="text"
                         value={inputValue}
                         onChange={(e) => setInputValue(e.target.value)}

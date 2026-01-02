@@ -57,7 +57,7 @@ function Workbench() {
     const isLoadingBuildConfigs = useCSharpStore((state) => state.isLoadingConfigs);
     const isAgentOpen = useAgentStore((state) => state.isOpen);
     const isDebugOpen = useDebugStore((state) => state.isPanelOpen);
-    
+
     // Navigation dialogs
     const isSymbolSearchOpen = useNavigationStore((state) => state.isSymbolSearchOpen);
     const closeSymbolSearch = useNavigationStore((state) => state.closeSymbolSearch);
@@ -90,7 +90,7 @@ function Workbench() {
 
     // Keyboard shortcuts hook - no need to profile hook initialization
     useKeyboardShortcuts(sidebarPanelRef);
-    
+
     // Register default commands for command palette
     useDefaultCommands();
 
@@ -98,7 +98,7 @@ function Workbench() {
     useEffect(() => {
         // Clear old v3 panel layouts on first mount (one-time migration)
         clearOldPanelLayouts();
-        
+
         FrontendProfiler.trackInteraction('ActivityBar:init', { component: 'ActivityBar' });
         FrontendProfiler.trackInteraction('EditorGroup:init', { component: 'EditorGroup' });
         FrontendProfiler.trackInteraction('Group:init:init', { component: 'Group:init' });
@@ -164,10 +164,10 @@ function Workbench() {
                         />
 
                         {/* Editor + Build Panel Area (Vertical Split) */}
-                        <Panel id="main-content" minSize={30} defaultSize={100} className="flex flex-col">
+                        <Panel id="main-content" minSize={30} className="flex flex-col">
                             <Group id="editor-build-group" orientation="vertical" className="flex-1 h-full">
                                 {/* Editor Area */}
-                                <Panel id="editor" minSize={20} defaultSize={100} className="h-full">
+                                <Panel id="editor" minSize={densityConfig.editorMinSize} className="h-full">
                                     <EditorGroup />
                                 </Panel>
 
@@ -195,9 +195,9 @@ function Workbench() {
                                         <Panel
                                             id="build-panel"
                                             panelRef={buildPanelRef}
-                                            defaultSize={35}
-                                            minSize={15}
-                                            maxSize={80}
+                                            defaultSize={densityConfig.buildPanelDefaultSize}
+                                            minSize={densityConfig.buildPanelMinSize}
+                                            maxSize={densityConfig.buildPanelMaxSize}
                                             className="h-full"
                                         >
                                             <Suspense fallback={<div className="flex items-center justify-center h-full">Loading...</div>}>
@@ -247,9 +247,9 @@ function Workbench() {
                                 />
                                 <Panel
                                     id="agent"
-                                    minSize="300px"
-                                    maxSize="700px"
-                                    defaultSize="400px"
+                                    minSize={densityConfig.agentPanelMinSize}
+                                    maxSize={densityConfig.agentPanelMaxSize}
+                                    defaultSize={densityConfig.agentPanelDefaultSize}
                                     collapsible
                                     collapsedSize={0}
                                 >
@@ -259,7 +259,7 @@ function Workbench() {
                                 </Panel>
                             </>
                         )}
-                        
+
                         {/* Debug Panel (Right Sidebar) */}
                         {isDebugOpen && (
                             <>
@@ -272,9 +272,9 @@ function Workbench() {
                                 />
                                 <Panel
                                     id="debug"
-                                    minSize="300px"
-                                    maxSize="700px"
-                                    defaultSize="400px"
+                                    minSize={densityConfig.debugPanelMinSize}
+                                    maxSize={densityConfig.debugPanelMaxSize}
+                                    defaultSize={densityConfig.debugPanelDefaultSize}
                                     collapsible
                                     collapsedSize={0}
                                 >
@@ -389,10 +389,10 @@ function Workbench() {
 
                 {/* Settings Modal */}
                 <SettingsDialog isOpen={isSettingsOpen} onClose={handleSettingsClose} />
-                
+
                 {/* Command Palette */}
                 <CommandPalette />
-                
+
                 {/* Navigation Dialogs */}
                 <SymbolSearchDialog isOpen={isSymbolSearchOpen} onClose={closeSymbolSearch} />
                 <QuickOutline isOpen={isQuickOutlineOpen} onClose={closeQuickOutline} />

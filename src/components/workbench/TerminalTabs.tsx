@@ -30,22 +30,22 @@ interface TerminalTabProps {
     onColorChange: (color: TerminalColor) => void;
 }
 
-const TerminalTab = memo(function TerminalTab({ 
-    terminal, 
-    isActive, 
-    onClick, 
-    onClose, 
-    onRename, 
-    onColorChange 
+const TerminalTab = memo(function TerminalTab({
+    terminal,
+    isActive,
+    onClick,
+    onClose,
+    onRename,
+    onColorChange
 }: TerminalTabProps) {
     const [isEditing, setIsEditing] = useState(false);
     const [editName, setEditName] = useState(terminal.name);
     const [showMenu, setShowMenu] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
     const menuRef = useRef<HTMLDivElement>(null);
-    
+
     const color = colorConfig[terminal.color];
-    
+
     // Focus input when editing starts
     useEffect(() => {
         if (isEditing && inputRef.current) {
@@ -53,21 +53,21 @@ const TerminalTab = memo(function TerminalTab({
             inputRef.current.select();
         }
     }, [isEditing]);
-    
+
     // Close menu when clicking outside
     useEffect(() => {
         if (!showMenu) return;
-        
+
         const handleClickOutside = (e: MouseEvent) => {
             if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
                 setShowMenu(false);
             }
         };
-        
+
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [showMenu]);
-    
+
     const handleSubmitRename = () => {
         if (editName.trim()) {
             onRename(editName.trim());
@@ -76,7 +76,7 @@ const TerminalTab = memo(function TerminalTab({
         }
         setIsEditing(false);
     };
-    
+
     return (
         <div className="relative">
             <button
@@ -93,14 +93,14 @@ const TerminalTab = memo(function TerminalTab({
                 {terminal.color !== 'default' && (
                     <span className={cn("w-2 h-2 rounded-full", color.dot)} />
                 )}
-                
+
                 {/* Running indicator */}
                 {terminal.isRunning && (
                     <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
                 )}
-                
+
                 <Terminal className="w-3.5 h-3.5" />
-                
+
                 {isEditing ? (
                     <input
                         ref={inputRef}
@@ -121,7 +121,7 @@ const TerminalTab = memo(function TerminalTab({
                 ) : (
                     <span className="truncate max-w-[100px]">{terminal.name}</span>
                 )}
-                
+
                 {/* Context menu button */}
                 <button
                     onClick={(e) => {
@@ -132,7 +132,7 @@ const TerminalTab = memo(function TerminalTab({
                 >
                     <MoreHorizontal className="w-3 h-3" />
                 </button>
-                
+
                 {/* Close button */}
                 <button
                     onClick={(e) => {
@@ -144,7 +144,7 @@ const TerminalTab = memo(function TerminalTab({
                     <X className="w-3 h-3" />
                 </button>
             </button>
-            
+
             {/* Context Menu */}
             {showMenu && (
                 <div
@@ -161,7 +161,7 @@ const TerminalTab = memo(function TerminalTab({
                         <Edit2 className="w-3 h-3" />
                         Rename
                     </button>
-                    
+
                     {/* Color submenu */}
                     <div className="px-3 py-1.5 text-xs text-muted-foreground">
                         <div className="flex items-center gap-1 mb-1">
@@ -186,9 +186,9 @@ const TerminalTab = memo(function TerminalTab({
                             ))}
                         </div>
                     </div>
-                    
+
                     <div className="h-px bg-border my-1" />
-                    
+
                     <button
                         onClick={() => {
                             setShowMenu(false);
@@ -219,14 +219,7 @@ function TerminalTabs() {
     const renameTerminal = useTerminalStore(state => state.renameTerminal);
     const setTerminalColor = useTerminalStore(state => state.setTerminalColor);
     const setLayout = useTerminalStore(state => state.setLayout);
-    
-    // Create initial terminal if none exist
-    useEffect(() => {
-        if (terminals.length === 0) {
-            createTerminal();
-        }
-    }, [terminals.length, createTerminal]);
-    
+
     return (
         <div className="flex items-center justify-between px-2 py-1 bg-muted/30 border-b border-border">
             {/* Tabs */}
@@ -242,7 +235,7 @@ function TerminalTabs() {
                         onColorChange={(color) => setTerminalColor(terminal.id, color)}
                     />
                 ))}
-                
+
                 {/* New Terminal Button */}
                 <button
                     onClick={() => createTerminal()}
@@ -252,7 +245,7 @@ function TerminalTabs() {
                     <Plus className="w-4 h-4" />
                 </button>
             </div>
-            
+
             {/* Layout Controls */}
             <div className="flex items-center gap-1 ml-2 shrink-0">
                 <button

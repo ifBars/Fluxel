@@ -4,13 +4,34 @@ import "./styles/index.css";
 import App from "./App";
 import { invoke } from "@tauri-apps/api/core";
 
+// Suppress "ResizeObserver loop completed with undelivered notifications" error
+// This error is benign and occurs when a resize observer callback modifies the layout (e.g., CodeEditor layout())
+// which triggers another observation in the same frame.
+const originalError = console.error;
+const originalResizeObserverLoopError = "ResizeObserver loop completed with undelivered notifications";
+
+window.addEventListener('error', (e) => {
+  if (e.message.includes(originalResizeObserverLoopError)) {
+    e.stopImmediatePropagation();
+    e.preventDefault();
+    return;
+  }
+});
+
+console.error = (...args) => {
+  if (typeof args[0] === 'string' && args[0].includes(originalResizeObserverLoopError)) {
+    return;
+  }
+  originalError(...args);
+};
+
 // Performance marks for startup timeline
 performance.mark('app_start');
 
 // Expose invoke to window for debugging/profiling
 if (import.meta.env.DEV) {
   (window as any).invoke = invoke;
-  
+
   // Register performance benchmarks for dev mode
   import('./lib/services/PerformanceBenchmark').then(({ registerGlobalBenchmarks }) => {
     registerGlobalBenchmarks();
