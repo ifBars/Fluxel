@@ -43,20 +43,33 @@ pub fn run() {
                 tracing::span!(tracing::Level::INFO, "check_launch_args").entered();
 
             if let Some(raw_arg) = std::env::args().nth(1) {
-                let mut path = PathBuf::from(&raw_arg);
+                let path = PathBuf::from(&raw_arg);
 
-                if path.is_file() {
-                    if let Some(parent) = path.parent() {
-                        path = parent.to_path_buf();
-                    }
-                }
+                // Determine workspace (directory) and optional file to open
+                let (workspace_path, file_path) = if path.is_file() {
+                    // User right-clicked a file: workspace is parent, file should be opened
+                    let workspace = path
+                        .parent()
+                        .map(|p| p.to_path_buf())
+                        .unwrap_or(path.clone());
+                    let file = path.to_string_lossy().replace('\\', "/");
+                    (workspace, Some(file))
+                } else if path.is_dir() {
+                    // User right-clicked a folder: just open the workspace
+                    (path, None)
+                } else {
+                    // Path doesn't exist, skip
+                    return Ok(());
+                };
 
-                if path.is_dir() {
-                    let normalized = path.to_string_lossy().replace('\\', "/");
-                    // Store in state for frontend to pick up
-                    if let Some(state) = app.try_state::<LaunchState>() {
-                        *state.0.lock().unwrap() = Some(normalized);
-                    }
+                let normalized_workspace = workspace_path.to_string_lossy().replace('\\', "/");
+
+                // Store in state for frontend to pick up
+                if let Some(state) = app.try_state::<LaunchState>() {
+                    *state.0.lock().unwrap() = Some(commands::launch::LaunchInfo {
+                        workspace_path: normalized_workspace,
+                        file_path,
+                    });
                 }
             }
 

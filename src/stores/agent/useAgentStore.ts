@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import type { AgentState, ChatMessage, FileContext, AgentConversation } from './types';
+import type { AgentState, ChatMessage, FileContext, AgentConversation, ProviderType } from './types';
 import { getAvailableModels } from '@/lib/ollama/ollamaChatClient';
+import { getAvailableMinimaxModels } from '@/lib/minimax';
 import { getCachedModels, setCachedModels } from '@/lib/ollama/modelCache';
 
 interface AgentActions {
@@ -21,6 +22,8 @@ interface AgentActions {
     updateMessage: (id: string, updates: Partial<ChatMessage>) => void;
     appendStreamingContent: (content: string) => void;
     setStreamingContent: (content: string) => void;
+    appendStreamingThinking: (content: string) => void;
+    setStreamingThinking: (content: string) => void;
 
     // Context
     attachFile: (file: FileContext) => void;
@@ -34,9 +37,17 @@ interface AgentActions {
     // Settings
     setModel: (model: string) => void;
     setTemperature: (temperature: number) => void;
+    setProvider: (provider: ProviderType) => void;
+    setMinimaxApiKey: (key: string | null) => void;
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 11);
+
+// Default models per provider
+const DEFAULT_MODELS: Record<ProviderType, string> = {
+    ollama: 'qwen3:8b',
+    minimax: 'MiniMax-M2.1',
+};
 
 export const useAgentStore = create<AgentState & AgentActions>((set, get) => ({
     // Initial state
@@ -46,11 +57,14 @@ export const useAgentStore = create<AgentState & AgentActions>((set, get) => ({
     activeConversationId: null,
     isGenerating: false,
     streamingContent: '',
+    streamingThinking: '',
     attachedContext: [],
+    provider: 'ollama',
     model: 'qwen3:8b',
     availableModels: getCachedModels() ?? [], // Load from cache on initialization
     temperature: 0.7,
     maxTurns: 15,
+    minimaxApiKey: null,
 
     // Panel actions
     togglePanel: () => set(state => ({ isOpen: !state.isOpen })),
@@ -58,7 +72,16 @@ export const useAgentStore = create<AgentState & AgentActions>((set, get) => ({
 
     // Model actions
     fetchModels: async () => {
-        // Check cache first for instant response
+        const { provider } = get();
+
+        if (provider === 'minimax') {
+            // MiniMax has a static model list
+            const models = await getAvailableMinimaxModels();
+            set({ availableModels: models });
+            return;
+        }
+
+        // Ollama - check cache first for instant response
         const cached = getCachedModels();
         if (cached && cached.length > 0) {
             set({ availableModels: cached });
@@ -163,8 +186,16 @@ export const useAgentStore = create<AgentState & AgentActions>((set, get) => ({
         set({ streamingContent: content });
     },
 
+    appendStreamingThinking: (content: string) => {
+        set(state => ({ streamingThinking: state.streamingThinking + content }));
+    },
+
+    setStreamingThinking: (content: string) => {
+        set({ streamingThinking: content });
+    },
+
     clearStreaming: () => {
-        set({ streamingContent: '' });
+        set({ streamingContent: '', streamingThinking: '' });
     },
 
     // Context actions
@@ -197,4 +228,20 @@ export const useAgentStore = create<AgentState & AgentActions>((set, get) => ({
     setTemperature: (temperature: number) => {
         set({ temperature });
     },
+
+    setProvider: (provider: ProviderType) => {
+        const defaultModel = DEFAULT_MODELS[provider];
+        set({
+            provider,
+            model: defaultModel,
+            availableModels: [], // Clear models, will be fetched
+        });
+        // Trigger model fetch for new provider
+        get().fetchModels();
+    },
+
+    setMinimaxApiKey: (key: string | null) => {
+        set({ minimaxApiKey: key });
+    },
 }));
+

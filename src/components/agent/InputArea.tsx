@@ -3,9 +3,11 @@ import { Send, Paperclip, StopCircle, X } from 'lucide-react';
 import { useAgentStore, useFileSystemStore } from '@/stores';
 import { streamChat } from '@/lib/ollama/ollamaChatClient';
 import type { OllamaChatMessage, OllamaToolCall } from '@/lib/ollama/ollamaChatClient';
+import { streamMinimaxChat, convertToolsToMinimaxFormat } from '@/lib/minimax';
 import { SYSTEM_PROMPT } from '@/lib/agent/systemPrompt';
 import { tools } from '@/lib/agent/tools';
 import { useProfiler } from '@/hooks/useProfiler';
+import type Anthropic from '@anthropic-ai/sdk';
 
 /**
  * Parse tool calls that appear as JSON in text content.
@@ -83,6 +85,20 @@ function parseToolCallsFromText(content: string): {
     return { toolCalls, remainingContent };
 }
 
+/**
+ * Convert store messages to Anthropic message format
+ */
+function convertToAnthropicMessages(
+    messages: OllamaChatMessage[]
+): Anthropic.MessageCreateParamsStreaming['messages'] {
+    return messages
+        .filter(m => m.role !== 'system') // System is handled separately
+        .map(m => ({
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+        }));
+}
+
 export function InputArea() {
     const { startSpan, trackInteraction, ProfilerWrapper } = useProfiler('AgentInputArea');
     const [input, setInput] = useState('');
@@ -94,6 +110,8 @@ export function InputArea() {
     const model = useAgentStore(state => state.model);
     const temperature = useAgentStore(state => state.temperature);
     const activeConversationId = useAgentStore(state => state.activeConversationId);
+    const provider = useAgentStore(state => state.provider);
+    const minimaxApiKey = useAgentStore(state => state.minimaxApiKey);
 
     // Get workspace root for tool context
     const workspaceRoot = useFileSystemStore(state => state.rootPath);
@@ -101,9 +119,119 @@ export function InputArea() {
     const addMessage = useAgentStore(state => state.addMessage);
     const setGenerating = useAgentStore(state => state.setGenerating);
     const appendStreamingContent = useAgentStore(state => state.appendStreamingContent);
+    const appendStreamingThinking = useAgentStore(state => state.appendStreamingThinking);
     const clearStreaming = useAgentStore(state => state.clearStreaming);
     const removeFile = useAgentStore(state => state.removeFile);
     const createConversation = useAgentStore(state => state.createConversation);
+
+    /**
+     * Handle Ollama provider streaming
+     */
+    const handleOllamaStream = useCallback(async (
+        currentTurnMessages: OllamaChatMessage[],
+        controller: AbortController
+    ): Promise<{ content: string; toolCalls: OllamaToolCall[]; thinking?: string }> => {
+        let accumulatedContent = '';
+        const collectedToolCalls: OllamaToolCall[] = [];
+
+        const response = streamChat(
+            {
+                model,
+                messages: currentTurnMessages,
+                stream: true,
+                options: { temperature },
+                tools: tools.map(t => ({
+                    type: 'function',
+                    function: t.function
+                }))
+            },
+            undefined,
+            controller.signal
+        );
+
+        for await (const chunk of response) {
+            if (chunk.message?.content) {
+                accumulatedContent += chunk.message.content;
+                appendStreamingContent(chunk.message.content);
+            }
+            if (chunk.message?.tool_calls) {
+                collectedToolCalls.push(...chunk.message.tool_calls);
+            }
+        }
+
+        // Fallback: Check if model returned tool calls as JSON in text content
+        if (collectedToolCalls.length === 0 && accumulatedContent.length > 0) {
+            const parsed = parseToolCallsFromText(accumulatedContent);
+            if (parsed.toolCalls.length > 0) {
+                collectedToolCalls.push(...parsed.toolCalls);
+                accumulatedContent = parsed.remainingContent;
+                clearStreaming();
+                if (accumulatedContent.length > 0) {
+                    appendStreamingContent(accumulatedContent);
+                }
+            }
+        }
+
+        return { content: accumulatedContent, toolCalls: collectedToolCalls };
+    }, [model, temperature, appendStreamingContent, clearStreaming]);
+
+    /**
+     * Handle MiniMax provider streaming
+     */
+    const handleMinimaxStream = useCallback(async (
+        currentTurnMessages: OllamaChatMessage[],
+        systemPrompt: string,
+        controller: AbortController
+    ): Promise<{ content: string; toolCalls: OllamaToolCall[]; thinking?: string }> => {
+        if (!minimaxApiKey) {
+            throw new Error('MiniMax API key not configured');
+        }
+
+        let accumulatedContent = '';
+        let accumulatedThinking = '';
+        const collectedToolCalls: OllamaToolCall[] = [];
+
+        const anthropicMessages = convertToAnthropicMessages(currentTurnMessages);
+        const minimaxTools = convertToolsToMinimaxFormat(
+            tools.map(t => ({ type: 'function', function: t.function }))
+        );
+
+        const response = streamMinimaxChat(
+            {
+                model,
+                messages: anthropicMessages,
+                system: systemPrompt,
+                maxTokens: 4096,
+                temperature,
+                tools: minimaxTools,
+            },
+            minimaxApiKey,
+            controller.signal
+        );
+
+        for await (const chunk of response) {
+            if (chunk.type === 'text' && chunk.content) {
+                accumulatedContent += chunk.content;
+                appendStreamingContent(chunk.content);
+            } else if (chunk.type === 'thinking' && chunk.content) {
+                accumulatedThinking += chunk.content;
+                appendStreamingThinking(chunk.content);
+            } else if (chunk.type === 'tool_use' && chunk.toolUse) {
+                collectedToolCalls.push({
+                    function: {
+                        name: chunk.toolUse.name,
+                        arguments: chunk.toolUse.input,
+                    }
+                });
+            }
+        }
+
+        return {
+            content: accumulatedContent,
+            toolCalls: collectedToolCalls,
+            thinking: accumulatedThinking || undefined
+        };
+    }, [model, temperature, minimaxApiKey, appendStreamingContent, appendStreamingThinking]);
 
     const handleSendMessage = useCallback(async () => {
         if (!input.trim() || isGenerating) return;
@@ -115,7 +243,8 @@ export function InputArea() {
         trackInteraction('message_sent', {
             length: userMessage.length.toString(),
             hasContext: (attachedContext.length > 0).toString(),
-            model
+            model,
+            provider
         });
 
         // Create conversation if none active
@@ -143,7 +272,7 @@ export function InputArea() {
 
         const controller = new AbortController();
         abortControllerRef.current = controller;
-        
+
         // Start profiling the entire turn
         const turnSpan = startSpan('process_turn', 'frontend_network');
 
@@ -154,7 +283,6 @@ export function InputArea() {
 
             // Prepare history
             const history = conversation?.messages.map(m => {
-                // We need to map the store's message structure to Ollama's structure
                 const msg: OllamaChatMessage = {
                     role: m.role as 'system' | 'user' | 'assistant' | 'tool',
                     content: m.content
@@ -170,11 +298,6 @@ export function InputArea() {
                 return msg;
             }) || [];
 
-            // The last message in history is the one we just added (the user message without context details if we want to keep UI clean, 
-            // OR we update the UI to show context? The UI shows attached chips, so text msg is usually just user text.
-            // But for LLM we need full text.
-            // So we take history EXCEPT the last one, and replace it with our enriched one.
-
             const messagesForLlm = history.slice(0, -1);
             messagesForLlm.push({ role: 'user', content: finalUserContent });
 
@@ -183,9 +306,11 @@ export function InputArea() {
                 ? `\n\n## WORKSPACE CONTEXT\nThe current project workspace root is: ${workspaceRoot}\nALL file paths should be relative to this root or use this as the absolute base path.\nWhen using tools, ALWAYS use "${workspaceRoot}" as the base path.\n`
                 : '\n\n## WORKSPACE CONTEXT\nNo workspace is currently open. Ask the user to open a project folder first.\n';
 
-            // Ensure System Prompt is first (with workspace context)
+            const fullSystemPrompt = SYSTEM_PROMPT + workspaceContext;
+
+            // Ensure System Prompt is first (for Ollama format)
             const finalMessages: OllamaChatMessage[] = [
-                { role: 'system', content: SYSTEM_PROMPT + workspaceContext } as OllamaChatMessage,
+                { role: 'system', content: fullSystemPrompt } as OllamaChatMessage,
                 ...messagesForLlm.filter(m => m.role !== 'system')
             ];
 
@@ -194,70 +319,37 @@ export function InputArea() {
             let loopCount = 0;
             const MAX_LOOPS = 5;
 
-            // We need to track the messages accumulated in THIS turn to append to history for subsequent loops
             let currentTurnMessages = [...finalMessages];
 
             while (keepGoing && loopCount < MAX_LOOPS) {
                 loopCount++;
-                let accumulatedContent = '';
-                const collectedToolCalls: any[] = []; // OllamaToolCall[]
-                
+
                 const streamSpan = startSpan(`llm_stream_response_loop_${loopCount}`, 'frontend_network');
 
-                const response = streamChat(
-                    {
-                        model,
-                        messages: currentTurnMessages,
-                        stream: true,
-                        options: { temperature },
-                        tools: tools.map(t => ({
-                            type: 'function',
-                            function: t.function
-                        }))
-                    },
-                    undefined,
-                    controller.signal
-                );
+                let result: { content: string; toolCalls: OllamaToolCall[]; thinking?: string };
 
-                for await (const chunk of response) {
-                    if (chunk.message?.content) {
-                        accumulatedContent += chunk.message.content;
-                        appendStreamingContent(chunk.message.content);
-                    }
-                    if (chunk.message?.tool_calls) {
-                        collectedToolCalls.push(...chunk.message.tool_calls);
-                    }
+                // Branch based on provider
+                if (provider === 'minimax') {
+                    result = await handleMinimaxStream(currentTurnMessages, fullSystemPrompt, controller);
+                } else {
+                    result = await handleOllamaStream(currentTurnMessages, controller);
                 }
-                
-                await streamSpan.end({ 
-                    contentLength: accumulatedContent.length.toString(),
-                    toolCalls: collectedToolCalls.length.toString()
+
+                await streamSpan.end({
+                    contentLength: result.content.length.toString(),
+                    toolCalls: result.toolCalls.length.toString(),
+                    hasThinking: (!!result.thinking).toString()
                 });
 
-                // Fallback: Check if model returned tool calls as JSON in text content
-                // Some models don't use the structured tool_calls field
-                if (collectedToolCalls.length === 0 && accumulatedContent.length > 0) {
-                    const parsed = parseToolCallsFromText(accumulatedContent);
-                    if (parsed.toolCalls.length > 0) {
-                        collectedToolCalls.push(...parsed.toolCalls);
-                        accumulatedContent = parsed.remainingContent;
-                        // Clear and re-stream the cleaned content
-                        clearStreaming();
-                        if (accumulatedContent.length > 0) {
-                            appendStreamingContent(accumulatedContent);
-                        }
-                    }
-                }
-
-                // Turn completed
-                const hasContent = accumulatedContent.length > 0;
-                const hasTools = collectedToolCalls.length > 0;
+                const hasContent = result.content.length > 0;
+                const hasTools = result.toolCalls.length > 0;
 
                 // 1. Commit Assistant Message to UI (if text)
-                if (hasContent) {
+                if (hasContent || result.thinking) {
                     addMessage({
                         role: 'assistant',
-                        content: accumulatedContent,
+                        content: result.content,
+                        thinking: result.thinking,
                     });
                     clearStreaming();
                 }
@@ -265,25 +357,24 @@ export function InputArea() {
                 // 2. Append to LLM history
                 currentTurnMessages.push({
                     role: 'assistant',
-                    content: accumulatedContent,
-                    tool_calls: hasTools ? collectedToolCalls : undefined
+                    content: result.content,
+                    tool_calls: hasTools ? result.toolCalls : undefined
                 });
 
                 // 3. Handle Tools
                 if (hasTools) {
-                    for (const call of collectedToolCalls) {
+                    for (const call of result.toolCalls) {
                         const tool = tools.find(t => t.function.name === call.function.name);
                         let resultString = '';
-                        
+
                         const toolSpan = startSpan(`execute_tool:${call.function.name}`, 'frontend_network');
 
                         if (tool) {
                             try {
-                                // Optional: User toast "Running tool..."
                                 trackInteraction('tool_execution_start', { tool: call.function.name });
-                                const result = await tool.execute(call.function.arguments);
-                                resultString = result;
-                                await toolSpan.end({ success: 'true', resultLength: result.length.toString() });
+                                const toolResult = await tool.execute(call.function.arguments);
+                                resultString = toolResult;
+                                await toolSpan.end({ success: 'true', resultLength: toolResult.length.toString() });
                             } catch (e) {
                                 const errorMessage = e instanceof Error ? e.message : String(e);
                                 resultString = `Error executing tool: ${errorMessage}`;
@@ -294,37 +385,33 @@ export function InputArea() {
                             await toolSpan.end({ success: 'false', error: 'tool_not_found' });
                         }
 
-                        // Add tool result to UI
-                        // Use a distinct look by handling 'tool' role in MessageList, or just standard message
                         addMessage({
                             role: 'tool',
                             content: `Tool ${call.function.name} output:\n\`\`\`\n${resultString}\n\`\`\``,
-                            // We can store metadata if we want rich UI later
                         });
 
-                        // Add to LLM history
                         currentTurnMessages.push({
                             role: 'tool',
                             content: resultString,
                         });
                     }
-                    // Loop continues
                 } else {
                     keepGoing = false;
                 }
             }
-            
-            await turnSpan.end({ 
-                loops: loopCount.toString(), 
-                success: 'true' 
+
+            await turnSpan.end({
+                loops: loopCount.toString(),
+                success: 'true',
+                provider
             });
 
         } catch (error) {
-            await turnSpan.end({ 
-                success: 'false', 
-                error: error instanceof Error ? error.message : String(error) 
+            await turnSpan.end({
+                success: 'false',
+                error: error instanceof Error ? error.message : String(error)
             });
-            
+
             if (error instanceof Error && error.name !== 'AbortError') {
                 console.error('Chat error:', error);
                 addMessage({
@@ -345,6 +432,7 @@ export function InputArea() {
         model,
         temperature,
         workspaceRoot,
+        provider,
         addMessage,
         setGenerating,
         appendStreamingContent,
@@ -352,7 +440,8 @@ export function InputArea() {
         createConversation,
         startSpan,
         trackInteraction,
-        tools // Added dependency
+        handleOllamaStream,
+        handleMinimaxStream,
     ]);
 
     const handleStopGeneration = useCallback(() => {
@@ -457,3 +546,4 @@ export function InputArea() {
         </ProfilerWrapper>
     );
 }
+

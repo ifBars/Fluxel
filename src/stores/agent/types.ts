@@ -1,4 +1,5 @@
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool';
+export type ProviderType = 'ollama' | 'minimax';
 
 export interface ToolCall {
     id: string;
@@ -21,6 +22,7 @@ export interface ChatMessage {
     toolCalls?: ToolCall[];
     toolResults?: ToolResult[];
     isStreaming?: boolean;
+    thinking?: string; // MiniMax thinking blocks
 }
 
 export interface AgentConversation {
@@ -49,11 +51,16 @@ export interface AgentState {
     // Current Session
     isGenerating: boolean;
     streamingContent: string;
+    streamingThinking: string; // MiniMax thinking stream
     attachedContext: FileContext[];
 
     // Settings
+    provider: ProviderType;
     model: string;
     availableModels: string[];
     temperature: number;
     maxTurns: number;
+
+    // MiniMax settings
+    minimaxApiKey: string | null;
 }
