@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { AuthAuroraBackdrop } from "./AuthAuroraBackdrop";
 import { useSettingsStore, type AccentColor } from "@/stores";
-import { FrontendProfiler } from "@/lib/services/FrontendProfiler";
+import { FrontendProfiler } from "@/lib/services";
 
 // Inline SVG icons to avoid eager loading lucide-react during app initialization
 const GithubIcon = ({ className }: { className?: string }) => (

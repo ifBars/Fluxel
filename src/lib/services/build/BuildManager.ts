@@ -3,7 +3,7 @@ import { buildCSharpProject, type BuildDiagnostic } from '@/lib/languages/csharp
 import { useCSharpStore, useDiagnosticsStore, type BuildSystem, type Diagnostic } from '@/stores';
 import { invoke } from '@tauri-apps/api/core';
 import type { ProjectProfile } from '@/types/project';
-import { FrontendProfiler } from './FrontendProfiler';
+import { FrontendProfiler } from '../profiling/FrontendProfiler';
 
 export interface BuildOptions {
     projectRoot: string;

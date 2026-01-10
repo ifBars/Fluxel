@@ -61,7 +61,9 @@ export default function GitPanel() {
 
     useEffect(() => {
         if (currentProject) {
-            refreshStatus(currentProject.rootPath);
+            refreshStatus(currentProject.rootPath).catch(() => {
+                // Error is handled in the store state and displayed in the UI
+            });
         }
     }, [currentProject, refreshStatus]);
 

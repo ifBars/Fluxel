@@ -1,7 +1,7 @@
 import { useState, useRef, useMemo, useCallback, memo, lazy, Suspense, useEffect } from "react";
 import { Panel, Group, Separator, usePanelRef } from "react-resizable-panels";
 import { useWorkbenchStore, useEditorStore, useSettingsStore, densityConfigs, useBuildPanelStore, useTypeLoadingStore, useInspectorStore, useCSharpStore, useAgentStore, useNavigationStore, useDebugStore } from "@/stores";
-import { FrontendProfiler } from "@/lib/services/FrontendProfiler";
+import { FrontendProfiler } from "@/lib/services";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useDefaultCommands } from "@/hooks/useCommands";
 import { useProfiler } from "@/hooks/useProfiler";
@@ -76,6 +76,12 @@ function Workbench() {
     }, [activeTab]);
 
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [settingsSection, setSettingsSection] = useState<string | undefined>();
+
+    // Subscribe to agent settings trigger
+    const agentSettingsOpen = useAgentStore((state) => state.settingsOpen);
+    const agentSettingsSection = useAgentStore((state) => state.settingsSection);
+    const agentToggleSettings = useAgentStore((state) => state.toggleSettings);
     const sidebarPanelRef = usePanelRef();
     const buildPanelRef = usePanelRef();
     const inspectorPanelRef = usePanelRef();
@@ -85,8 +91,26 @@ function Workbench() {
     const densityConfig = useMemo(() => densityConfigs[uiDensity], [uiDensity]);
 
     // Callbacks - React already optimizes these, profiling adds overhead
-    const handleSettingsClick = useCallback(() => setIsSettingsOpen(true), []);
-    const handleSettingsClose = useCallback(() => setIsSettingsOpen(false), []);
+    const handleSettingsClick = useCallback(() => {
+        setSettingsSection(undefined);
+        setIsSettingsOpen(true);
+    }, []);
+    const handleSettingsClose = useCallback(() => {
+        setIsSettingsOpen(false);
+        setSettingsSection(undefined);
+        // Also close agent settings trigger if it was open
+        if (agentSettingsOpen) {
+            agentToggleSettings(); // Close the agent trigger
+        }
+    }, [agentSettingsOpen, agentToggleSettings]);
+
+    // Sync AgentStore settings trigger to local state
+    useEffect(() => {
+        if (agentSettingsOpen) {
+            setSettingsSection(agentSettingsSection);
+            setIsSettingsOpen(true);
+        }
+    }, [agentSettingsOpen, agentSettingsSection]);
 
     // Keyboard shortcuts hook - no need to profile hook initialization
     useKeyboardShortcuts(sidebarPanelRef);
@@ -388,7 +412,7 @@ function Workbench() {
                 </div>
 
                 {/* Settings Modal */}
-                <SettingsDialog isOpen={isSettingsOpen} onClose={handleSettingsClose} />
+                <SettingsDialog isOpen={isSettingsOpen} onClose={handleSettingsClose} initialSection={settingsSection} />
 
                 {/* Command Palette */}
                 <CommandPalette />

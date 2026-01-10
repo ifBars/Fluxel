@@ -1,6 +1,6 @@
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import type * as Monaco from "monaco-editor";
-import { discoverTypingsForPackages } from "../services/NodeResolverService";
+import { discoverTypingsForPackages } from "../services";
 import { normalizePath } from "../languages/typescript/TypeLoader";
 
 type MonacoInstance = typeof Monaco;

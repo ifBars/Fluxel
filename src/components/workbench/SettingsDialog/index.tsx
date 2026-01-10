@@ -23,6 +23,7 @@ import { ShortcutsSection } from "@/components/workbench/SettingsDialog/sections
 import { VersionControlSection } from "@/components/workbench/SettingsDialog/sections/VersionControlSection";
 import { WorkbenchSection } from "@/components/workbench/SettingsDialog/sections/WorkbenchSection";
 import ScrollableArea from "@/components/ui/scrollable-area";
+import { AgentSection } from "@/components/workbench/SettingsDialog/sections/AgentSection";
 
 type SettingsSection =
   | "appearance"
@@ -31,6 +32,7 @@ type SettingsSection =
   | "workbench"
   | "build"
   | "versionControl"
+  | "agent"
   | "shortcuts";
 
 const settingsSchema = z.object({
@@ -46,9 +48,11 @@ const settingsSchema = z.object({
 export default function SettingsDialog({
   isOpen,
   onClose,
+  initialSection,
 }: {
   isOpen: boolean;
   onClose: () => void;
+  initialSection?: string;
 }) {
   const settings = useSettingsStore();
   const workbench = useWorkbenchStore();
@@ -61,10 +65,16 @@ export default function SettingsDialog({
     if (isOpen) {
       setSidebarSize(workbench.sidebarDefaultSize);
       setErrors({});
+      // Set initial section if provided and valid
+      const validSections: SettingsSection[] = ['appearance', 'editor', 'autocomplete', 'workbench', 'build', 'versionControl', 'agent', 'shortcuts'];
+      if (initialSection && validSections.includes(initialSection as SettingsSection)) {
+        setActiveSection(initialSection as SettingsSection);
+      }
     }
   }, [
     workbench.sidebarDefaultSize,
     isOpen,
+    initialSection,
   ]);
 
   useEffect(() => {
@@ -110,6 +120,7 @@ export default function SettingsDialog({
       label: "Version Control",
       icon: <GitBranch size={16} />,
     },
+    { id: "agent", label: "Agent", icon: <Sparkles size={16} /> },
     { id: "shortcuts", label: "Shortcuts", icon: <Keyboard size={16} /> },
   ];
 
@@ -175,6 +186,7 @@ export default function SettingsDialog({
             {activeSection === "versionControl" && (
               <VersionControlSection settings={settings} />
             )}
+            {activeSection === "agent" && <AgentSection />}
             {activeSection === "shortcuts" && <ShortcutsSection />}
           </ScrollableArea>
         </div>

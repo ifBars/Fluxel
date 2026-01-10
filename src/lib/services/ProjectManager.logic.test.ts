@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { shouldLoadCSharpConfigurations, shouldHydrateTypeScriptWorkspace } from '@/lib/services/ProjectManager';
+import { shouldLoadCSharpConfigurations, shouldHydrateTypeScriptWorkspace } from '@/lib/services';
 import type { ProjectProfile } from '@/types/project';
 
 describe('ProjectManager - C# Configuration Loading Logic', () => {

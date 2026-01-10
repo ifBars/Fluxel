@@ -3,7 +3,7 @@ import type { MonacoInstance } from '../base/types';
 import { getCSharpLSPClient } from './CSharpLSPClient';
 import { registerCSharpLanguage } from './Config';
 import { registerCSharpLSPFeatures } from './MonacoProviders';
-import { FrontendProfiler } from '@/lib/services/FrontendProfiler';
+import { FrontendProfiler } from '@/lib/services';
 
 /**
  * C# language provider

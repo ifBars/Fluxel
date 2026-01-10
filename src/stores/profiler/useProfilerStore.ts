@@ -5,7 +5,7 @@
  */
 
 import { create } from 'zustand';
-import { ProfilerService } from '@/lib/services/ProfilerService';
+import { ProfilerService } from '@/lib/services';
 import type {
     ProfilerStatus,
     SpanSummary,

@@ -5,7 +5,7 @@ import {
     hydrateTypeScriptWorkspace,
     resetTypeScriptWorkspace
 } from './MonacoTSConfig';
-import { FrontendProfiler } from '@/lib/services/FrontendProfiler';
+import { FrontendProfiler } from '@/lib/services';
 
 /**
  * TypeScript language provider

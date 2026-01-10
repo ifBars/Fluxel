@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import { getFileExtension, getFileName, getLanguageFromExtension } from '@/types/fs';
-import { FrontendProfiler } from '@/lib/services/FrontendProfiler';
+import { FrontendProfiler } from '@/lib/services';
 import { useWorkbenchStore } from '../workbench/useWorkbenchStore';
 
 export interface EditorTab {
@@ -125,59 +125,59 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     openFile: async (path: string, position?: EditorPosition) => {
         await FrontendProfiler.profileAsync('openFile', 'file_io', async () => {
-        const { tabs, setActiveTab } = get();
-        const normalizedPath = path.replace(/\\/g, '/');
-        const targetLine = position?.line ?? 1;
-        const targetColumn = position?.column ?? 1;
+            const { tabs, setActiveTab } = get();
+            const normalizedPath = path.replace(/\\/g, '/');
+            const targetLine = position?.line ?? 1;
+            const targetColumn = position?.column ?? 1;
 
-        // Ensure editor mode is set to 'code' so CodeEditor mounts
-        // This is needed when opening files before the editor has been initialized
-        const { editorMode, setEditorMode } = useWorkbenchStore.getState();
-        if (editorMode === 'visual') {
-            setEditorMode('code');
-        }
+            // Ensure editor mode is set to 'code' so CodeEditor mounts
+            // This is needed when opening files before the editor has been initialized
+            const { editorMode, setEditorMode } = useWorkbenchStore.getState();
+            if (editorMode === 'visual') {
+                setEditorMode('code');
+            }
 
-        // Check if file is already open
-        const existingTab = tabs.find((t) => t.path === normalizedPath && t.type === 'code');
-        if (existingTab) {
+            // Check if file is already open
+            const existingTab = tabs.find((t) => t.path === normalizedPath && t.type === 'code');
+            if (existingTab) {
                 FrontendProfiler.profileSync('setActiveTab', 'frontend_render', () => {
-            setActiveTab(existingTab.id);
+                    setActiveTab(existingTab.id);
                 });
-            set({
-                pendingReveal: position
-                    ? { tabId: existingTab.id, line: targetLine, column: targetColumn }
-                    : null,
-            });
-            return;
-        }
+                set({
+                    pendingReveal: position
+                        ? { tabId: existingTab.id, line: targetLine, column: targetColumn }
+                        : null,
+                });
+                return;
+            }
 
-        try {
+            try {
                 const content = await FrontendProfiler.profileAsync('readTextFile', 'file_io', async () => {
                     return await readTextFile(normalizedPath);
                 }, { path: normalizedPath });
 
-            const filename = getFileName(normalizedPath);
-            const extension = getFileExtension(normalizedPath);
-            const language = getLanguageFromExtension(extension);
+                const filename = getFileName(normalizedPath);
+                const extension = getFileExtension(normalizedPath);
+                const language = getLanguageFromExtension(extension);
 
-            const newTab: EditorTab = {
-                id: generateId(),
-                path: normalizedPath,
-                filename,
-                content,
-                originalContent: content,
-                language,
-                type: 'code',
-            };
+                const newTab: EditorTab = {
+                    id: generateId(),
+                    path: normalizedPath,
+                    filename,
+                    content,
+                    originalContent: content,
+                    language,
+                    type: 'code',
+                };
 
                 FrontendProfiler.profileSync('addTab', 'frontend_render', () => {
-            set((state) => ({
-                tabs: [...state.tabs, newTab],
-                activeTabId: newTab.id,
-                pendingReveal: position
-                    ? { tabId: newTab.id, line: targetLine, column: targetColumn }
-                    : null,
-            }));
+                    set((state) => ({
+                        tabs: [...state.tabs, newTab],
+                        activeTabId: newTab.id,
+                        pendingReveal: position
+                            ? { tabId: newTab.id, line: targetLine, column: targetColumn }
+                            : null,
+                    }));
                 });
 
                 FrontendProfiler.trackInteraction('file_opened', {
@@ -185,103 +185,103 @@ export const useEditorStore = create<EditorState>((set, get) => ({
                     size: content.length.toString(),
                     language,
                 });
-        } catch (error) {
-            console.error('Failed to open file:', path, error);
-        }
+            } catch (error) {
+                console.error('Failed to open file:', path, error);
+            }
         }, { path });
     },
 
     openDiff: async (path: string, originalContent?: string, modifiedContent?: string) => {
         await FrontendProfiler.profileAsync('openDiff', 'file_io', async () => {
-        const { tabs, setActiveTab } = get();
-        const normalizedPath = path.replace(/\\/g, '/');
+            const { tabs, setActiveTab } = get();
+            const normalizedPath = path.replace(/\\/g, '/');
 
-        const filename = getFileName(normalizedPath);
-        const extension = getFileExtension(normalizedPath);
-        const language = getLanguageFromExtension(extension);
+            const filename = getFileName(normalizedPath);
+            const extension = getFileExtension(normalizedPath);
+            const language = getLanguageFromExtension(extension);
 
-        // If modifiedContent is not provided, try to read from disk
-        let currentContent = modifiedContent;
-        if (currentContent === undefined) {
-            try {
+            // If modifiedContent is not provided, try to read from disk
+            let currentContent = modifiedContent;
+            if (currentContent === undefined) {
+                try {
                     currentContent = await FrontendProfiler.profileAsync('readTextFile', 'file_io', async () => {
                         return await readTextFile(normalizedPath);
                     }, { path: normalizedPath });
-            } catch (e) {
-                console.error('[useEditorStore.openDiff] Failed to read file for diff:', e);
-                throw new Error(`Failed to read file ${normalizedPath}: ${e}`);
+                } catch (e) {
+                    console.error('[useEditorStore.openDiff] Failed to read file for diff:', e);
+                    throw new Error(`Failed to read file ${normalizedPath}: ${e}`);
+                }
             }
-        }
 
-        // Ensure editor mode is set to 'code' so CodeEditor mounts
-        // This is needed when opening diffs from GitPanel before any file has been opened
-        const { editorMode, setEditorMode } = useWorkbenchStore.getState();
-        if (editorMode === 'visual') {
-            setEditorMode('code');
-        }
+            // Ensure editor mode is set to 'code' so CodeEditor mounts
+            // This is needed when opening diffs from GitPanel before any file has been opened
+            const { editorMode, setEditorMode } = useWorkbenchStore.getState();
+            if (editorMode === 'visual') {
+                setEditorMode('code');
+            }
 
-        // Check if diff is already open for this file
-        const existingTab = tabs.find((t) => t.path === normalizedPath && t.type === 'diff');
-        if (existingTab) {
+            // Check if diff is already open for this file
+            const existingTab = tabs.find((t) => t.path === normalizedPath && t.type === 'diff');
+            if (existingTab) {
                 FrontendProfiler.profileSync('setActiveTab', 'frontend_render', () => {
-            setActiveTab(existingTab.id);
+                    setActiveTab(existingTab.id);
                 });
-            // Update the tab content if it has changed
-            set((state) => ({
-                tabs: state.tabs.map((t) =>
-                    t.id === existingTab.id
-                        ? {
-                            ...t,
-                            content: currentContent,
-                            diffBaseContent: originalContent || '',
-                            language,
-                        }
-                        : t
-                ),
-            }));
-            return;
-        }
+                // Update the tab content if it has changed
+                set((state) => ({
+                    tabs: state.tabs.map((t) =>
+                        t.id === existingTab.id
+                            ? {
+                                ...t,
+                                content: currentContent,
+                                diffBaseContent: originalContent || '',
+                                language,
+                            }
+                            : t
+                    ),
+                }));
+                return;
+            }
 
-        const newTab: EditorTab = {
-            id: generateId(),
-            path: normalizedPath,
-            filename: `${filename} (Diff)`,
-            content: currentContent,
-            originalContent: currentContent, // Not really used for dirty check in diff mode usually, but consistency
-            diffBaseContent: originalContent || '',
-            language,
-            type: 'diff',
-        };
+            const newTab: EditorTab = {
+                id: generateId(),
+                path: normalizedPath,
+                filename: `${filename} (Diff)`,
+                content: currentContent,
+                originalContent: currentContent, // Not really used for dirty check in diff mode usually, but consistency
+                diffBaseContent: originalContent || '',
+                language,
+                type: 'diff',
+            };
 
             FrontendProfiler.profileSync('addTab', 'frontend_render', () => {
-        set((state) => ({
-            tabs: [...state.tabs, newTab],
-            activeTabId: newTab.id,
-        }));
+                set((state) => ({
+                    tabs: [...state.tabs, newTab],
+                    activeTabId: newTab.id,
+                }));
             });
         }, { path });
     },
 
     closeTab: (id: string) => {
         FrontendProfiler.profileSync('closeTab', 'frontend_render', () => {
-        const { tabs, activeTabId } = get();
-        const tabIndex = tabs.findIndex((t) => t.id === id);
+            const { tabs, activeTabId } = get();
+            const tabIndex = tabs.findIndex((t) => t.id === id);
 
-        if (tabIndex === -1) return;
+            if (tabIndex === -1) return;
 
-        const newTabs = tabs.filter((t) => t.id !== id);
+            const newTabs = tabs.filter((t) => t.id !== id);
 
-        // Determine new active tab
-        let newActiveId: string | null = null;
-        if (activeTabId === id && newTabs.length > 0) {
-            // Activate the next tab, or the previous if closing the last
-            const newIndex = Math.min(tabIndex, newTabs.length - 1);
-            newActiveId = newTabs[newIndex].id;
-        } else if (activeTabId !== id) {
-            newActiveId = activeTabId;
-        }
+            // Determine new active tab
+            let newActiveId: string | null = null;
+            if (activeTabId === id && newTabs.length > 0) {
+                // Activate the next tab, or the previous if closing the last
+                const newIndex = Math.min(tabIndex, newTabs.length - 1);
+                newActiveId = newTabs[newIndex].id;
+            } else if (activeTabId !== id) {
+                newActiveId = activeTabId;
+            }
 
-        set({ tabs: newTabs, activeTabId: newActiveId });
+            set({ tabs: newTabs, activeTabId: newActiveId });
         }, { tabId: id });
     },
 
@@ -314,7 +314,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     setActiveTab: (id: string) => {
         FrontendProfiler.profileSync('setActiveTab', 'frontend_render', () => {
-        set({ activeTabId: id });
+            set({ activeTabId: id });
         }, { tabId: id });
     },
 
@@ -332,34 +332,34 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         const tabPath = tab?.path;
 
         await FrontendProfiler.profileAsync('saveFile', 'file_io', async () => {
-        if (!tab) return;
+            if (!tab) return;
 
-        try {
+            try {
                 await FrontendProfiler.profileAsync('writeTextFile', 'file_io', async () => {
-            await writeTextFile(tab.path, tab.content);
+                    await writeTextFile(tab.path, tab.content);
                 }, { path: tab.path, size: tab.content.length.toString() });
 
-            // Update originalContent to match saved content
-            set((state) => ({
-                tabs: state.tabs.map((t) =>
-                    t.id === id ? { ...t, originalContent: t.content } : t
-                ),
-            }));
+                // Update originalContent to match saved content
+                set((state) => ({
+                    tabs: state.tabs.map((t) =>
+                        t.id === id ? { ...t, originalContent: t.content } : t
+                    ),
+                }));
 
-            // If this is a .gitignore file, refresh the file tree
-            if (isGitignoreFile(tab.path)) {
-                // Import dynamically to avoid circular dependency
-                import('./useFileSystemStore').then(({ useFileSystemStore }) => {
-                    const { gitignoreManager, refreshIgnoredStatus } = useFileSystemStore.getState();
-                    if (gitignoreManager) {
-                        gitignoreManager.reset();
-                        refreshIgnoredStatus();
-                    }
-                });
+                // If this is a .gitignore file, refresh the file tree
+                if (isGitignoreFile(tab.path)) {
+                    // Import dynamically to avoid circular dependency
+                    import('./useFileSystemStore').then(({ useFileSystemStore }) => {
+                        const { gitignoreManager, refreshIgnoredStatus } = useFileSystemStore.getState();
+                        if (gitignoreManager) {
+                            gitignoreManager.reset();
+                            refreshIgnoredStatus();
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to save file:', tab.path, error);
             }
-        } catch (error) {
-            console.error('Failed to save file:', tab.path, error);
-        }
         }, { tabId: id, ...(tabPath && { path: tabPath }) });
     },
 

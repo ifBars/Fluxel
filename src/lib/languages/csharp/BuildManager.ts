@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { FrontendProfiler } from '../../services/FrontendProfiler';
+import { FrontendProfiler } from '../../services/profiling/FrontendProfiler';
 
 export interface BuildConfiguration {
     name: string;

@@ -33,7 +33,7 @@ if (import.meta.env.DEV) {
   (window as any).invoke = invoke;
 
   // Register performance benchmarks for dev mode
-  import('./lib/services/PerformanceBenchmark').then(({ registerGlobalBenchmarks }) => {
+  import('./lib/services/profiling/PerformanceBenchmark').then(({ registerGlobalBenchmarks }) => {
     registerGlobalBenchmarks();
   });
 }

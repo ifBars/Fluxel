@@ -2,7 +2,7 @@ import { memo, useEffect, useRef } from "react";
 import Workbench from "../workbench/Workbench";
 import { useProfiler } from "@/hooks/useProfiler";
 import { usePlugins } from "@/hooks/usePlugins";
-import { FrontendProfiler } from "@/lib/services/FrontendProfiler";
+import { FrontendProfiler } from "@/lib/services";
 import { LanguageController } from "./LanguageController";
 
 function EditorPage() {

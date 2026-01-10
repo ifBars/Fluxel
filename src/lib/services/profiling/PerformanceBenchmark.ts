@@ -59,7 +59,7 @@ function calculateStats(times: number[]): { avg: number; min: number; max: numbe
     const avg = times.reduce((a, b) => a + b, 0) / times.length;
     const min = Math.min(...times);
     const max = Math.max(...times);
-    
+
     const squaredDiffs = times.map(t => Math.pow(t - avg, 2));
     const avgSquaredDiff = squaredDiffs.reduce((a, b) => a + b, 0) / times.length;
     const stdDev = Math.sqrt(avgSquaredDiff);
@@ -106,11 +106,11 @@ async function runBenchmark(
 
     for (let i = 0; i < iterations; i++) {
         console.log(`  Iteration ${i + 1}/${iterations}...`);
-        
+
         const startTime = performance.now();
         lastMetadata = await fn();
         const endTime = performance.now();
-        
+
         times.push(endTime - startTime);
         await sleep(cooldownMs);
     }
@@ -124,7 +124,7 @@ async function runBenchmark(
     }
 
     const stats = calculateStats(times);
-    
+
     const result: BenchmarkResult = {
         name,
         durationMs: times.reduce((a, b) => a + b, 0),
@@ -172,10 +172,10 @@ export async function benchmarkLoadDirectory(
         async () => {
             // Clear the tree first to ensure a fresh load
             fileSystemStore.clearTree();
-            
+
             // Wait a tick for React to process the clear
             await sleep(10);
-            
+
             // Load the directory with profiling
             await FrontendProfiler.profileAsync('benchmark:loadDirectory', 'file_io', async () => {
                 await fileSystemStore.loadDirectory(path);
@@ -184,7 +184,7 @@ export async function benchmarkLoadDirectory(
             // Get resulting tree stats
             const { rootEntry } = useFileSystemStore.getState();
             const stats = getTreeStats(rootEntry);
-            
+
             return {
                 totalEntries: stats.total,
                 directories: stats.directories,
@@ -214,11 +214,11 @@ export async function benchmarkFolderExpansion(
     // First, load the root directory
     fileSystemStore.clearTree();
     await fileSystemStore.loadDirectory(rootPath);
-    
+
     // Find all expandable folders
     const { rootEntry } = useFileSystemStore.getState();
     const folders = findFolders(rootEntry);
-    
+
     console.log(`  Found ${folders.length} folders to expand`);
 
     return runBenchmark(
@@ -272,7 +272,7 @@ export async function benchmarkProjectLoad(
         `fullProjectLoad(${projectPath})`,
         async () => {
             const fileSystemStore = useFileSystemStore.getState();
-            
+
             // Clear everything
             fileSystemStore.clearTree();
             await sleep(10);
@@ -284,7 +284,7 @@ export async function benchmarkProjectLoad(
                 async () => {
                     // Load directory tree
                     await fileSystemStore.loadDirectory(projectPath);
-                    
+
                     // Get tree stats
                     const { rootEntry } = useFileSystemStore.getState();
                     return getTreeStats(rootEntry);
@@ -327,9 +327,9 @@ export async function benchmarkTreeTraversal(
         `treeTraversal(${rootPath})`,
         async () => {
             const { rootEntry } = useFileSystemStore.getState();
-            
+
             let traversalCount = 0;
-            
+
             await FrontendProfiler.profileAsync('benchmark:treeTraversal', 'file_io', async () => {
                 // Traverse entire tree
                 const traverse = (entry: typeof rootEntry): number => {
@@ -342,7 +342,7 @@ export async function benchmarkTreeTraversal(
                     }
                     return count;
                 };
-                
+
                 // Traverse multiple times to get meaningful measurements
                 for (let i = 0; i < 100; i++) {
                     traversalCount = traverse(rootEntry);
@@ -399,9 +399,9 @@ function getTreeStats(entry: ReturnType<typeof useFileSystemStore.getState>['roo
 
 function findFolders(entry: ReturnType<typeof useFileSystemStore.getState>['rootEntry']): string[] {
     if (!entry) return [];
-    
+
     const folders: string[] = [];
-    
+
     const traverse = (e: NonNullable<typeof entry>) => {
         if (e.isDirectory && e.path !== entry?.path) {
             folders.push(e.path);
@@ -412,7 +412,7 @@ function findFolders(entry: ReturnType<typeof useFileSystemStore.getState>['root
             }
         }
     };
-    
+
     traverse(entry);
     return folders;
 }
@@ -453,7 +453,7 @@ export async function runAllBenchmarks(
     console.log('\n' + '='.repeat(60));
     console.log('BENCHMARK SUMMARY');
     console.log('='.repeat(60));
-    
+
     for (const result of results) {
         console.log(`\n${result.name}:`);
         console.log(`  Avg: ${result.avgMs.toFixed(2)}ms`);
@@ -505,7 +505,7 @@ export interface SuiteComparison {
  */
 function compareResults(baseline: BenchmarkResult, current: BenchmarkResult): BenchmarkComparison {
     const changePercent = ((current.avgMs - baseline.avgMs) / baseline.avgMs) * 100;
-    
+
     return {
         name: baseline.name,
         baseline,
@@ -529,7 +529,7 @@ export function compareSuites(baseline: BenchmarkSuite, current: BenchmarkSuite)
         if (baselineResult) {
             const comparison = compareResults(baselineResult, currentResult);
             comparisons.push(comparison);
-            
+
             if (comparison.isRegression) {
                 regressions.push(`${comparison.name}: ${comparison.changePercent.toFixed(1)}% slower`);
             }
@@ -576,12 +576,12 @@ export function printComparisonReport(comparison: SuiteComparison): void {
     console.log('\n' + '-'.repeat(70));
     console.log('SUMMARY');
     console.log('-'.repeat(70));
-    
+
     if (comparison.regressions.length > 0) {
         console.log('\n🔴 REGRESSIONS:');
         comparison.regressions.forEach(r => console.log(`   - ${r}`));
     }
-    
+
     if (comparison.improvements.length > 0) {
         console.log('\n🟢 IMPROVEMENTS:');
         comparison.improvements.forEach(i => console.log(`   - ${i}`));
@@ -646,9 +646,9 @@ export async function runAndCompare(
 ): Promise<{ suite: BenchmarkSuite; comparison: SuiteComparison | null }> {
     const baseline = loadBaseline();
     const suite = await runAllBenchmarks(projectPath, options);
-    
+
     let comparison: SuiteComparison | null = null;
-    
+
     if (baseline) {
         comparison = compareSuites(baseline, suite);
         printComparisonReport(comparison);
@@ -686,14 +686,14 @@ export function registerGlobalBenchmarks(): void {
             treeTraversal: benchmarkTreeTraversal,
             runAll: runAllBenchmarks,
             runMLVScan: runMLVScanBenchmarks,
-            
+
             // Comparison utilities
             compare: {
                 run: runAndCompare,
                 suites: compareSuites,
                 print: printComparisonReport,
             },
-            
+
             // Baseline management
             baseline: {
                 save: saveBaseline,
@@ -705,14 +705,14 @@ export function registerGlobalBenchmarks(): void {
                     return suite;
                 },
             },
-            
+
             // Quick shortcuts
             quick: {
                 mlvscan: () => runMLVScanBenchmarks({ iterations: 3, warmupIterations: 1 }),
                 full: () => runMLVScanBenchmarks({ iterations: 10, warmupIterations: 2 }),
                 compare: () => runAndCompare(MLVSCAN_PATH, { iterations: 5 }),
             },
-            
+
             // Help
             help: () => {
                 console.log(`
@@ -776,21 +776,21 @@ export const PerformanceBenchmark = {
     benchmarkFolderExpansion,
     benchmarkProjectLoad,
     benchmarkTreeTraversal,
-    
+
     // Suite runners
     runAllBenchmarks,
     runMLVScanBenchmarks,
-    
+
     // Comparison utilities
     compareSuites,
     printComparisonReport,
     runAndCompare,
-    
+
     // Baseline management
     saveBaseline,
     loadBaseline,
     clearBaseline,
-    
+
     // Registration
     registerGlobalBenchmarks,
 };
