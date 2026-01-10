@@ -1,4 +1,4 @@
-# Fluxel
+# Fluxel [![Build Beta Release](https://github.com/ifBars/Fluxel/actions/workflows/build-beta.yml/badge.svg)](https://github.com/ifBars/Fluxel/actions/workflows/build-beta.yml)
 
 A performance-first code editor built with Tauri v2 and React. Born from frustration with VSCode's sluggishness, Fluxel prioritizes speed without sacrificing essential features.
 
