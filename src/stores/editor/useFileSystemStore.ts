@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { readDir, readTextFile } from '@tauri-apps/plugin-fs';
 import type { FileEntry } from '@/types/fs';
 import { GitignoreManager } from '@/lib/utils/GitIgnore';
-import { FrontendProfiler } from '@/lib/services/FrontendProfiler';
+import { FrontendProfiler } from '@/lib/services';
 
 type BackendDirEntry = {
     name: string;
@@ -191,7 +191,7 @@ async function readDirectoryEntries(
  */
 function buildPathMap(entry: FileEntry | null, map: Map<string, FileEntry> = new Map()): Map<string, FileEntry> {
     if (!entry) return map;
-    
+
     map.set(entry.path, entry);
     if (entry.children) {
         for (const child of entry.children) {
@@ -362,19 +362,19 @@ export const useFileSystemStore = create<FileSystemState>((set, get) => ({
 
         if (isExpanding) {
             // Create a span for the expand operation that will be parent to loadFolderChildren
-            const expandSpan = FrontendProfiler.startSpan('expandNode', 'workspace', { 
+            const expandSpan = FrontendProfiler.startSpan('expandNode', 'workspace', {
                 metadata: { path },
-                parentId: traceParent 
+                parentId: traceParent
             });
-            
+
             // Update UI state immediately so expansion isn't delayed by any async work.
             // Use functional update for atomic state change
             newExpanded.add(path);
             set((state) => ({ ...state, expandedPaths: newExpanded }));
-            
+
             // Capture the span ID before ending
             const expandSpanId = expandSpan.id;
-            
+
             // End and await the expandNode span to ensure it's recorded before loadFolderChildren
             // This prevents race conditions where loadFolderChildren records before its parent
             await expandSpan.end();
@@ -384,7 +384,7 @@ export const useFileSystemStore = create<FileSystemState>((set, get) => ({
             // Use O(1) map lookup instead of O(n) tree traversal for better performance
             // Defer the lookup to avoid blocking the UI update
             const folder = _pathToEntryMap?.get(path) ?? null;
-            
+
             // If map lookup failed, fall back to tree traversal (shouldn't happen, but safety check)
             if (!folder && rootEntry) {
                 // Defer tree traversal to next tick to avoid blocking UI

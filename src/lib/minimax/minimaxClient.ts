@@ -1,12 +1,10 @@
 /**
- * MiniMax Chat API client using Anthropic SDK
- * Uses Anthropic-compatible API with MiniMax-specific features (thinking blocks)
+ * MiniMax Chat API client using Tauri backend proxy
+ * Proxies through Rust backend to avoid CORS issues
  */
 
-import Anthropic from '@anthropic-ai/sdk';
-import { FrontendProfiler } from '@/lib/services/FrontendProfiler';
-
-const MINIMAX_BASE_URL = 'https://api.minimax.io/anthropic';
+import { invoke } from '@tauri-apps/api/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
 // Available MiniMax models
 export const MINIMAX_MODELS = [
@@ -16,13 +14,14 @@ export const MINIMAX_MODELS = [
 export type MinimaxModel = typeof MINIMAX_MODELS[number];
 
 export interface MinimaxStreamChunk {
-    type: 'text' | 'thinking' | 'tool_use' | 'done';
+    type: 'text' | 'thinking' | 'tool_use' | 'done' | 'error';
     content?: string;
     toolUse?: {
         id: string;
         name: string;
         input: Record<string, unknown>;
     };
+    message?: string; // for error type
 }
 
 export interface MinimaxToolDefinition {
@@ -35,9 +34,14 @@ export interface MinimaxToolDefinition {
     };
 }
 
+export interface MinimaxMessage {
+    role: string;
+    content: string;
+}
+
 export interface MinimaxChatRequest {
     model: string;
-    messages: Anthropic.MessageCreateParamsStreaming['messages'];
+    messages: MinimaxMessage[];
     system?: string;
     maxTokens?: number;
     temperature?: number;
@@ -45,33 +49,16 @@ export interface MinimaxChatRequest {
 }
 
 /**
- * Create an Anthropic client configured for MiniMax
- */
-function createMinimaxClient(apiKey: string): Anthropic {
-    return new Anthropic({
-        apiKey,
-        baseURL: MINIMAX_BASE_URL,
-        dangerouslyAllowBrowser: true, // Required for browser-based usage
-    });
-}
-
-/**
  * Check if MiniMax API is accessible with the given API key
  */
 export async function checkMinimaxHealth(apiKey: string): Promise<boolean> {
-    const span = FrontendProfiler.startSpan('check_minimax_health', 'frontend_network');
+    console.log('[MiniMax] Checking health via Tauri...');
     try {
-        const client = createMinimaxClient(apiKey);
-        // Send a minimal request to check connectivity
-        const response = await client.messages.create({
-            model: 'MiniMax-M2.1',
-            max_tokens: 10,
-            messages: [{ role: 'user', content: 'Hi' }],
-        });
-        await span.end({ status: 'ok', stopReason: response.stop_reason ?? 'none' });
-        return true;
+        const result = await invoke<boolean>('minimax_health_check', { apiKey });
+        console.log('[MiniMax] Health check result:', result);
+        return result;
     } catch (e) {
-        await span.end({ error: e instanceof Error ? e.message : String(e) });
+        console.error('[MiniMax] Health check failed:', e);
         return false;
     }
 }
@@ -85,59 +72,117 @@ export async function getAvailableMinimaxModels(): Promise<string[]> {
 }
 
 /**
- * Stream chat responses from MiniMax using Anthropic SDK
+ * Stream chat responses from MiniMax using Tauri backend proxy
  */
 export async function* streamMinimaxChat(
     request: MinimaxChatRequest,
     apiKey: string,
     abortSignal?: AbortSignal
 ): AsyncGenerator<MinimaxStreamChunk, void, unknown> {
-    const client = createMinimaxClient(apiKey);
+    console.log('[MiniMax] Starting streaming chat via Tauri...');
+    console.log('[MiniMax] Request model:', request.model);
+    console.log('[MiniMax] Request messages count:', request.messages.length);
 
-    const stream = await client.messages.stream({
-        model: request.model,
-        max_tokens: request.maxTokens ?? 4096,
-        system: request.system,
-        messages: request.messages,
-        temperature: request.temperature,
-        tools: request.tools as Anthropic.Tool[] | undefined,
-    }, {
-        signal: abortSignal,
-    });
+    const requestId = crypto.randomUUID();
+    const eventName = `minimax_stream_${requestId}`;
 
-    for await (const event of stream) {
-        if (event.type === 'content_block_delta') {
-            const delta = event.delta;
+    // Create a queue to buffer incoming events
+    const chunkQueue: MinimaxStreamChunk[] = [];
+    let resolveWait: (() => void) | null = null;
+    let isDone = false;
+    let unlisten: UnlistenFn | null = null;
 
-            if (delta.type === 'text_delta') {
-                yield {
-                    type: 'text',
-                    content: delta.text,
-                };
-            } else if (delta.type === 'thinking_delta') {
-                yield {
-                    type: 'thinking',
-                    content: (delta as { thinking?: string }).thinking ?? '',
-                };
-            } else if (delta.type === 'input_json_delta') {
-                // Tool input streaming - we'll collect and emit on block stop
+    // Handle abort
+    if (abortSignal) {
+        abortSignal.addEventListener('abort', () => {
+            isDone = true;
+            if (resolveWait) resolveWait();
+        });
+    }
+
+    try {
+        // Set up event listener
+        console.log('[MiniMax] Setting up event listener:', eventName);
+        unlisten = await listen<MinimaxStreamChunk>(eventName, (event) => {
+            console.log('[MiniMax] Received event:', event.payload.type);
+
+            // Map backend format to frontend format
+            const chunk = event.payload;
+
+            if (chunk.type === 'done' || chunk.type === 'error') {
+                isDone = true;
             }
-        } else if (event.type === 'content_block_start') {
-            const block = event.content_block;
 
-            if (block.type === 'tool_use') {
-                // Tool use block starting
-                yield {
-                    type: 'tool_use',
-                    toolUse: {
-                        id: block.id,
-                        name: block.name,
-                        input: {}, // Will be populated by input_json_delta
-                    },
-                };
+            chunkQueue.push(chunk);
+
+            // Wake up the generator if it's waiting
+            if (resolveWait) {
+                resolveWait();
+                resolveWait = null;
             }
-        } else if (event.type === 'message_stop') {
-            yield { type: 'done' };
+        });
+
+        // Convert request format for backend
+        const backendRequest = {
+            model: request.model,
+            messages: request.messages.map(m => ({
+                role: m.role,
+                content: m.content,
+            })),
+            system: request.system,
+            max_tokens: request.maxTokens,
+            temperature: request.temperature,
+            tools: request.tools,
+        };
+
+        // Start streaming via Tauri command (don't await - it streams)
+        console.log('[MiniMax] Invoking minimax_chat_stream command...');
+        invoke('minimax_chat_stream', {
+            apiKey,
+            request: backendRequest,
+            requestId,
+        }).catch(e => {
+            console.error('[MiniMax] Stream command error:', e);
+            chunkQueue.push({ type: 'error', message: String(e) });
+            isDone = true;
+            if (resolveWait) resolveWait();
+        });
+
+        // Yield chunks as they arrive
+        while (!isDone || chunkQueue.length > 0) {
+            if (chunkQueue.length > 0) {
+                const chunk = chunkQueue.shift()!;
+
+                // Convert tool_use from backend format
+                if (chunk.type === 'tool_use' && (chunk as any).id && (chunk as any).name) {
+                    yield {
+                        type: 'tool_use',
+                        toolUse: {
+                            id: (chunk as any).id,
+                            name: (chunk as any).name,
+                            input: (chunk as any).input || {},
+                        },
+                    };
+                } else {
+                    yield chunk;
+                }
+
+                if (chunk.type === 'done' || chunk.type === 'error') {
+                    break;
+                }
+            } else if (!isDone) {
+                // Wait for more chunks
+                await new Promise<void>(resolve => {
+                    resolveWait = resolve;
+                });
+            }
+        }
+
+        console.log('[MiniMax] Stream finished');
+    } finally {
+        // Clean up listener
+        if (unlisten) {
+            unlisten();
         }
     }
 }
@@ -148,56 +193,71 @@ export async function* streamMinimaxChat(
 export async function chatMinimax(
     request: MinimaxChatRequest,
     apiKey: string,
-    abortSignal?: AbortSignal
 ): Promise<{
     content: string;
     thinking?: string;
     toolUse?: { id: string; name: string; input: Record<string, unknown> }[];
     stopReason: string;
 }> {
-    const client = createMinimaxClient(apiKey);
+    console.log('[MiniMax] Starting non-streaming chat via Tauri...');
 
-    const response = await client.messages.create({
+    const backendRequest = {
         model: request.model,
-        max_tokens: request.maxTokens ?? 4096,
+        messages: request.messages.map(m => ({
+            role: m.role,
+            content: m.content,
+        })),
         system: request.system,
-        messages: request.messages,
+        max_tokens: request.maxTokens,
         temperature: request.temperature,
-        tools: request.tools as Anthropic.Tool[] | undefined,
-    }, {
-        signal: abortSignal,
-    });
-
-    let content = '';
-    let thinking = '';
-    const toolUse: { id: string; name: string; input: Record<string, unknown> }[] = [];
-
-    for (const block of response.content) {
-        if (block.type === 'text') {
-            content += block.text;
-        } else if (block.type === 'thinking') {
-            thinking += (block as { thinking?: string }).thinking ?? '';
-        } else if (block.type === 'tool_use') {
-            toolUse.push({
-                id: block.id,
-                name: block.name,
-                input: block.input as Record<string, unknown>,
-            });
-        }
-    }
-
-    return {
-        content,
-        thinking: thinking || undefined,
-        toolUse: toolUse.length > 0 ? toolUse : undefined,
-        stopReason: response.stop_reason ?? 'end_turn',
     };
+
+    try {
+        const response = await invoke<any>('minimax_chat', {
+            apiKey,
+            request: backendRequest,
+        });
+
+        console.log('[MiniMax] Response received');
+
+        // Parse Anthropic-style response
+        let content = '';
+        let thinking = '';
+        const toolUse: { id: string; name: string; input: Record<string, unknown> }[] = [];
+
+        if (response.content && Array.isArray(response.content)) {
+            for (const block of response.content) {
+                if (block.type === 'text') {
+                    content += block.text || '';
+                } else if (block.type === 'thinking') {
+                    thinking += block.thinking || '';
+                } else if (block.type === 'tool_use') {
+                    toolUse.push({
+                        id: block.id,
+                        name: block.name,
+                        input: block.input || {},
+                    });
+                }
+            }
+        }
+
+        return {
+            content,
+            thinking: thinking || undefined,
+            toolUse: toolUse.length > 0 ? toolUse : undefined,
+            stopReason: response.stop_reason || 'end_turn',
+        };
+    } catch (e) {
+        console.error('[MiniMax] Non-streaming error:', e);
+        throw e;
+    }
 }
 
 /**
  * Convert Ollama-style tool definitions to Anthropic/MiniMax format
  */
 export function convertToolsToMinimaxFormat(ollamaTools: any[]): MinimaxToolDefinition[] {
+    console.log('[MiniMax] Converting %d tools to MiniMax format', ollamaTools.length);
     return ollamaTools.map(tool => ({
         name: tool.function.name,
         description: tool.function.description,

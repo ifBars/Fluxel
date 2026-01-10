@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { FrontendProfiler } from '@/lib/services/FrontendProfiler';
+import { FrontendProfiler } from '@/lib/services';
 
 // ============================================================================
 // Types
@@ -31,21 +31,21 @@ export interface DiagnosticsFilter {
 export interface DiagnosticsState {
     // All diagnostics indexed by file path
     diagnosticsByFile: Map<string, Diagnostic[]>;
-    
+
     // Aggregated build diagnostics (from dotnet build output)
     buildDiagnostics: Diagnostic[];
-    
+
     // Filtering state
     filter: DiagnosticsFilter;
-    
+
     // Navigation state
     currentDiagnosticIndex: number;
-    
+
     // Computed getters
     getAllDiagnostics: () => Diagnostic[];
     getFilteredDiagnostics: () => Diagnostic[];
     getCounts: () => { errors: number; warnings: number; info: number };
-    
+
     // Actions
     setDiagnostics: (filePath: string, diagnostics: Diagnostic[]) => void;
     clearDiagnostics: (filePath: string) => void;
@@ -82,7 +82,7 @@ export const useDiagnosticsStore = create<DiagnosticsState>((set, get) => ({
     // Computed getters
     getAllDiagnostics: () => {
         const { diagnosticsByFile, buildDiagnostics } = get();
-        
+
         // Combine all LSP diagnostics from all files
         const allLspDiagnostics: Diagnostic[] = [];
         diagnosticsByFile.forEach((diagnostics) => {
@@ -118,7 +118,7 @@ export const useDiagnosticsStore = create<DiagnosticsState>((set, get) => ({
                 const matchesFile = diagnostic.fileName.toLowerCase().includes(query);
                 const matchesPath = diagnostic.filePath.toLowerCase().includes(query);
                 const matchesCode = diagnostic.code?.toString().toLowerCase().includes(query);
-                
+
                 if (!matchesMessage && !matchesFile && !matchesPath && !matchesCode) {
                     return false;
                 }
@@ -151,7 +151,7 @@ export const useDiagnosticsStore = create<DiagnosticsState>((set, get) => ({
     setDiagnostics: (filePath: string, diagnostics: Diagnostic[]) => {
         set((state) => {
             const newMap = new Map(state.diagnosticsByFile);
-            
+
             if (diagnostics.length === 0) {
                 // Remove entry if no diagnostics
                 newMap.delete(filePath);
@@ -192,7 +192,7 @@ export const useDiagnosticsStore = create<DiagnosticsState>((set, get) => ({
         try {
             // Import dynamically to avoid circular dependency
             const { useEditorStore } = await import('../editor/useEditorStore');
-            
+
             await useEditorStore.getState().openFile(diagnostic.filePath, {
                 line: diagnostic.range.startLine,
                 column: diagnostic.range.startColumn,
@@ -202,7 +202,7 @@ export const useDiagnosticsStore = create<DiagnosticsState>((set, get) => ({
             const { getFilteredDiagnostics } = get();
             const filteredDiagnostics = getFilteredDiagnostics();
             const index = filteredDiagnostics.findIndex(d => d.id === diagnostic.id);
-            
+
             if (index !== -1) {
                 set({ currentDiagnosticIndex: index });
             }
@@ -215,8 +215,8 @@ export const useDiagnosticsStore = create<DiagnosticsState>((set, get) => ({
                 foundIndex: (index !== -1).toString()
             });
         } catch (error) {
-            await span.end({ 
-                error: error instanceof Error ? error.message : 'Unknown error' 
+            await span.end({
+                error: error instanceof Error ? error.message : 'Unknown error'
             });
             throw error;
         }
@@ -244,8 +244,8 @@ export const useDiagnosticsStore = create<DiagnosticsState>((set, get) => ({
         if (filteredDiagnostics.length === 0) return;
 
         // Calculate previous index (wrap around)
-        const prevIndex = currentDiagnosticIndex <= 0 
-            ? filteredDiagnostics.length - 1 
+        const prevIndex = currentDiagnosticIndex <= 0
+            ? filteredDiagnostics.length - 1
             : currentDiagnosticIndex - 1;
         const prevDiagnostic = filteredDiagnostics[prevIndex];
 

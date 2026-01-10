@@ -42,7 +42,7 @@ export interface OllamaChatResponse {
 
 const DEFAULT_ENDPOINT = 'http://localhost:11434';
 
-import { FrontendProfiler } from '@/lib/services/FrontendProfiler';
+import { FrontendProfiler } from '@/lib/services';
 
 /**
  * Check if Ollama server is accessible

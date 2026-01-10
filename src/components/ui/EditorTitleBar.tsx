@@ -9,8 +9,8 @@ import {
   useBuildPanelStore,
   useCSharpStore,
 } from "@/stores";
-import { executeBuild, executeTypeCheck } from '@/lib/services/BuildManager';
-import { openWorkspace, closeWorkspace } from "@/lib/services/ProjectManager";
+import { executeBuild, executeTypeCheck } from '@/lib/services';
+import { openWorkspace, closeWorkspace } from '@/lib/services';
 import { TitlebarDropdown } from "./TitlebarDropdown";
 import {
   TitlebarMenuButton,

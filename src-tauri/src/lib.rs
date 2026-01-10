@@ -137,7 +137,11 @@ pub fn run() {
             // Plugin Loader Commands
             services::plugin_loader::discover_community_plugins,
             services::plugin_loader::get_community_plugins_path,
-            services::plugin_loader::validate_plugin_directory
+            services::plugin_loader::validate_plugin_directory,
+            // MiniMax API Proxy Commands
+            commands::minimax::minimax_chat,
+            commands::minimax::minimax_chat_stream,
+            commands::minimax::minimax_health_check
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

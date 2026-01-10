@@ -7,9 +7,11 @@
 //! - `workspace` - Directory listing, file search operations
 //! - `build` - C# project build commands
 //! - `launch` - Application launch state and initialization
+//! - `minimax` - MiniMax API proxy commands
 
 pub mod build;
 pub mod launch;
+pub mod minimax;
 pub mod terminal;
 pub mod workspace;
 

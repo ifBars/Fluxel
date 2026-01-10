@@ -6,7 +6,7 @@
 import type { Monaco } from "@monaco-editor/react";
 import type { editor, languages, Position, CancellationToken } from "monaco-editor";
 import { generateCompletion, type OllamaConfig } from "./ollamaClient";
-import { FrontendProfiler } from "@/lib/services/FrontendProfiler";
+import { FrontendProfiler } from "@/lib/services";
 
 export interface InlineCompletionProviderConfig extends Partial<OllamaConfig> {
     debounceMs: number;

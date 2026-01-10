@@ -19,7 +19,7 @@ import { getCSharpLSPClient, registerCSharpColorThemes } from "@/lib/languages/c
 import { configureTypeScriptLanguage, hydrateTypeScriptWorkspace, resetTypeScriptWorkspace } from "@/lib/languages/typescript";
 import { hasTypeScriptIndicators } from "@/lib/languages/typescript/TypeLoader";
 import { getLazyTypeResolver } from "@/lib/languages/typescript/LazyTypeResolver";
-import { shouldHydrateTypeScriptWorkspace } from "@/lib/services/ProjectManager";
+import { shouldHydrateTypeScriptWorkspace } from "@/lib/services";
 import { fsPathToLspUri } from "@/lib/languages/base/fileUris";
 import { getLanguageRegistry } from "@/lib/languages/registry";
 import { File, Save, Circle } from "lucide-react";

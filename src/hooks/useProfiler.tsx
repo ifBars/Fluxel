@@ -7,7 +7,7 @@
 
 import { useRef, useCallback, useEffect, useMemo, type ReactNode } from 'react';
 import { Profiler, type ProfilerProps } from 'react';
-import { FrontendProfiler, type SpanHandle } from '@/lib/services/FrontendProfiler';
+import { FrontendProfiler, type SpanHandle } from '@/lib/services';
 import type { FrontendCategory } from '@/types/profiling';
 
 // =============================================================================
@@ -119,11 +119,11 @@ export function useProfiler(componentName: string): UseProfilerReturn {
         return Wrapper;
     }, [componentName]);
 
-return {
-    startSpan,
-    trackInteraction,
-    ProfilerWrapper,
-};
+    return {
+        startSpan,
+        trackInteraction,
+        ProfilerWrapper,
+    };
 }
 
 // =============================================================================

@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type { LSPMessage, LSPRequestHandler, LSPClientConfig } from './types';
-import { FrontendProfiler } from '@/lib/services/FrontendProfiler';
+import { FrontendProfiler } from '@/lib/services';
 
 /**
  * Generic LSP client for communicating with language servers via Tauri IPC

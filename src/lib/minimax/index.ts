@@ -14,4 +14,6 @@ export {
     type MinimaxStreamChunk,
     type MinimaxChatRequest,
     type MinimaxToolDefinition,
+    type MinimaxMessage,
 } from './minimaxClient';
+

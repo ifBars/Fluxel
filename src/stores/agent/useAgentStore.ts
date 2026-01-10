@@ -1,8 +1,10 @@
 import { create } from 'zustand';
-import type { AgentState, ChatMessage, FileContext, AgentConversation, ProviderType } from './types';
+import { persist } from 'zustand/middleware';
+import type { AgentState, ChatMessage, FileContext, AgentConversation, ProviderType, ModelConfig, ProviderConfig } from './types';
 import { getAvailableModels } from '@/lib/ollama/ollamaChatClient';
 import { getAvailableMinimaxModels } from '@/lib/minimax';
-import { getCachedModels, setCachedModels } from '@/lib/ollama/modelCache';
+
+
 
 interface AgentActions {
     // Panel
@@ -35,213 +37,290 @@ interface AgentActions {
     clearStreaming: () => void;
 
     // Settings
-    setModel: (model: string) => void;
+    setModel: (modelId: string) => void;
     setTemperature: (temperature: number) => void;
     setProvider: (provider: ProviderType) => void;
-    setMinimaxApiKey: (key: string | null) => void;
+
+    // New Config Actions
+    toggleSettings: (section?: string) => void;
+    updateProviderConfig: (providerId: string, config: Partial<ProviderConfig>) => void;
+    toggleModelEnabled: (modelId: string, enabled: boolean) => void;
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 11);
 
-// Default models per provider
-const DEFAULT_MODELS: Record<ProviderType, string> = {
-    ollama: 'qwen3:8b',
+// Default models per provider to fallback to
+const DEFAULT_MODELS: Record<string, string> = {
+    ollama: 'qwen2.5-coder:1.5b',
     minimax: 'MiniMax-M2.1',
 };
 
-export const useAgentStore = create<AgentState & AgentActions>((set, get) => ({
-    // Initial state
-    isOpen: false,
-    isPanelMode: 'sidebar',
-    conversations: [],
-    activeConversationId: null,
-    isGenerating: false,
-    streamingContent: '',
-    streamingThinking: '',
-    attachedContext: [],
-    provider: 'ollama',
-    model: 'qwen3:8b',
-    availableModels: getCachedModels() ?? [], // Load from cache on initialization
-    temperature: 0.7,
-    maxTurns: 15,
-    minimaxApiKey: null,
+export const useAgentStore = create<AgentState & AgentActions>()(
+    persist(
+        (set, get) => ({
+            // Initial state
+            isOpen: false,
+            isPanelMode: 'sidebar',
+            conversations: [],
+            activeConversationId: null,
+            isGenerating: false,
+            streamingContent: '',
+            streamingThinking: '',
+            attachedContext: [],
 
-    // Panel actions
-    togglePanel: () => set(state => ({ isOpen: !state.isOpen })),
-    setOpen: (open: boolean) => set({ isOpen: open }),
+            // Legacy/Compat
+            provider: 'ollama',
+            model: 'qwen2.5-coder:1.5b',
+            availableModels: [],
 
-    // Model actions
-    fetchModels: async () => {
-        const { provider } = get();
+            // New Configuration State
+            settingsOpen: false,
+            settingsSection: undefined,
+            providerConfigs: {
+                ollama: { id: 'ollama', name: 'Ollama', enabled: true },
+                minimax: { id: 'minimax', name: 'MiniMax', enabled: false }
+            },
+            models: [],
+            activeModelId: 'qwen2.5-coder:1.5b',
 
-        if (provider === 'minimax') {
-            // MiniMax has a static model list
-            const models = await getAvailableMinimaxModels();
-            set({ availableModels: models });
-            return;
-        }
+            temperature: 0.7,
+            maxTurns: 15,
+            minimaxApiKey: null,
 
-        // Ollama - check cache first for instant response
-        const cached = getCachedModels();
-        if (cached && cached.length > 0) {
-            set({ availableModels: cached });
-        }
+            // Panel actions
+            togglePanel: () => set(state => ({ isOpen: !state.isOpen })),
+            setOpen: (open: boolean) => set({ isOpen: open }),
 
-        // Fetch fresh models in background and update cache
-        try {
-            const models = await getAvailableModels();
-            set({ availableModels: models });
-            setCachedModels(models);
-        } catch (error) {
-            console.error('[AgentStore] Failed to fetch models:', error);
-            // Keep cached models if fetch fails
-            if (!cached || cached.length === 0) {
-                set({ availableModels: [] });
-            }
-        }
-    },
+            // Config Actions
+            toggleSettings: (section) => set(state => ({
+                settingsOpen: !state.settingsOpen,
+                settingsSection: section
+            })),
 
-    // Conversation actions
-    createConversation: () => {
-        const id = generateId();
-        const newConversation: AgentConversation = {
-            id,
-            title: 'New Chat',
-            messages: [],
-            createdAt: new Date(),
-            updatedAt: new Date(),
-        };
+            updateProviderConfig: (providerId, config) => set(state => ({
+                providerConfigs: {
+                    ...state.providerConfigs,
+                    [providerId]: { ...state.providerConfigs[providerId], ...config }
+                }
+            })),
 
-        set(state => ({
-            conversations: [...state.conversations, newConversation],
-            activeConversationId: id,
-        }));
+            toggleModelEnabled: (modelId, enabled) => set(state => ({
+                models: state.models.map(m => m.id === modelId ? { ...m, enabled } : m)
+            })),
 
-        return id;
-    },
+            // Model actions
+            fetchModels: async () => {
+                const { providerConfigs } = get();
+                let allModels: ModelConfig[] = [];
 
-    deleteConversation: (id: string) => {
-        set(state => ({
-            conversations: state.conversations.filter(c => c.id !== id),
-            activeConversationId: state.activeConversationId === id ? null : state.activeConversationId,
-        }));
-    },
-
-    setActiveConversation: (id: string | null) => {
-        set({ activeConversationId: id });
-    },
-
-    // Message actions
-    addMessage: (message) => {
-        const { activeConversationId, conversations } = get();
-        if (!activeConversationId) return;
-
-        const newMessage: ChatMessage = {
-            ...message,
-            id: generateId(),
-            timestamp: new Date(),
-        };
-
-        set({
-            conversations: conversations.map(conv =>
-                conv.id === activeConversationId
-                    ? {
-                        ...conv,
-                        messages: [...conv.messages, newMessage],
-                        updatedAt: new Date(),
-                        // Auto-title from first user message
-                        title: conv.messages.length === 0 && message.role === 'user'
-                            ? message.content.slice(0, 50) + (message.content.length > 50 ? '...' : '')
-                            : conv.title,
+                // 1. Fetch Ollama
+                if (providerConfigs.ollama?.enabled) {
+                    try {
+                        const ollamaModels = await getAvailableModels();
+                        const mapped = ollamaModels.map(name => ({
+                            id: name,
+                            name: name,
+                            providerId: 'ollama',
+                            enabled: true
+                        }));
+                        allModels = [...allModels, ...mapped];
+                    } catch (e) {
+                        console.error('Failed to fetch Ollama models', e);
                     }
-                    : conv
-            ),
-        });
-    },
+                }
 
-    updateMessage: (id: string, updates: Partial<ChatMessage>) => {
-        const { activeConversationId, conversations } = get();
-        if (!activeConversationId) return;
+                // 2. Fetch MiniMax
+                // if (providerConfigs.minimax?.enabled) { // Allow fetching even if disabled to show what's available? No, only enabled providers.
+                try {
+                    // Always fetch minimax since it's static list usually, unless explicitly disabled by user later? 
+                    // For now let's just fetch it if the provider block exists.
+                    const minimaxModels = await getAvailableMinimaxModels();
+                    const mapped = minimaxModels.map(name => ({
+                        id: name,
+                        name: name,
+                        providerId: 'minimax',
+                        enabled: true
+                    }));
+                    allModels = [...allModels, ...mapped];
+                } catch (e) {
+                    console.error('Failed to fetch MiniMax models', e);
+                }
+                // }
 
-        set({
-            conversations: conversations.map(conv =>
-                conv.id === activeConversationId
-                    ? {
-                        ...conv,
-                        messages: conv.messages.map(msg =>
-                            msg.id === id ? { ...msg, ...updates } : msg
-                        ),
-                        updatedAt: new Date(),
-                    }
-                    : conv
-            ),
-        });
-    },
+                // Merge with existing state to preserve 'enabled' preferences
+                set(state => {
+                    const existingMap = new Map(state.models.map(m => [m.id, m]));
+                    const merged = allModels.map(newModel => {
+                        const existing = existingMap.get(newModel.id);
+                        // If it existed before, keep its enabled state. If new, default to true.
+                        return existing ? { ...newModel, enabled: existing.enabled } : newModel;
+                    });
 
-    appendStreamingContent: (content: string) => {
-        set(state => ({ streamingContent: state.streamingContent + content }));
-    },
+                    return {
+                        models: merged,
+                        // Update legacy availableModels for backward compat if needed
+                        availableModels: merged.map(m => m.id)
+                    };
+                });
+            },
 
-    setStreamingContent: (content: string) => {
-        set({ streamingContent: content });
-    },
+            // Conversation actions
+            createConversation: () => {
+                const id = generateId();
+                const newConversation: AgentConversation = {
+                    id,
+                    title: 'New Chat',
+                    messages: [],
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                };
+                set(state => ({
+                    conversations: [...state.conversations, newConversation],
+                    activeConversationId: id,
+                }));
+                return id;
+            },
 
-    appendStreamingThinking: (content: string) => {
-        set(state => ({ streamingThinking: state.streamingThinking + content }));
-    },
+            deleteConversation: (id: string) => {
+                set(state => ({
+                    conversations: state.conversations.filter(c => c.id !== id),
+                    activeConversationId: state.activeConversationId === id ? null : state.activeConversationId,
+                }));
+            },
 
-    setStreamingThinking: (content: string) => {
-        set({ streamingThinking: content });
-    },
+            setActiveConversation: (id: string | null) => {
+                set({ activeConversationId: id });
+            },
 
-    clearStreaming: () => {
-        set({ streamingContent: '', streamingThinking: '' });
-    },
+            // Message actions
+            addMessage: (message) => {
+                const { activeConversationId, conversations } = get();
+                if (!activeConversationId) return;
 
-    // Context actions
-    attachFile: (file: FileContext) => {
-        set(state => ({
-            attachedContext: [...state.attachedContext, file],
-        }));
-    },
+                const newMessage: ChatMessage = {
+                    ...message,
+                    id: generateId(),
+                    timestamp: new Date(),
+                };
 
-    removeFile: (path: string) => {
-        set(state => ({
-            attachedContext: state.attachedContext.filter(f => f.path !== path),
-        }));
-    },
+                set({
+                    conversations: conversations.map(conv =>
+                        conv.id === activeConversationId
+                            ? {
+                                ...conv,
+                                messages: [...conv.messages, newMessage],
+                                updatedAt: new Date(),
+                                // Auto-title from first user message
+                                title: conv.messages.length === 0 && message.role === 'user'
+                                    ? message.content.slice(0, 50) + (message.content.length > 50 ? '...' : '')
+                                    : conv.title,
+                            }
+                            : conv
+                    ),
+                });
+            },
 
-    clearContext: () => {
-        set({ attachedContext: [] });
-    },
+            updateMessage: (id: string, updates: Partial<ChatMessage>) => {
+                const { activeConversationId, conversations } = get();
+                if (!activeConversationId) return;
 
-    // Generation actions
-    setGenerating: (generating: boolean) => {
-        set({ isGenerating: generating });
-    },
+                set({
+                    conversations: conversations.map(conv =>
+                        conv.id === activeConversationId
+                            ? {
+                                ...conv,
+                                messages: conv.messages.map(msg =>
+                                    msg.id === id ? { ...msg, ...updates } : msg
+                                ),
+                                updatedAt: new Date(),
+                            }
+                            : conv
+                    ),
+                });
+            },
 
-    // Settings actions
-    setModel: (model: string) => {
-        set({ model });
-    },
+            appendStreamingContent: (content: string) => {
+                set(state => ({ streamingContent: state.streamingContent + content }));
+            },
 
-    setTemperature: (temperature: number) => {
-        set({ temperature });
-    },
+            setStreamingContent: (content: string) => {
+                set({ streamingContent: content });
+            },
 
-    setProvider: (provider: ProviderType) => {
-        const defaultModel = DEFAULT_MODELS[provider];
-        set({
-            provider,
-            model: defaultModel,
-            availableModels: [], // Clear models, will be fetched
-        });
-        // Trigger model fetch for new provider
-        get().fetchModels();
-    },
+            appendStreamingThinking: (content: string) => {
+                set(state => ({ streamingThinking: state.streamingThinking + content }));
+            },
 
-    setMinimaxApiKey: (key: string | null) => {
-        set({ minimaxApiKey: key });
-    },
-}));
+            setStreamingThinking: (content: string) => {
+                set({ streamingThinking: content });
+            },
 
+            clearStreaming: () => {
+                set({ streamingContent: '', streamingThinking: '' });
+            },
+
+            // Context actions
+            attachFile: (file: FileContext) => {
+                set(state => ({
+                    attachedContext: [...state.attachedContext, file],
+                }));
+            },
+
+            removeFile: (path: string) => {
+                set(state => ({
+                    attachedContext: state.attachedContext.filter(f => f.path !== path),
+                }));
+            },
+
+            clearContext: () => {
+                set({ attachedContext: [] });
+            },
+
+            // Generation actions
+            setGenerating: (generating: boolean) => {
+                set({ isGenerating: generating });
+            },
+
+            // Settings actions
+            setModel: (modelId: string) => {
+                const { models } = get();
+                const selectedModel = models.find(m => m.id === modelId);
+
+                if (selectedModel) {
+                    set({
+                        activeModelId: modelId,
+                        model: modelId,
+                        provider: selectedModel.providerId as ProviderType
+                    });
+                } else {
+                    set({ activeModelId: modelId, model: modelId });
+                }
+            },
+
+            setTemperature: (temperature: number) => {
+                set({ temperature });
+            },
+
+            setProvider: (provider: ProviderType) => {
+                set({ provider });
+                // Auto-switch to default model for this provider if current active model is not from this provider
+                const defaultModel = DEFAULT_MODELS[provider];
+                if (defaultModel) {
+                    set({ activeModelId: defaultModel, model: defaultModel });
+                }
+            },
+        }),
+        {
+            name: 'agent-storage',
+            partialize: (state) => ({
+                providerConfigs: state.providerConfigs,
+                models: state.models,
+                activeModelId: state.activeModelId,
+                activeConversationId: state.activeConversationId,
+                conversations: state.conversations,
+                temperature: state.temperature,
+                minimaxApiKey: state.minimaxApiKey,
+            }),
+        }
+    )
+);

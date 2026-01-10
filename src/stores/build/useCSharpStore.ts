@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { getProjectConfigurations, BuildConfiguration } from '@/lib/languages/csharp';
-import { FrontendProfiler } from '@/lib/services/FrontendProfiler';
+import { FrontendProfiler } from '@/lib/services';
 
 interface CSharpStore {
     configurations: BuildConfiguration[];

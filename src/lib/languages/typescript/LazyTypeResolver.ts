@@ -6,7 +6,7 @@
  */
 
 import type * as Monaco from 'monaco-editor';
-import { batchReadFiles, batchDiscoverTypings } from '../../services/BatchFileService';
+import { batchReadFiles, batchDiscoverTypings } from '../../services';
 import { normalizePath, toFileUri } from './TypeLoader';
 import { useTypeLoadingStore } from '@/stores';
 
@@ -167,7 +167,7 @@ export class LazyTypeResolver {
             }
 
             try {
-                this.monaco.typescript.typescriptDefaults.addExtraLib(content, virtualPath);
+                this.monaco.typescript.typescriptDefaults.addExtraLib(content as string, virtualPath);
                 this.loadedTypeUris.add(virtualPath);
             } catch (error) {
                 console.debug('[LazyTypeResolver] Failed to add lib:', virtualPath, error);

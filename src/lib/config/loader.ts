@@ -33,7 +33,7 @@ import type {
     Framework,
 } from './schemas/metadata-types';
 import { useConfigMetadataStore } from '@/stores';
-import { FrontendProfiler } from '../services/FrontendProfiler';
+import { FrontendProfiler } from '../services/profiling/FrontendProfiler';
 
 /**
  * Parse package.json file
