@@ -2,7 +2,7 @@
 
 A performance-first code editor built with Tauri v2 and React. Born from frustration with VSCode's sluggishness, Fluxel prioritizes speed without sacrificing essential features.
 
-<img width="1920" height="1031" alt="image" src="https://github.com/user-attachments/assets/7567af67-7768-4e6a-83ff-205b01d8db55" />
+<img width="1920" height="1031" alt="image" src="https://github.com/user-attachments/assets/dc775c76-067d-49c0-8a2c-7eea61446dde" />
 
 ## Philosophy
 

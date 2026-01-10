@@ -66,23 +66,23 @@ const BATCH_FLUSH_INTERVAL = 50; // ms - flush every 50ms max
 function scheduleFlush(): void {
     if (flushScheduled || pendingSpans.length === 0) return;
     flushScheduled = true;
-    
+
     // Use setTimeout for batching - low priority, won't block UI
     setTimeout(flushPendingSpans, BATCH_FLUSH_INTERVAL);
 }
 
 async function flushPendingSpans(): Promise<void> {
     flushScheduled = false;
-    
+
     if (pendingSpans.length === 0) return;
     if (!isProfilingAvailableSync()) {
         pendingSpans.length = 0; // Clear if profiling not available
         return;
     }
-    
+
     // Take all pending spans
     const spans = pendingSpans.splice(0, pendingSpans.length);
-    
+
     try {
         // Send all spans in a single IPC call
         await invoke('profiler_record_frontend_spans_batch', { spans });
@@ -90,7 +90,7 @@ async function flushPendingSpans(): Promise<void> {
         // If batch command doesn't exist, fall back to individual calls
         // This maintains backwards compatibility
         for (const span of spans) {
-            invoke('profiler_record_frontend_span', { span }).catch(() => {});
+            invoke('profiler_record_frontend_span', { span }).catch(() => { });
         }
     }
 }
@@ -102,7 +102,7 @@ async function flushPendingSpans(): Promise<void> {
 function queueSpan(span: FrontendSpanInput): void {
     // Early exit if we know profiling isn't available
     if (isProfilingAvailable === false) return;
-    
+
     pendingSpans.push(span);
     scheduleFlush();
 }
@@ -210,10 +210,10 @@ export async function exportData(
     }
     try {
         // Tauri automatically converts camelCase to snake_case for command parameters
-        return await invoke<string>('profiler_export', { 
-            format, 
-            sessionName: sessionName || null, 
-            limit: limit || null 
+        return await invoke<string>('profiler_export', {
+            format,
+            sessionName: sessionName || null,
+            limit: limit || null
         });
     } catch (error) {
         console.error('[Profiler] Failed to export data:', error);
@@ -244,7 +244,7 @@ export async function downloadExport(
     try {
         console.log('[Profiler] Starting export:', { format, sessionName });
         const data = await exportData(format, sessionName);
-        
+
         if (!data) {
             const errorMsg = 'No profiling data available to export. Make sure profiling is enabled and you have recorded some spans.';
             console.error('[Profiler]', errorMsg);
@@ -281,7 +281,7 @@ export async function downloadExport(
         // Write the file using Tauri's fs plugin
         const { writeTextFile } = await import('@tauri-apps/plugin-fs');
         await writeTextFile(filePath, data);
-        
+
         console.log('[Profiler] Export completed successfully:', filePath);
     } catch (error) {
         const errorMsg = `Failed to export profiling data: ${error instanceof Error ? error.message : String(error)}`;
@@ -317,6 +317,6 @@ export const ProfilerService = {
 
 // Eagerly check profiling availability so that sync checks work
 // This is fire-and-forget - we don't block on it
-checkProfilingAvailable().catch(() => {});
+checkProfilingAvailable().catch(() => { });
 
 export default ProfilerService;

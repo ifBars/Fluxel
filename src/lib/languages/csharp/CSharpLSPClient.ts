@@ -2,7 +2,7 @@ import { readDir } from '@tauri-apps/plugin-fs';
 import { BaseLSPClient } from '../base/BaseLSPClient';
 import type { LSPClientConfig } from '../base/types';
 import { fsPathToLspUri } from '../base/fileUris';
-import { FrontendProfiler } from '@/lib/services/FrontendProfiler';
+import { FrontendProfiler } from '@/lib/services';
 
 /**
  * C#-specific LSP client
@@ -226,7 +226,7 @@ async function findSolutionFile(workspaceRoot?: string): Promise<string | null> 
             for (const entry of rootEntries) {
                 if (!entry.name || !entry.isDirectory) continue;
                 const depth1Path = normalizePath(`${workspaceRoot}/${entry.name}`);
-                
+
                 const depth1Entries = await readDir(depth1Path);
                 const depth1Sln = depth1Entries.find((child) => child.name?.toLowerCase().endsWith('.sln') && !child.isDirectory);
                 if (depth1Sln && depth1Sln.name) {
@@ -237,7 +237,7 @@ async function findSolutionFile(workspaceRoot?: string): Promise<string | null> 
                 for (const depth1Entry of depth1Entries) {
                     if (!depth1Entry.name || !depth1Entry.isDirectory) continue;
                     const depth2Path = normalizePath(`${depth1Path}/${depth1Entry.name}`);
-                    
+
                     const depth2Entries = await readDir(depth2Path);
                     const depth2Sln = depth2Entries.find((child) => child.name?.toLowerCase().endsWith('.sln') && !child.isDirectory);
                     if (depth2Sln && depth2Sln.name) {
@@ -275,7 +275,7 @@ async function findSolutionOrProjectFile(workspaceRoot?: string): Promise<string
             for (const entry of rootEntries) {
                 if (!entry.name || !entry.isDirectory) continue;
                 const depth1Path = normalizePath(`${workspaceRoot}/${entry.name}`);
-                
+
                 const depth1Entries = await readDir(depth1Path);
                 const depth1Csproj = depth1Entries.find((child) => child.name?.toLowerCase().endsWith('.csproj') && !child.isDirectory);
                 if (depth1Csproj && depth1Csproj.name) {
@@ -286,7 +286,7 @@ async function findSolutionOrProjectFile(workspaceRoot?: string): Promise<string
                 for (const depth1Entry of depth1Entries) {
                     if (!depth1Entry.name || !depth1Entry.isDirectory) continue;
                     const depth2Path = normalizePath(`${depth1Path}/${depth1Entry.name}`);
-                    
+
                     const depth2Entries = await readDir(depth2Path);
                     const depth2Csproj = depth2Entries.find((child) => child.name?.toLowerCase().endsWith('.csproj') && !child.isDirectory);
                     if (depth2Csproj && depth2Csproj.name) {

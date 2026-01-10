@@ -7,8 +7,8 @@
 
 import { readTextFile, readDir } from '@tauri-apps/plugin-fs';
 import type * as Monaco from 'monaco-editor';
-import { discoverTypingsForPackages } from '../../services/NodeResolverService';
-import { batchReadFiles } from '../../services/BatchFileService';
+import { discoverTypingsForPackages } from '../../services';
+import { batchReadFiles } from '../../services';
 import { useTypeLoadingStore } from '@/stores';
 
 // Type alias for Monaco instance
@@ -188,7 +188,7 @@ export function toFileUri(path: string): string {
  */
 async function readPackageJson(projectRoot: string): Promise<PackageJson | null> {
     // Import FrontendProfiler dynamically to avoid circular dependencies
-    const { FrontendProfiler } = await import('../../services/FrontendProfiler');
+    const { FrontendProfiler } = await import('../../services/profiling/FrontendProfiler');
     
     return await FrontendProfiler.profileAsync('readPackageJson', 'file_io', async () => {
         try {
@@ -206,7 +206,7 @@ async function readPackageJson(projectRoot: string): Promise<PackageJson | null>
  */
 export async function readTsConfig(projectRoot: string): Promise<TsConfig | null> {
     // Import FrontendProfiler dynamically to avoid circular dependencies
-    const { FrontendProfiler } = await import('../../services/FrontendProfiler');
+    const { FrontendProfiler } = await import('../../services/profiling/FrontendProfiler');
     
     return await FrontendProfiler.profileAsync('readTsConfig', 'file_io', async () => {
         try {
@@ -543,13 +543,13 @@ async function loadResolverTypings(
                 if (loadedTypeUris.has(virtualPath)) continue;
 
                 // Use queue-based system for controlled memory usage
-                const queued = queueExtraLib(content, virtualPath, monaco);
+                const queued = queueExtraLib(content as string, virtualPath, monaco);
                 if (queued) {
                     totalFiles++;
 
                     // Collect references from first few files
                     if (collectReferences && totalFiles <= 50) {
-                        for (const root of extractBarePackageRoots(content)) {
+                        for (const root of extractBarePackageRoots(content as string)) {
                             referencedPackages.add(root);
                         }
                     }
@@ -641,7 +641,7 @@ async function loadDefaultLibFiles(
     libs: string[]
 ): Promise<void> {
     // Import FrontendProfiler dynamically to avoid circular dependencies
-    const { FrontendProfiler } = await import('../../services/FrontendProfiler');
+    const { FrontendProfiler } = await import('../../services/profiling/FrontendProfiler');
     
     return await FrontendProfiler.profileAsync('loadDefaultLibFiles', 'workspace', async () => {
         try {
@@ -1022,7 +1022,7 @@ export async function loadProjectTypes(
     console.log('[TypeLoader] Loading project types from:', projectRoot);
 
     // Import FrontendProfiler dynamically to avoid circular dependencies
-    const { FrontendProfiler } = await import('@/lib/services/FrontendProfiler');
+    const { FrontendProfiler } = await import('@/lib/services/profiling/FrontendProfiler');
     
     await FrontendProfiler.profileAsync('loadProjectTypes', 'workspace', async () => {
         // Get the store for status updates

@@ -12,6 +12,10 @@
 
     // Global error handler for debugging production startup issues
     window.onerror = function (msg, url, lineNo, columnNo, error) {
+      if (typeof msg === 'string' && msg.includes("ResizeObserver loop completed with undelivered notifications")) {
+        return true;
+      }
+
       window.__appLoadFailed = true;
 
       // Update loading screen to show error
@@ -43,7 +47,7 @@
       errorDiv.style.maxHeight = '40vh';
       errorDiv.style.overflow = 'auto';
 
-      const errorMessage = 'Startup Error:\n' + msg + '\n\nFile: ' + url + '\nLine: ' + lineNo + ':' + columnNo;
+      const errorMessage = 'Fluxel Frontend Error:\n' + msg + '\n\nFile: ' + url + '\nLine: ' + lineNo + ':' + columnNo;
       if (error && error.stack) {
         errorDiv.textContent = errorMessage + '\n\nStack trace:\n' + error.stack;
       } else {

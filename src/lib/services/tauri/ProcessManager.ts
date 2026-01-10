@@ -74,7 +74,7 @@ export function isTracked(pid: number): boolean {
 }
 
 // Default export as a namespace-like object
-export const processManager = {
+export const ProcessManager = {
     registerProcess,
     unregisterProcess,
     killAllProcesses,
@@ -82,4 +82,4 @@ export const processManager = {
     isTracked,
 };
 
-export default processManager;
+export default ProcessManager;

@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { Project } from '@/types/fs';
 import type { ProjectProfile } from '@/types/project';
 import { getCSharpLSPClient } from '@/lib/languages/csharp';
-import { FrontendProfiler } from '@/lib/services/FrontendProfiler';
+import { FrontendProfiler } from '@/lib/services';
 
 interface ProjectState {
     /** Currently open project */

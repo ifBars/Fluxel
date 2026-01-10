@@ -4,30 +4,30 @@ import type { FileEntry } from '@/types/fs';
 import { getFileExtension } from '@/types/fs';
 import { useFileIcon } from '@/lib/icons';
 import { useProfiler } from '@/hooks/useProfiler';
-import { FrontendProfiler } from '@/lib/services/FrontendProfiler';
+import { FrontendProfiler } from '@/lib/services';
 
 // Inline SVG icons to avoid eager loading react-icons during app initialization
 const ChevronRight = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
     <svg viewBox="0 0 24 24" fill="currentColor" className={className} style={style}>
-        <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
+        <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" />
     </svg>
 );
 
 const ExpandMore = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
     <svg viewBox="0 0 24 24" fill="currentColor" className={className} style={style}>
-        <path d="M16.59 8.59L12 13.17 7.41 8.59 6 10l6 6 6-6z"/>
+        <path d="M16.59 8.59L12 13.17 7.41 8.59 6 10l6 6 6-6z" />
     </svg>
 );
 
 const Folder = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
     <svg viewBox="0 0 24 24" fill="currentColor" className={className} style={style}>
-        <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+        <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" />
     </svg>
 );
 
 const FolderOpen = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
     <svg viewBox="0 0 24 24" fill="currentColor" className={className} style={style}>
-        <path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z"/>
+        <path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z" />
     </svg>
 );
 
@@ -58,14 +58,14 @@ const FileTreeNode = memo(function FileTreeNode({ entry, depth }: FileTreeNodePr
                 metadata: { path: entry.path, expanded: (!isExpanded).toString() },
                 parentId: undefined // Explicitly set to undefined to make it a root span (no parent)
             });
-            trackInteraction('folder_toggle', { 
-                path: entry.path, 
-                expanded: (!isExpanded).toString() 
+            trackInteraction('folder_toggle', {
+                path: entry.path,
+                expanded: (!isExpanded).toString()
             });
-            
+
             // toggleFolder already handles loading children if needed, so we don't need to call it again
             await toggleFolder(entry.path, toggleSpan.id);
-            
+
             await toggleSpan.end({
                 path: entry.path,
                 expanded: (!isExpanded).toString()
@@ -74,13 +74,13 @@ const FileTreeNode = memo(function FileTreeNode({ entry, depth }: FileTreeNodePr
             const span = startSpan('open_file_from_tree', 'frontend_interaction');
             try {
                 await openFile(entry.path);
-                trackInteraction('file_opened', { 
+                trackInteraction('file_opened', {
                     fileName: entry.name,
                     extension: getFileExtension(entry.name)
                 });
                 await span.end({ filePath: entry.path });
             } catch (error) {
-                await span.end({ 
+                await span.end({
                     filePath: entry.path,
                     error: error instanceof Error ? error.message : String(error)
                 });
@@ -155,11 +155,11 @@ const FileTreeNode = memo(function FileTreeNode({ entry, depth }: FileTreeNodePr
  */
 function ChunkedFileTree({ children }: { children: FileEntry[] }) {
     const { startSpan, trackInteraction } = useProfiler('ChunkedFileTree');
-    
+
     // Memoize children length to avoid recalculation
     const childrenLength = useMemo(() => children.length, [children.length]);
     const shouldUseSmallBatches = childrenLength > 50;
-    
+
     const [visibleCount, setVisibleCount] = useState(() => {
         // Initial render: show fewer items for large folders to improve responsiveness
         return Math.min(childrenLength, shouldUseSmallBatches ? 50 : 200);
@@ -172,7 +172,7 @@ function ChunkedFileTree({ children }: { children: FileEntry[] }) {
         // Reset visible count when children length changes
         if (visibleCount > childrenLength || visibleCount < initialVisible) {
             setVisibleCount(initialVisible);
-            trackInteraction('file_tree_reset', { 
+            trackInteraction('file_tree_reset', {
                 totalCount: childrenLength.toString(),
                 initialVisible: initialVisible.toString()
             });
@@ -187,17 +187,17 @@ function ChunkedFileTree({ children }: { children: FileEntry[] }) {
                 const batchSize = shouldUseSmallBatches ? 25 : 100;
                 const nextCount = Math.min(visibleCount + batchSize, childrenLength);
                 setVisibleCount(nextCount);
-                span.end({ 
+                span.end({
                     batchSize: (nextCount - visibleCount).toString(),
                     totalVisible: nextCount.toString()
                 });
             };
 
             // Use requestIdleCallback if available for better performance, fallback to setTimeout
-            const scheduleFn = typeof requestIdleCallback !== 'undefined' 
-                ? requestIdleCallback 
+            const scheduleFn = typeof requestIdleCallback !== 'undefined'
+                ? requestIdleCallback
                 : (fn: () => void) => window.setTimeout(fn, 0) as number;
-            
+
             const timeoutId = scheduleFn(scheduleNextBatch);
             return () => {
                 if (typeof timeoutId === 'number') {

@@ -8,6 +8,7 @@ export function MessageList() {
     const activeConversationId = useAgentStore(state => state.activeConversationId);
     const isGenerating = useAgentStore(state => state.isGenerating);
     const streamingContent = useAgentStore(state => state.streamingContent);
+    const streamingThinking = useAgentStore(state => state.streamingThinking);
 
     const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -19,7 +20,7 @@ export function MessageList() {
         if (scrollRef.current) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
-    }, [messages.length, streamingContent]);
+    }, [messages.length, streamingContent, streamingThinking]);
 
     if (!activeConversation) {
         return (
@@ -59,6 +60,7 @@ export function MessageList() {
                             content: streamingContent || 'Thinking...',
                             timestamp: new Date(),
                             isStreaming: true,
+                            thinking: streamingThinking || undefined,
                         }}
                     />
                 )}
@@ -66,3 +68,4 @@ export function MessageList() {
         </ScrollableArea>
     );
 }
+

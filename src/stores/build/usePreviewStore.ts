@@ -1,10 +1,10 @@
 import { create } from 'zustand';
 import { getConfigMetadata } from '@/lib/config/loader';
 import { Command, Child } from '@tauri-apps/plugin-shell';
-import { registerProcess, unregisterProcess } from '@/lib/services/processManager';
-import { FrontendProfiler } from '@/lib/services/FrontendProfiler';
+import { registerProcess, unregisterProcess, FrontendProfiler } from '@/lib/services';
 import { invoke } from '@tauri-apps/api/core';
 import type { ProjectProfile } from '@/types/project';
+
 
 interface PreviewState {
     // Preview URL for the iframe

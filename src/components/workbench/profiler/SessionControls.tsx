@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useProfilerStore } from '@/stores/profiler';
-import { ProfilerService } from '@/lib/services/ProfilerService';
+import { ProfilerService } from '@/lib/services';
 
 export const SessionControls: React.FC = () => {
     const {

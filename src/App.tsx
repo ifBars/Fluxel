@@ -3,8 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { TitleBar } from "./components/ui/titlebar";
 import { useSettingsStore, usePreviewStore } from "@/stores";
-import { openWorkspace, closeWorkspace } from "@/lib/services/ProjectManager";
-import { FrontendProfiler } from "@/lib/services/FrontendProfiler";
+import { openWorkspace, closeWorkspace, FrontendProfiler } from "@/lib/services";
 import { useProfiler } from "@/hooks/useProfiler";
 import { useGlobalShortcuts } from "@/hooks/useGlobalShortcuts";
 import { preloadIconPack } from "@/lib/icons";
@@ -51,15 +50,15 @@ function TrackedSuspenseFallback({ view }: { view: string }) {
     const loadDuration = performance.now() - startTimeRef.current;
     return () => {
       if (spanRef.current) {
-        spanRef.current.end({ 
-          view, 
+        spanRef.current.end({
+          view,
           loadDurationMs: String(loadDuration.toFixed(2))
         });
         spanRef.current = null;
       }
     };
   }, [view]);
-  
+
   return null; // Invisible fallback
 }
 
@@ -108,27 +107,27 @@ function App() {
   const handleProjectOpen = useCallback(() => {
     // Start tracking the complete view transition (including module load)
     const viewTransitionSpan = FrontendProfiler.startSpan('view_transition:landing_to_editor', 'frontend_interaction');
-    
+
     FrontendProfiler.trackInteraction('view_switch', { from: 'landing', to: 'editor' });
-    
+
     // Ensure EditorPage is preloaded before switching views
     // This eliminates the lazy loading delay during the transition
     preloadEditorPage();
-    
+
     // Profile React transition scheduling and rendering
     const transitionSpan = FrontendProfiler.startSpan('react:startTransition', 'frontend_render');
     startTransition(() => {
       // Profile the actual state update
       const stateUpdateSpan = FrontendProfiler.startSpan('react:setState', 'frontend_render');
       setCurrentView("editor");
-      
+
       // End spans after React schedules the update
       // The actual render will be tracked by component ProfilerWrapper
       Promise.resolve().then(() => {
         stateUpdateSpan.end({ view: 'editor' });
         transitionSpan.end({ view: 'editor' });
       });
-      
+
       // End view transition span after EditorPage mounts (captured via RAF)
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
@@ -149,16 +148,25 @@ function App() {
   }, [startTransition]);
 
   const openExternalProject = useCallback(
-    async (rootPath: string) => {
+    async (rootPath: string, filePath?: string) => {
       // Preload EditorPage before opening workspace to avoid lazy loading delay
       preloadEditorPage();
-      
+
       // Wait for directory to load before switching views
       await openWorkspace(rootPath, { waitForDirectory: true });
       FrontendProfiler.trackInteraction('view_switch', { from: 'landing', to: 'editor' });
       startTransition(() => {
         setCurrentView("editor");
       });
+
+      // If a file path was provided (right-click on file), open it after workspace loads
+      if (filePath) {
+        // Use setTimeout to ensure editor is mounted before opening file
+        setTimeout(async () => {
+          const { useEditorStore } = await import("@/stores");
+          await useEditorStore.getState().openFile(filePath);
+        }, 100);
+      }
     },
     [startTransition],
   );
@@ -176,14 +184,23 @@ function App() {
     if (hasCheckedLaunchPath.current) return;
     hasCheckedLaunchPath.current = true;
 
+    // LaunchInfo type from backend
+    interface LaunchInfo {
+      workspace_path: string;
+      file_path: string | null;
+    }
+
     // Optimized: Direct IIFE with manual span control to reduce overhead
     void (async () => {
       const span = FrontendProfiler.startSpan('checkLaunchPath', 'workspace');
       try {
-        const path = await invoke<string | null>("get_launch_path");
-        if (path) {
-          await openExternalProjectRef.current(path);
-          span.end({ hasPath: 'true' });
+        const launchInfo = await invoke<LaunchInfo | null>("get_launch_path");
+        if (launchInfo) {
+          await openExternalProjectRef.current(
+            launchInfo.workspace_path,
+            launchInfo.file_path ?? undefined
+          );
+          span.end({ hasPath: 'true', hasFile: launchInfo.file_path ? 'true' : 'false' });
         } else {
           span.end({ hasPath: 'false' });
         }

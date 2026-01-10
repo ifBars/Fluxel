@@ -1,143 +1,91 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useAgentStore } from '@/stores/agent/useAgentStore';
 import { MessageList } from './MessageList';
 import { InputArea } from './InputArea';
-import { Bot, X, Plus, History, Settings, RefreshCw } from 'lucide-react';
-import { TitlebarDropdown } from '@/components/ui/TitlebarDropdown';
+import { Plus, Settings, X, Sparkles } from 'lucide-react';
 import { useProfiler } from '@/hooks/useProfiler';
 
 export function AgentPanel() {
-    const { ProfilerWrapper, startSpan, trackInteraction } = useProfiler('AgentPanel');
+    const { ProfilerWrapper } = useProfiler('AgentPanel');
     const isOpen = useAgentStore(state => state.isOpen);
-    // const conversations = useAgentStore(state => state.conversations); // Unused
-    // const activeConversationId = useAgentStore(state => state.activeConversationId); // Unused
     const togglePanel = useAgentStore(state => state.togglePanel);
     const createConversation = useAgentStore(state => state.createConversation);
+    const toggleSettings = useAgentStore(state => state.toggleSettings);
 
-    // Model state
-    const model = useAgentStore(state => state.model);
-    const availableModels = useAgentStore(state => state.availableModels);
-    const fetchModels = useAgentStore(state => state.fetchModels);
-    const setModel = useAgentStore(state => state.setModel);
-    const [isLoadingModels, setIsLoadingModels] = useState(false);
+    // Responsive state
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [panelWidth, setPanelWidth] = useState(500);
 
-    // Defer model fetching to background - don't block render
+    // Observe container width changes
     useEffect(() => {
-        if (isOpen) {
-            // Models are already loaded from cache if available (instant)
-            // Fetch fresh models in background with low priority
-            setIsLoadingModels(true);
-            
-            // Use setTimeout to defer to next tick, allowing UI to render first
-            const timeoutId = setTimeout(() => {
-                const span = startSpan('fetch_models', 'frontend_network');
-                fetchModels()
-                    .then(() => {
-                        span.end({ count: availableModels.length.toString() });
-                        setIsLoadingModels(false);
-                    })
-                    .catch((e) => {
-                        span.end({ error: e.message });
-                        setIsLoadingModels(false);
-                    });
-            }, 0);
+        const container = containerRef.current;
+        if (!container) return;
 
-            return () => clearTimeout(timeoutId);
-        }
-    }, [isOpen, fetchModels, startSpan, availableModels.length]);
+        const observer = new ResizeObserver(entries => {
+            const entry = entries[0];
+            if (entry) {
+                setPanelWidth(entry.contentRect.width);
+            }
+        });
 
-    const handleModelChange = (newModel: string) => {
-        trackInteraction('change_model', { from: model, to: newModel });
-        setModel(newModel);
-    };
-
-    const handleCreateConversation = () => {
-        trackInteraction('create_conversation');
-        createConversation();
-    };
-
-    const handleTogglePanel = () => {
-        trackInteraction('close_panel');
-        togglePanel();
-    };
-
-    const handleRefreshModels = () => {
-        trackInteraction('refresh_models');
-        const span = startSpan('fetch_models_manual', 'frontend_network');
-        fetchModels()
-            .then(() => span.end({ count: availableModels.length.toString() }))
-            .catch((e) => span.end({ error: e.message }));
-    };
-
-    const modelOptions = availableModels.map(m => ({
-        value: m,
-        label: m,
-        icon: <Bot className="w-3 h-3" />
-    }));
+        observer.observe(container);
+        return () => observer.disconnect();
+    }, []);
 
     if (!isOpen) return null;
 
     return (
         <ProfilerWrapper>
-            <div className="flex flex-col h-full bg-card border-l border-border">
+            <div
+                ref={containerRef}
+                className="flex flex-col h-full bg-card border-l border-border relative"
+            >
                 {/* Header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
-                    <div className="flex items-center gap-2">
-                        <TitlebarDropdown
-                            value={model}
-                            options={modelOptions}
-                            onChange={handleModelChange}
-                            direction="down"
-                            width="auto"
-                            className="min-w-[140px]"
-                            placeholder="Select Model"
-                        />
-                        <button
-                            onClick={handleRefreshModels}
-                            className={`p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground ${isLoadingModels ? 'animate-spin' : ''}`}
-                            title="Refresh models"
-                            disabled={isLoadingModels}
-                        >
-                            <RefreshCw className="w-3.5 h-3.5" />
-                        </button>
-                    </div>
-                    <div className="flex items-center gap-1">
-                        <button
-                            onClick={handleCreateConversation}
-                            className="p-1.5 rounded hover:bg-muted transition-colors"
-                            title="New conversation"
-                        >
-                            <Plus className="w-4 h-4" />
-                        </button>
-                        <button
-                            className="p-1.5 rounded hover:bg-muted transition-colors"
-                            title="Conversation history (coming soon)"
-                            disabled
-                        >
-                            <History className="w-4 h-4 opacity-50" />
-                        </button>
-                        <button
-                            className="p-1.5 rounded hover:bg-muted transition-colors"
-                            title="Agent settings (coming soon)"
-                            disabled
-                        >
-                            <Settings className="w-4 h-4 opacity-50" />
-                        </button>
-                        <button
-                            onClick={handleTogglePanel}
-                            className="p-1.5 rounded hover:bg-muted transition-colors"
-                            title="Close panel"
-                        >
-                            <X className="w-4 h-4" />
-                        </button>
+                <div className="shrink-0 border-b border-border bg-muted/20">
+                    <div className="flex items-center justify-between px-3 py-2">
+                        {/* Left: Title/Icon */}
+                        <div className="flex items-center gap-2 text-sm font-medium text-foreground/80">
+                            <Sparkles className="w-4 h-4 text-primary" />
+                            <span>Agent</span>
+                        </div>
+
+                        {/* Right: Actions */}
+                        <div className="flex items-center gap-1">
+                            {/* New Conversation */}
+                            <button
+                                onClick={() => createConversation()}
+                                className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                                title="New conversation"
+                            >
+                                <Plus className="w-4 h-4" />
+                            </button>
+
+                            {/* Settings */}
+                            <button
+                                onClick={() => toggleSettings('agent')}
+                                className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                                title="Agent settings"
+                            >
+                                <Settings className="w-4 h-4" />
+                            </button>
+
+                            {/* Close */}
+                            <button
+                                onClick={() => togglePanel()}
+                                className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground ml-1"
+                                title="Close panel"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                {/* Messages */}
+                {/* Messages Area */}
                 <MessageList />
 
-                {/* Input */}
-                <InputArea />
+                {/* Input Area */}
+                <InputArea panelWidth={panelWidth} />
             </div>
         </ProfilerWrapper>
     );

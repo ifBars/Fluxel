@@ -1,17 +1,14 @@
 import { invoke } from '@tauri-apps/api/core';
 import { readTextFile } from '@tauri-apps/plugin-fs';
+import type { ToolDefinition } from './providers/types';
 
-export interface AgentTool {
-    type: 'function';
-    function: {
-        name: string;
-        description: string;
-        parameters: Record<string, unknown>;
-    };
-    execute: (args: any) => Promise<string>;
+export interface ExecutableTool extends ToolDefinition {
+    execute: (args: Record<string, unknown>) => Promise<string>;
 }
 
-export const tools: AgentTool[] = [
+export type AgentTool = ExecutableTool;
+
+export const tools: ExecutableTool[] = [
     {
         type: 'function',
         function: {
@@ -28,7 +25,12 @@ export const tools: AgentTool[] = [
                 },
             },
         },
-        execute: async ({ path }: { path: string }) => {
+        execute: async (args: Record<string, unknown>) => {
+            // Accept multiple possible parameter names
+            const path = (args.path || args.filePath || args.file_path || args.file) as string;
+            if (!path) {
+                return 'Error: path parameter is required';
+            }
             try {
                 const content = await readTextFile(path);
                 return content;
@@ -57,14 +59,24 @@ export const tools: AgentTool[] = [
                 },
             },
         },
-        execute: async ({ query, path }: { query: string; path: string }) => {
+        execute: async (args: Record<string, unknown>) => {
+            // Accept multiple possible parameter names
+            const query = (args.query || args.search_query || args.searchQuery || args.pattern || args.text) as string;
+            const path = (args.path || args.rootPath || args.root_path || args.directory || args.dir) as string;
+
+            if (!query) {
+                return 'Error: query parameter is required';
+            }
+            if (!path) {
+                return 'Error: path parameter is required';
+            }
+
             try {
                 // Using the existing search_files command from backend
-                // Signature: search_files(query: String, path: String, file_patterns: Option<Vec<String>>, exclude_patterns: Option<Vec<String>>) -> Result<Vec<SearchResult>, String>
                 const results = await invoke('search_files', {
                     query,
                     path,
-                    filePatterns: [], // Optional: explicit patterns if needed
+                    filePatterns: [],
                     excludePatterns: ['**/node_modules/**', '**/.git/**', '**/dist/**'],
                 });
                 return JSON.stringify(results, null, 2);
@@ -89,7 +101,14 @@ export const tools: AgentTool[] = [
                 },
             },
         },
-        execute: async ({ path }: { path: string }) => {
+        execute: async (args: Record<string, unknown>) => {
+            // Accept multiple possible parameter names
+            const path = (args.path || args.directory || args.dir || args.rootPath || args.root_path) as string;
+
+            if (!path) {
+                return 'Error: path parameter is required';
+            }
+
             try {
                 // Using the existing list_directory_entries command from backend
                 const entries = await invoke('list_directory_entries', { path });
@@ -100,3 +119,4 @@ export const tools: AgentTool[] = [
         }
     }
 ];
+

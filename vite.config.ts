@@ -46,7 +46,9 @@ export default defineConfig(async () => ({
       output: {
         manualChunks: (id) => {
           if (id.includes("node_modules")) {
-            if (id.includes("monaco") || id.includes("vscode")) {
+            // @monaco-editor/react must be bundled with React (vendor) since it uses React.memo
+            // Only pure monaco-editor goes in the monaco chunk
+            if ((id.includes("monaco-editor") || id.includes("vscode")) && !id.includes("@monaco-editor/react")) {
               return "monaco";
             }
             if (id.includes("framer-motion")) {

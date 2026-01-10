@@ -218,7 +218,7 @@ export async function parseViteConfig(
     projectRoot: string
 ): Promise<ConfigResult<{ devServer: DevServerConfig; hmr: HmrConfig; build: BuildConfig }>> {
     // Import FrontendProfiler dynamically to avoid circular dependencies
-    const { FrontendProfiler } = await import('../../services/FrontendProfiler');
+    const { FrontendProfiler } = await import('../../services/profiling/FrontendProfiler');
     
     return await FrontendProfiler.profileAsync('parseViteConfig', 'file_io', async () => {
         const errors: string[] = [];
