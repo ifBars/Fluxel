@@ -15,7 +15,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.71.2",
+    "@anthropic-ai/sdk": "^0.72.0",
     "@exuanbo/file-icons-js": "^3.3.0",
     "@mdx-js/react": "^3.1.1",
     "@monaco-editor/react": "^4.7.0",
