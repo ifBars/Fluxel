@@ -99,7 +99,7 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
     const monaco = useMonaco() as unknown as typeof Monaco;
     const [isSaving, setIsSaving] = useState(false);
     const [editorInstance, setEditorInstance] = useState<Monaco.editor.IStandaloneCodeEditor | null>(null);
-    const [diffEditorInstance, setDiffEditorInstance] = useState<Monaco.editor.IStandaloneDiffEditor | null>(null);
+    const [, setDiffEditorInstance] = useState<Monaco.editor.IStandaloneDiffEditor | null>(null);
     const autocompleteDisposableRef = useRef<{ dispose: () => void } | null>(null);
     const lspClientRef = useRef(getCSharpLSPClient());
     const docVersionsRef = useRef<Record<string, number>>({});
@@ -712,61 +712,9 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
         };
     }, [editorInstance, activeTab, setCursorPosition]);
 
-    // Manual layout handling with requestAnimationFrame to avoid ResizeObserver loop
-    useEffect(() => {
-        if (!containerRef.current || !editorInstance) return;
-
-        let animationFrameId: number;
-
-        const observer = new ResizeObserver((entries) => {
-            // Check if any entry has zero dimensions
-            const hasDimensions = entries.some(entry =>
-                entry.contentRect.width > 0 && entry.contentRect.height > 0
-            );
-
-            if (!hasDimensions) return;
-
-            cancelAnimationFrame(animationFrameId);
-            animationFrameId = requestAnimationFrame(() => {
-                editorInstance.layout();
-            });
-        });
-
-        observer.observe(containerRef.current);
-
-        return () => {
-            observer.disconnect();
-            cancelAnimationFrame(animationFrameId);
-        };
-    }, [editorInstance]);
-
-    // Manual layout handling for DiffEditor with requestAnimationFrame
-    useEffect(() => {
-        if (!containerRef.current || !diffEditorInstance) return;
-
-        let animationFrameId: number;
-
-        const observer = new ResizeObserver((entries) => {
-            // Check if any entry has zero dimensions
-            const hasDimensions = entries.some(entry =>
-                entry.contentRect.width > 0 && entry.contentRect.height > 0
-            );
-
-            if (!hasDimensions) return;
-
-            cancelAnimationFrame(animationFrameId);
-            animationFrameId = requestAnimationFrame(() => {
-                diffEditorInstance.layout();
-            });
-        });
-
-        observer.observe(containerRef.current);
-
-        return () => {
-            observer.disconnect();
-            cancelAnimationFrame(animationFrameId);
-        };
-    }, [diffEditorInstance]);
+    // VSCode-style workbench: Monaco's automaticLayout handles resizing efficiently
+    // No manual ResizeObserver needed - Monaco listens to container resize automatically
+    // This prevents layout thrashing and bouncing animations
 
 
     // Reveal pending selection/line when requested (e.g., from search results)
@@ -814,7 +762,7 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
             : parts;
     };
 
-    // Show placeholder if no active tab
+    // VSCode-style empty state - clean and minimal
     if (!activeTab) {
         return (
             <div className="h-full w-full flex flex-col bg-background">
@@ -836,15 +784,15 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
 
     return (
         <ProfilerWrapper>
-            <div className="h-full w-full flex flex-col overflow-hidden bg-background">
-                {/* Editor Header */}
-                <div className="h-8 border-b border-border bg-muted/20 flex items-center justify-between px-3 shrink-0">
+            <div className="h-full w-full flex flex-col bg-background" style={{ minHeight: 0 }}>
+                {/* VSCode-style Breadcrumb Header */}
+                <div className="h-9 border-b border-border bg-muted/30 flex items-center justify-between px-3 shrink-0 select-none">
                     {/* File Path Breadcrumb */}
-                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-hidden">
                         <File className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                         <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0">
                             {pathParts.map((part, index) => (
-                                <div key={index} className="flex items-center gap-1.5">
+                                <div key={index} className="flex items-center gap-1.5 shrink-0">
                                     {index > 0 && (
                                         <span className="text-muted-foreground/40">/</span>
                                     )}
@@ -863,7 +811,7 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                         disabled={!dirty || isSaving}
                         className={`
                         flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium
-                        transition-all shrink-0
+                        transition-colors shrink-0
                         ${dirty && !isSaving
                                 ? 'bg-primary/10 text-primary hover:bg-primary/20'
                                 : 'text-muted-foreground opacity-50 cursor-not-allowed'
@@ -876,8 +824,8 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                     </button>
                 </div>
 
-                {/* Monaco Editor (Code or Diff) */}
-                <div ref={containerRef} className="flex-1 overflow-hidden relative">
+                {/* VSCode-style Editor Container - uses flex-1 with min-h-0 for proper containment */}
+                <div ref={containerRef} className="flex-1 relative min-h-0">
                     {activeTab.type === 'diff' ? (
                         <>
                             <DiffEditor
@@ -891,6 +839,8 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                                     setDiffEditorInstance(editor);
                                 }}
                                 options={{
+                                    // Enable automatic layout for VSCode-style workbench behavior
+                                    automaticLayout: true,
                                     // Minimap
                                     minimap: { enabled: showMinimap, side: minimapSide, scale: minimapScale, maxColumn: minimapMaxColumn, showSlider: minimapShowSlider },
                                     // Font
@@ -913,7 +863,7 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                     ) : (
                         <>
                             <Editor
-                                key={activeTab.id}
+                                key="code-editor"
                                 height="100%"
                                 path={toFileUri(activeTab.path)}
                                 language={activeTab.language}
@@ -922,6 +872,9 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                                 onMount={handleEditorMount}
                                 theme={theme === "dark" ? "fluxel-dark" : "fluxel-light"}
                                 options={{
+                                    // Enable automatic layout for VSCode-style workbench behavior
+                                    // Monaco handles resize efficiently without manual ResizeObserver
+                                    automaticLayout: true,
                                     // Minimap
                                     minimap: { enabled: showMinimap, side: minimapSide, scale: minimapScale, maxColumn: minimapMaxColumn, showSlider: minimapShowSlider },
                                     // Font

@@ -70,54 +70,40 @@ export default function EditorGroup() {
                 </div>
             </div>
 
-            {/* Editor Content Area */}
-            <div className="flex-1 overflow-hidden relative">
+            {/* Editor Content Area - VSCode-style with proper flex containment */}
+            <div className="flex-1 min-h-0 relative">
                 {tabs.length === 0 && editorMode !== 'visual' ? (
-                    <>
-                        <EmptyEditorState />
-                    </>
+                    <EmptyEditorState />
                 ) : (
                     <>
                         {editorMode === 'code' && (
                             tabs.length > 0 ? (
-                                <>
-                                    <CodeEditor activeTab={activeTab} />
-                                </>
+                                <CodeEditor activeTab={activeTab} />
                             ) : (
-                            <>
                                 <EmptyEditorState />
-                            </>
                             )
                         )}
-                        {editorMode === 'visual' && (
-                            <>
-                                <VisualEditor />
-                            </>
-                        )}
+                        {editorMode === 'visual' && <VisualEditor />}
 
                         {editorMode === 'split' && (
                             tabs.length > 0 ? (
-                                <>
-                                    <Group orientation="horizontal">
-                                        <Panel defaultSize={50} minSize={20}>
-                                            <CodeEditor activeTab={activeTab} />
-                                        </Panel>
-                                        <Separator
-                                            className="bg-border hover:bg-primary transition-colors"
-                                            style={{
-                                                width: 'var(--panel-handle-width, 4px)',
-                                                minWidth: 'var(--panel-handle-width, 4px)',
-                                            }}
-                                        />
-                                        <Panel defaultSize={50} minSize={20}>
-                                            <VisualEditor />
-                                        </Panel>
-                                    </Group>
-                                </>
+                                <Group orientation="horizontal" className="h-full">
+                                    <Panel defaultSize={50} minSize={20} className="h-full">
+                                        <CodeEditor activeTab={activeTab} />
+                                    </Panel>
+                                    <Separator
+                                        className="bg-border hover:bg-primary transition-colors"
+                                        style={{
+                                            width: 'var(--panel-handle-width, 4px)',
+                                            minWidth: 'var(--panel-handle-width, 4px)',
+                                        }}
+                                    />
+                                    <Panel defaultSize={50} minSize={20} className="h-full">
+                                        <VisualEditor />
+                                    </Panel>
+                                </Group>
                             ) : (
-                                <>
-                                    <EmptyEditorState />
-                                </>
+                                <EmptyEditorState />
                             )
                         )}
                     </>
