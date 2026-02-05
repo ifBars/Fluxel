@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { create } from 'zustand';
-import { readDir, readTextFile } from '@tauri-apps/plugin-fs';
+import { readDir, readTextFile, writeTextFile, remove, mkdir, rename, copyFile } from '@tauri-apps/plugin-fs';
 import type { FileEntry } from '@/types/fs';
 import { GitignoreManager } from '@/lib/utils/GitIgnore';
 import { FrontendProfiler } from '@/lib/services';
@@ -39,6 +39,24 @@ interface FileSystemState {
     refreshIgnoredStatus: () => Promise<void>;
     /** Internal: Map of path to entry for O(1) lookups */
     _pathToEntryMap: Map<string, FileEntry> | null;
+
+    // File operations
+    /** Create a new file at the given path */
+    createFile: (parentPath: string, fileName: string) => Promise<string | null>;
+    /** Create a new folder at the given path */
+    createFolder: (parentPath: string, folderName: string) => Promise<string | null>;
+    /** Delete a file or folder */
+    deleteEntry: (path: string, isDirectory: boolean) => Promise<boolean>;
+    /** Rename a file or folder */
+    renameEntry: (oldPath: string, newName: string) => Promise<string | null>;
+    /** Copy a file or folder to clipboard (stores path) */
+    clipboardPath: string | null;
+    /** Set clipboard path for copy operation */
+    setClipboardPath: (path: string | null) => void;
+    /** Paste from clipboard to target directory */
+    pasteEntry: (targetDir: string) => Promise<string | null>;
+    /** Refresh a specific folder's children */
+    refreshFolder: (path: string) => Promise<void>;
 }
 
 /**
@@ -209,6 +227,7 @@ export const useFileSystemStore = create<FileSystemState>((set, get) => ({
     rootPath: null,
     gitignoreManager: null,
     _pathToEntryMap: null,
+    clipboardPath: null,
 
     loadDirectory: async (path: string, traceParent?: string) => {
         const normalizedPath = path.replace(/\\/g, '/');
@@ -462,6 +481,137 @@ export const useFileSystemStore = create<FileSystemState>((set, get) => ({
             const updatedRoot = await updateIgnoredStatus(rootEntry);
             set({ rootEntry: updatedRoot });
         });
+    },
+
+    // File operations
+    setClipboardPath: (path: string | null) => {
+        set({ clipboardPath: path });
+    },
+
+    createFile: async (parentPath: string, fileName: string) => {
+        try {
+            const normalizedParent = parentPath.replace(/\\/g, '/');
+            const filePath = `${normalizedParent}/${fileName}`;
+            
+            // Create empty file
+            await writeTextFile(filePath, '');
+            
+            // Refresh the parent folder to show the new file
+            await get().refreshFolder(normalizedParent);
+            
+            return filePath;
+        } catch (error) {
+            console.error('Failed to create file:', error);
+            set({ error: error instanceof Error ? error.message : 'Failed to create file' });
+            return null;
+        }
+    },
+
+    createFolder: async (parentPath: string, folderName: string) => {
+        try {
+            const normalizedParent = parentPath.replace(/\\/g, '/');
+            const folderPath = `${normalizedParent}/${folderName}`;
+            
+            // Create directory
+            await mkdir(folderPath);
+            
+            // Refresh the parent folder to show the new folder
+            await get().refreshFolder(normalizedParent);
+            
+            return folderPath;
+        } catch (error) {
+            console.error('Failed to create folder:', error);
+            set({ error: error instanceof Error ? error.message : 'Failed to create folder' });
+            return null;
+        }
+    },
+
+    deleteEntry: async (path: string, isDirectory: boolean) => {
+        try {
+            const normalizedPath = path.replace(/\\/g, '/');
+            
+            // Delete file or directory (recursive for directories)
+            await remove(normalizedPath, { recursive: isDirectory });
+            
+            // Get parent path and refresh
+            const parentPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
+            await get().refreshFolder(parentPath);
+            
+            return true;
+        } catch (error) {
+            console.error('Failed to delete entry:', error);
+            set({ error: error instanceof Error ? error.message : 'Failed to delete entry' });
+            return false;
+        }
+    },
+
+    renameEntry: async (oldPath: string, newName: string) => {
+        try {
+            const normalizedOld = oldPath.replace(/\\/g, '/');
+            const parentPath = normalizedOld.substring(0, normalizedOld.lastIndexOf('/'));
+            const newPath = `${parentPath}/${newName}`;
+            
+            // Rename file or directory
+            await rename(normalizedOld, newPath);
+            
+            // Refresh parent folder to show renamed entry
+            await get().refreshFolder(parentPath);
+            
+            return newPath;
+        } catch (error) {
+            console.error('Failed to rename entry:', error);
+            set({ error: error instanceof Error ? error.message : 'Failed to rename entry' });
+            return null;
+        }
+    },
+
+    pasteEntry: async (targetDir: string) => {
+        const { clipboardPath } = get();
+        if (!clipboardPath) return null;
+
+        try {
+            const normalizedSource = clipboardPath.replace(/\\/g, '/');
+            const normalizedTarget = targetDir.replace(/\\/g, '/');
+            const fileName = normalizedSource.substring(normalizedSource.lastIndexOf('/') + 1);
+            const destPath = `${normalizedTarget}/${fileName}`;
+            
+            // Copy file (note: copyFile only works for files, not directories)
+            // For directories, we'd need a recursive copy which is more complex
+            await copyFile(normalizedSource, destPath);
+            
+            // Refresh target folder
+            await get().refreshFolder(normalizedTarget);
+            
+            return destPath;
+        } catch (error) {
+            console.error('Failed to paste entry:', error);
+            set({ error: error instanceof Error ? error.message : 'Failed to paste entry' });
+            return null;
+        }
+    },
+
+    refreshFolder: async (path: string) => {
+        const { rootEntry, loadFolderChildren, expandedPaths } = get();
+        if (!rootEntry) return;
+
+        const normalizedPath = path.replace(/\\/g, '/');
+        
+        // If this is the root, refresh the entire tree
+        if (normalizedPath === rootEntry.path) {
+            await get().refreshTree();
+            return;
+        }
+
+        // Otherwise, reload the folder's children
+        // First, ensure the folder is expanded
+        if (!expandedPaths.has(normalizedPath)) {
+            const newExpanded = new Set(expandedPaths);
+            newExpanded.add(normalizedPath);
+            set({ expandedPaths: newExpanded });
+        }
+
+        // Force reload children by temporarily clearing them and loading again
+        await loadFolderChildren(normalizedPath);
     },
 }));
 
