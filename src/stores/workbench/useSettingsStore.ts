@@ -487,7 +487,7 @@ export const useSettingsStore = create<SettingsState>()(
             // Editor - Behavior defaults
             wordWrap: 'off' as WordWrapMode,
             wordWrapColumn: 80,
-            smoothScrolling: true,
+            smoothScrolling: false,
             scrollBeyondLastLine: false,
             stickyScroll: false,
             autosaveDelay: 1000,
