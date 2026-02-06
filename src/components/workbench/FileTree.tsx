@@ -528,8 +528,8 @@ function FileTree() {
     if (isLoading) {
         return (
             <ProfilerWrapper>
-                <div className="p-4 text-sm text-muted-foreground">
-                    Loading...
+                <div className="h-full min-h-0 min-w-0 flex flex-col items-center justify-center p-4 text-sm text-muted-foreground overflow-hidden">
+                    <span>Loading...</span>
                 </div>
             </ProfilerWrapper>
         );
@@ -538,8 +538,8 @@ function FileTree() {
     if (error) {
         return (
             <ProfilerWrapper>
-                <div className="p-4 text-sm text-destructive">
-                    Error: {error}
+                <div className="h-full min-h-0 min-w-0 flex flex-col items-center justify-center p-4 text-sm text-destructive overflow-hidden">
+                    <span>Error: {error}</span>
                 </div>
             </ProfilerWrapper>
         );
@@ -548,7 +548,7 @@ function FileTree() {
     if (!rootEntry) {
         return (
             <ProfilerWrapper>
-                <div className="p-4 text-sm text-muted-foreground text-center">
+                <div className="h-full min-h-0 min-w-0 flex flex-col items-center justify-center p-4 text-sm text-muted-foreground text-center overflow-hidden">
                     <p>No folder open</p>
                     <p className="text-xs mt-2 opacity-70">
                         Use File → Open Folder to get started
@@ -565,7 +565,7 @@ function FileTree() {
     return (
         <ProfilerWrapper>
             <FileTreeContext.Provider value={contextValue}>
-                <div className="py-1" onContextMenu={handleRootContextMenu}>
+                <div className="h-full min-h-0 min-w-0 overflow-hidden py-1" onContextMenu={handleRootContextMenu}>
                     {/* New file/folder input at root */}
                     {showRootNewInput && (
                         <InlineInput
@@ -580,7 +580,7 @@ function FileTree() {
                     {rootEntry.children && rootEntry.children.length > 0 ? (
                         <ChunkedFileTree children={rootEntry.children} />
                     ) : (
-                        <div className="p-4 text-sm text-muted-foreground text-center">
+                        <div className="flex flex-col items-center justify-center p-4 text-sm text-muted-foreground text-center min-h-0 min-w-0 overflow-hidden">
                             <p>Empty directory</p>
                         </div>
                     )}

@@ -9,7 +9,7 @@ import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker"
 
 // Use the bundled Monaco instead of the CDN loader (avoids tracking-prevention blocks)
 loader.config({ monaco: monacoApi });
-import { useEffect, useCallback, useState, useRef } from "react";
+import { useEffect, useCallback, useState, useRef, memo } from "react";
 import { useSettingsStore, useEditorStore, type EditorTab, useProjectStore } from "@/stores";
 import { useProfiler } from "@/hooks/useProfiler";
 import { usePluginLanguageActivation } from "@/hooks/usePlugins";
@@ -69,37 +69,76 @@ interface CodeEditorProps {
     activeTab: EditorTab | null;
 }
 
-export default function CodeEditor({ activeTab }: CodeEditorProps) {
+// Memoized editor component to prevent unnecessary re-renders
+const CodeEditorComponent = memo(function CodeEditorComponent({ activeTab }: CodeEditorProps) {
     const { ProfilerWrapper, startSpan, trackInteraction } = useProfiler('CodeEditor');
 
     // Trigger plugin activation for the active file's language
     usePluginLanguageActivation(activeTab?.language ?? null);
 
-    const {
-        theme,
-        // Font settings
-        fontSize, fontFamily, lineHeight, fontLigatures, fontWeight, letterSpacing,
-        // Cursor settings
-        cursorStyle, cursorBlinking, cursorWidth, cursorSmoothCaretAnimation,
-        // Whitespace settings
-        tabSize, insertSpaces, renderWhitespace, renderIndentGuides, highlightActiveIndentGuide,
-        // Display settings
-        showLineNumbers, lineNumbers, renderLineHighlight, bracketPairColorization,
-        bracketPairGuides, folding, foldingHighlight, glyphMargin,
-        // Behavior settings
-        wordWrap, wordWrapColumn, smoothScrolling, scrollBeyondLastLine, stickyScroll,
-        autoClosingBrackets, autoClosingQuotes, formatOnPaste,
-        // Minimap settings
-        showMinimap, minimapSide, minimapScale, minimapMaxColumn, minimapShowSlider,
-        // Autocomplete settings
-        autocompleteEnabled, autocompleteModel, autocompleteEndpoint, autocompleteDebounceMs
-    } = useSettingsStore();
-    const { updateContent, saveFile, isDirty, pendingReveal, clearPendingReveal, setCursorPosition, openFile } = useEditorStore();
-    const { currentProject, projectProfile, projectInitStatus, csharpLspStatus, ensureCSharpLspReady } = useProjectStore();
+    // Settings store - select only what we need to minimize re-renders
+    const theme = useSettingsStore((state) => state.theme);
+    const fontSize = useSettingsStore((state) => state.fontSize);
+    const fontFamily = useSettingsStore((state) => state.fontFamily);
+    const lineHeight = useSettingsStore((state) => state.lineHeight);
+    const fontLigatures = useSettingsStore((state) => state.fontLigatures);
+    const fontWeight = useSettingsStore((state) => state.fontWeight);
+    const letterSpacing = useSettingsStore((state) => state.letterSpacing);
+    const cursorStyle = useSettingsStore((state) => state.cursorStyle);
+    const cursorBlinking = useSettingsStore((state) => state.cursorBlinking);
+    const cursorWidth = useSettingsStore((state) => state.cursorWidth);
+    const cursorSmoothCaretAnimation = useSettingsStore((state) => state.cursorSmoothCaretAnimation);
+    const tabSize = useSettingsStore((state) => state.tabSize);
+    const insertSpaces = useSettingsStore((state) => state.insertSpaces);
+    const renderWhitespace = useSettingsStore((state) => state.renderWhitespace);
+    const renderIndentGuides = useSettingsStore((state) => state.renderIndentGuides);
+    const highlightActiveIndentGuide = useSettingsStore((state) => state.highlightActiveIndentGuide);
+    const showLineNumbers = useSettingsStore((state) => state.showLineNumbers);
+    const lineNumbers = useSettingsStore((state) => state.lineNumbers);
+    const renderLineHighlight = useSettingsStore((state) => state.renderLineHighlight);
+    const bracketPairColorization = useSettingsStore((state) => state.bracketPairColorization);
+    const bracketPairGuides = useSettingsStore((state) => state.bracketPairGuides);
+    const folding = useSettingsStore((state) => state.folding);
+    const foldingHighlight = useSettingsStore((state) => state.foldingHighlight);
+    const glyphMargin = useSettingsStore((state) => state.glyphMargin);
+    const wordWrap = useSettingsStore((state) => state.wordWrap);
+    const wordWrapColumn = useSettingsStore((state) => state.wordWrapColumn);
+    const smoothScrolling = useSettingsStore((state) => state.smoothScrolling);
+    const scrollBeyondLastLine = useSettingsStore((state) => state.scrollBeyondLastLine);
+    const stickyScroll = useSettingsStore((state) => state.stickyScroll);
+    const autoClosingBrackets = useSettingsStore((state) => state.autoClosingBrackets);
+    const autoClosingQuotes = useSettingsStore((state) => state.autoClosingQuotes);
+    const formatOnPaste = useSettingsStore((state) => state.formatOnPaste);
+    const showMinimap = useSettingsStore((state) => state.showMinimap);
+    const minimapSide = useSettingsStore((state) => state.minimapSide);
+    const minimapScale = useSettingsStore((state) => state.minimapScale);
+    const minimapMaxColumn = useSettingsStore((state) => state.minimapMaxColumn);
+    const minimapShowSlider = useSettingsStore((state) => state.minimapShowSlider);
+    const autocompleteEnabled = useSettingsStore((state) => state.autocompleteEnabled);
+    const autocompleteModel = useSettingsStore((state) => state.autocompleteModel);
+    const autocompleteEndpoint = useSettingsStore((state) => state.autocompleteEndpoint);
+    const autocompleteDebounceMs = useSettingsStore((state) => state.autocompleteDebounceMs);
+    
+    // Editor store
+    const updateContent = useEditorStore((state) => state.updateContent);
+    const saveFile = useEditorStore((state) => state.saveFile);
+    const isDirty = useEditorStore((state) => state.isDirty);
+    const pendingReveal = useEditorStore((state) => state.pendingReveal);
+    const clearPendingReveal = useEditorStore((state) => state.clearPendingReveal);
+    const setCursorPosition = useEditorStore((state) => state.setCursorPosition);
+    const openFile = useEditorStore((state) => state.openFile);
+    
+    // Project store
+    const currentProject = useProjectStore((state) => state.currentProject);
+    const projectProfile = useProjectStore((state) => state.projectProfile);
+    const projectInitStatus = useProjectStore((state) => state.projectInitStatus);
+    const csharpLspStatus = useProjectStore((state) => state.csharpLspStatus);
+    const ensureCSharpLspReady = useProjectStore((state) => state.ensureCSharpLspReady);
+    
     const monaco = useMonaco() as unknown as typeof Monaco;
     const [isSaving, setIsSaving] = useState(false);
     const [editorInstance, setEditorInstance] = useState<Monaco.editor.IStandaloneCodeEditor | null>(null);
-    const [, setDiffEditorInstance] = useState<Monaco.editor.IStandaloneDiffEditor | null>(null);
+    const diffEditorRef = useRef<Monaco.editor.IStandaloneDiffEditor | null>(null);
     const autocompleteDisposableRef = useRef<{ dispose: () => void } | null>(null);
     const lspClientRef = useRef(getCSharpLSPClient());
     const docVersionsRef = useRef<Record<string, number>>({});
@@ -108,17 +147,10 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
     const currentOpenUriRef = useRef<string | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
 
-    // When switching tabs, wait for the new editor instance before revealing a position.
+    // Clear stale diff editor references when leaving diff mode.
     useEffect(() => {
-        setEditorInstance(null);
-
-        // Clear the diff editor ref when switching away from diff mode.
-        // The @monaco-editor/react DiffEditor component handles its own disposal via React lifecycle.
-        // Manual disposal here was causing a race condition where models were disposed
-        // before the DiffEditor finished resetting, causing:
-        // "TextModel got disposed before DiffEditorWidget model got reset" error.
         if (activeTab?.type !== 'diff') {
-            setDiffEditorInstance(null);
+            diffEditorRef.current = null;
         }
     }, [activeTab?.id, activeTab?.type]);
 
@@ -126,8 +158,6 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
     useEffect(() => {
         if (!monaco) return;
 
-        // Only configure TypeScript language for TS/JS/mixed projects
-        // Skip for pure C# projects to avoid polluting editor with TS/JS options
         const shouldConfigureTS = !currentProject ||
             projectProfile?.kind === 'javascript' ||
             projectProfile?.kind === 'mixed';
@@ -154,7 +184,6 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
         if (!monaco) return;
         const projectRoot = currentProject?.rootPath ?? null;
 
-        // Always clear stale models when closing or switching projects
         if (!projectRoot) {
             resetTypeScriptWorkspace(monaco);
             hydratedProjectRootRef.current = null;
@@ -166,15 +195,12 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
             hydratedProjectRootRef.current = null;
         }
 
-        // Wait for project profile detection so we don't hydrate irrelevant workspaces
         if (projectInitStatus === 'error') {
             hydratedProjectRootRef.current = null;
             resetTypeScriptWorkspace(monaco);
             return;
         }
 
-        // If project detection hasn't completed yet, don't hydrate yet
-        // (we'll handle proactive loading in the file-opened effect below)
         if (projectInitStatus !== 'ready') {
             return;
         }
@@ -211,21 +237,16 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
     }, [monaco, currentProject?.rootPath, projectProfile, projectInitStatus]);
 
     // Proactively trigger type loading when a TypeScript/JavaScript file is opened
-    // This ensures types are loaded even if project detection hasn't completed yet
     useEffect(() => {
         if (!monaco || !activeTab) return;
         const projectRoot = currentProject?.rootPath ?? null;
         if (!projectRoot) return;
 
-        // Only trigger for TypeScript/JavaScript files
         const isTypeScriptFile = activeTab.language === 'typescript' || activeTab.language === 'javascript';
         if (!isTypeScriptFile) return;
 
-        // Skip if types are already loaded for this project
         if (hydratedProjectRootRef.current === projectRoot) return;
 
-        // Even if project detection failed, try to load types if we have a TS/JS file open
-        // This handles cases where detection fails but the project is still valid
         if (projectInitStatus === 'error') {
             let cancelled = false;
             const loadTypesOnError = async () => {
@@ -251,17 +272,11 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
             };
         }
 
-        // If project detection is ready, check if types should be loaded
         if (projectInitStatus === 'ready') {
-            // If the main effect already determined types should be loaded, it will handle it
             if (shouldHydrateTypeScriptWorkspace(projectProfile)) {
-                // The main hydration effect will handle loading (or already has)
                 return;
             }
 
-            // If we reach here, the project profile says it's not a TypeScript project,
-            // but the user just opened a TypeScript file. Load types on-demand anyway.
-            // This handles cases where tsconfig.json is missing but .ts files exist.
             let cancelled = false;
             const loadTypesOnDemand = async () => {
                 try {
@@ -286,8 +301,6 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
             };
         }
 
-        // If project detection hasn't completed yet (status is 'detecting' or 'idle'),
-        // check for TypeScript indicators proactively and load types if found
         let cancelled = false;
         const checkAndLoad = async () => {
             try {
@@ -312,12 +325,11 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
         };
     }, [monaco, activeTab?.id, activeTab?.language, currentProject?.rootPath, projectInitStatus, projectProfile]);
 
-    // Initialize language registry (lightweight check, ensure singleton is ready)
+    // Initialize language registry
     useEffect(() => {
         if (!monaco) return;
         const registry = getLanguageRegistry();
         registry.initialize(monaco);
-        // Note: Provider registration and startup is now handled by LanguageController
     }, [monaco]);
 
     // Define custom Fluxel themes and register all C# color themes
@@ -334,18 +346,15 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
             return;
         }
 
-        // Dispose previous provider if exists
         if (autocompleteDisposableRef.current) {
             autocompleteDisposableRef.current.dispose();
             autocompleteDisposableRef.current = null;
         }
 
-        // Only register if autocomplete is enabled
         if (!autocompleteEnabled) {
             return;
         }
 
-        // Register the inline completion provider
         autocompleteDisposableRef.current = registerInlineCompletionProvider(monaco, {
             endpoint: autocompleteEndpoint,
             model: autocompleteModel,
@@ -366,7 +375,7 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
         Boolean(normalizedProjectRoot) &&
         lspClientRef.current.getWorkspaceRoot()?.replace(/\\/g, '/') === normalizedProjectRoot;
 
-    // Ensure C# LSP is ready when editing C# files (managed centrally via the project store).
+    // Ensure C# LSP is ready when editing C# files
     useEffect(() => {
         if (activeTab?.language !== 'csharp') return;
         if (!currentProject?.rootPath) return;
@@ -381,7 +390,7 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
         }
     }, [currentProject?.rootPath, csharpLspStatus]);
 
-    // If the server stops/restarts, forget locally-opened documents so we re-send didOpen.
+    // If the server stops/restarts, forget locally-opened documents
     useEffect(() => {
         if (!lspReady) {
             openedDocsRef.current.clear();
@@ -390,15 +399,12 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
     }, [lspReady]);
 
     // Send textDocument/didOpen when C# file is opened and LSP is ready
-    // Only re-run when tab ID, language, or path changes - NOT when content changes
     useEffect(() => {
         const lspClient = lspClientRef.current;
 
         if (activeTab?.language === 'csharp' && lspReady && activeTab && lspClient.getIsStarted()) {
-            // Use standard LSP file URIs for csharp-ls (file:///C:/...), not Monaco's encoded form.
             const uri = fsPathToLspUri(activeTab.path);
 
-            // Close previous document if switching to a different one
             const previousUri = currentOpenUriRef.current;
             if (previousUri && previousUri !== uri && openedDocsRef.current.has(previousUri)) {
                 lspClient.sendNotification('textDocument/didClose', {
@@ -411,12 +417,10 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                 openedDocsRef.current.delete(previousUri);
             }
 
-            // Only send didOpen if we haven't already opened this document
             if (!openedDocsRef.current.has(uri)) {
                 const currentVersion = docVersionsRef.current[uri] || 1;
                 docVersionsRef.current[uri] = currentVersion;
 
-                // Send didOpen and only mark as open after it's sent successfully
                 lspClient.sendNotification('textDocument/didOpen', {
                     textDocument: {
                         uri,
@@ -425,21 +429,16 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                         text: activeTab.content,
                     },
                 }).then(() => {
-                    // Mark as open only after successful send
                     openedDocsRef.current.add(uri);
                     currentOpenUriRef.current = uri;
                 }).catch((error) => {
                     console.error('[CodeEditor] Failed to send didOpen:', error);
-                    // Don't mark as open if send failed
                 });
             } else {
-                // Document already open, just update the ref
                 currentOpenUriRef.current = uri;
             }
 
-            // Send didClose when the tab changes or component unmounts
             return () => {
-                // Only close if this is still the current URI (not already switched)
                 if (currentOpenUriRef.current === uri && openedDocsRef.current.has(uri)) {
                     lspClient.sendNotification('textDocument/didClose', {
                         textDocument: {
@@ -466,7 +465,6 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
             const action = state.pendingAction;
             if (!action || !editorInstance) return;
 
-            // Execute the action
             switch (action) {
                 case 'undo':
                     editorInstance.trigger('menu', 'undo', null);
@@ -506,7 +504,6 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                     break;
             }
 
-            // Clear the action after execution
             useEditorStore.getState().clearPendingAction();
         });
 
@@ -526,7 +523,6 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
 
                 await saveFile(activeTab.id);
 
-                // Notify LSP server of save events for C#
                 if (activeTab.language === 'csharp' && lspReady && lspClientRef.current.getIsStarted()) {
                     const lspClient = lspClientRef.current;
                     const uri = fsPathToLspUri(activeTab.path);
@@ -554,12 +550,10 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
         if (activeTab && value !== undefined) {
             updateContent(activeTab.id, value);
 
-            // Send textDocument/didChange for C# files (only if document is open)
             if (activeTab.language === 'csharp' && lspReady && lspClientRef.current.getIsStarted()) {
                 const lspClient = lspClientRef.current;
                 const uri = fsPathToLspUri(activeTab.path);
 
-                // Only send didChange if the document is already open in the LSP
                 if (openedDocsRef.current.has(uri)) {
                     const nextVersion = (docVersionsRef.current[uri] ?? 1) + 1;
                     docVersionsRef.current[uri] = nextVersion;
@@ -576,12 +570,9 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                     }).catch((error) => {
                         console.error('[CodeEditor] Failed to send didChange:', error);
                     });
-                } else {
-                    // Document not open yet - didOpen will be sent by the useEffect
                 }
             }
 
-            // Lazy load types for TypeScript/JavaScript files when imports change
             if (currentProject && (
                 activeTab.language === 'typescript' ||
                 activeTab.language === 'javascript' ||
@@ -590,7 +581,6 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
             )) {
                 const resolver = getLazyTypeResolver(monaco, currentProject.rootPath);
                 if (resolver) {
-                    // Debounced call to avoid excessive processing
                     resolver.ensureTypesForFile(value).catch(() => {
                         // Ignore errors during lazy loading
                     });
@@ -599,14 +589,12 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
         }
     }, [activeTab, updateContent, lspReady, currentProject, monaco]);
 
-    // Handle editor mount (for future extensions)
+    // Handle editor mount
     const handleEditorMount = useCallback((editor: Monaco.editor.IStandaloneCodeEditor) => {
         const span = startSpan('editor_mount', 'frontend_render');
 
         setEditorInstance(editor);
 
-        // Override the openCodeEditor handler so "Go to Definition" works across files
-        // Monaco's editor.ICodeEditorService.openCodeEditor is called when navigating to definitions
         const editorService = (editor as any)._codeEditorService;
         if (editorService) {
             const originalOpenCodeEditor = editorService.openCodeEditor.bind(editorService);
@@ -617,13 +605,11 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
             ) => {
                 const navigationSpan = startSpan('go_to_definition', 'frontend_render');
 
-                // Try opening in the UI first
                 const targetPath = input.resource.path.startsWith('/')
                     ? input.resource.path.substring(1)
                     : input.resource.path;
                 const normalizedPath = targetPath.replace(/\//g, '/');
 
-                // Open the file via the editor store
                 await openFile(normalizedPath, {
                     line: input.options?.selection?.startLineNumber ?? 1,
                     column: input.options?.selection?.startColumn ?? 1,
@@ -634,18 +620,14 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                     line: String(input.options?.selection?.startLineNumber ?? 1)
                 });
 
-                // Return the editor for that model (if it exists)
                 return originalOpenCodeEditor(input, source, sideBySide);
             };
         }
 
-        // Fix line number click offset issue by listening to mouse events on the gutter
         const mouseDownListener = editor.onMouseDown((e) => {
-            // Only handle clicks on line numbers (gutter)
             if (e.target.type === monaco.editor.MouseTargetType.GUTTER_LINE_NUMBERS) {
                 const lineNumber = e.target.position?.lineNumber;
                 if (lineNumber) {
-                    // Set selection to the clicked line
                     editor.setSelection(new monaco.Range(lineNumber, 1, lineNumber, 1));
                     editor.revealLineInCenter(lineNumber);
                 }
@@ -654,7 +636,6 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
 
         span.end();
 
-        // Clean up listener when editor unmounts
         return () => {
             mouseDownListener.dispose();
         };
@@ -692,32 +673,81 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
             }
         };
 
-        // Initial update
         updateCursorInfo();
 
-        // Listen to cursor position changes
         const cursorDisposable = editorInstance.onDidChangeCursorPosition(() => {
             updateCursorInfo();
         });
 
-        // Listen to selection changes
         const selectionDisposable = editorInstance.onDidChangeCursorSelection(() => {
             updateCursorInfo();
         });
 
-        // Cleanup
         return () => {
             cursorDisposable.dispose();
             selectionDisposable.dispose();
         };
     }, [editorInstance, activeTab, setCursorPosition]);
 
-    // VSCode-style workbench: Monaco's automaticLayout handles resizing efficiently
-    // No manual ResizeObserver needed - Monaco listens to container resize automatically
-    // This prevents layout thrashing and bouncing animations
+    // IMPORTANT: Layout Monaco ONLY when necessary
+    // We use a ResizeObserver but with strict throttling and dimension checking
+    // to prevent layout fighting with react-resizable-panels
+    useEffect(() => {
+        if (!containerRef.current) return;
 
+        let frameId = 0;
+        let lastWidth = -1;
+        let lastHeight = -1;
+        let layoutAttempts = 0;
+        const MAX_LAYOUT_ATTEMPTS = 3;
 
-    // Reveal pending selection/line when requested (e.g., from search results)
+        const observer = new ResizeObserver((entries) => {
+            const entry = entries[0];
+            if (!entry) return;
+
+            const width = Math.floor(entry.contentRect.width);
+            const height = Math.floor(entry.contentRect.height);
+
+            if (width <= 0 || height <= 0) return;
+            
+            // Only layout if dimensions changed significantly (at least 2px)
+            // This prevents micro-layouts that cause jitter
+            if (Math.abs(width - lastWidth) < 2 && Math.abs(height - lastHeight) < 2) {
+                return;
+            }
+
+            lastWidth = width;
+            lastHeight = height;
+            layoutAttempts = 0;
+
+            cancelAnimationFrame(frameId);
+            frameId = requestAnimationFrame(() => {
+                const targetEditor = activeTab?.type === 'diff' ? diffEditorRef.current : editorInstance;
+                if (!targetEditor) return;
+
+                // Prevent layout loops by limiting attempts
+                if (layoutAttempts >= MAX_LAYOUT_ATTEMPTS) {
+                    return;
+                }
+                layoutAttempts++;
+
+                try {
+                    targetEditor.layout({ width, height });
+                } catch {
+                    // Ignore layout after unmount/dispose.
+                }
+            });
+        });
+
+        observer.observe(containerRef.current);
+
+        return () => {
+            observer.disconnect();
+            cancelAnimationFrame(frameId);
+        };
+    }, [activeTab?.type, editorInstance]);
+
+    // Reveal pending selection/line when requested
     useEffect(() => {
         if (!editorInstance || !pendingReveal || !activeTab || pendingReveal.tabId !== activeTab.id) {
             return;
@@ -755,17 +785,17 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
     }, [handleSave, trackInteraction]);
 
     // Format file path for breadcrumb display
-    const formatPath = (path: string): string[] => {
+    const formatPath = useCallback((path: string): string[] => {
         const parts = path.split('/').filter(Boolean);
         return parts.length > 3
             ? ['...', ...parts.slice(-2)]
             : parts;
-    };
+    }, []);
 
-    // VSCode-style empty state - clean and minimal
+    // Empty state
     if (!activeTab) {
         return (
-            <div className="h-full w-full flex flex-col bg-background">
+            <div className="h-full w-full min-w-0 min-h-0 flex flex-col overflow-hidden bg-background">
                 <div className="flex-1 flex items-center justify-center text-muted-foreground">
                     <div className="text-center max-w-md px-8">
                         <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-muted/50 flex items-center justify-center">
@@ -784,15 +814,14 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
 
     return (
         <ProfilerWrapper>
-            <div className="h-full w-full flex flex-col bg-background" style={{ minHeight: 0 }}>
+            <div className="h-full w-full min-w-0 min-h-0 flex flex-col overflow-hidden bg-background" style={{ minHeight: 0 }}>
                 {/* VSCode-style Breadcrumb Header */}
                 <div className="h-9 border-b border-border bg-muted/30 flex items-center justify-between px-3 shrink-0 select-none">
-                    {/* File Path Breadcrumb */}
                     <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-hidden">
                         <File className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0">
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0 overflow-hidden">
                             {pathParts.map((part, index) => (
-                                <div key={index} className="flex items-center gap-1.5 shrink-0">
+                                <div key={index} className="flex items-center gap-1.5 min-w-0">
                                     {index > 0 && (
                                         <span className="text-muted-foreground/40">/</span>
                                     )}
@@ -805,7 +834,6 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                         )}
                     </div>
 
-                    {/* Save Button */}
                     <button
                         onClick={handleSave}
                         disabled={!dirty || isSaving}
@@ -824,134 +852,113 @@ export default function CodeEditor({ activeTab }: CodeEditorProps) {
                     </button>
                 </div>
 
-                {/* VSCode-style Editor Container - uses flex-1 with min-h-0 for proper containment */}
-                <div ref={containerRef} className="flex-1 relative min-h-0">
+                {/* VSCode-style Editor Container */}
+                <div ref={containerRef} className="flex-1 relative min-h-0 min-w-0 overflow-hidden">
                     {activeTab.type === 'diff' ? (
-                        <>
-                            <DiffEditor
-                                key="diff-editor"
-                                height="100%"
-                                original={activeTab.diffBaseContent}
-                                modified={activeTab.content}
-                                language={activeTab.language}
-                                theme={theme === "dark" ? "fluxel-dark" : "fluxel-light"}
-                                onMount={(editor) => {
-                                    setDiffEditorInstance(editor);
-                                }}
-                                options={{
-                                    // Enable automatic layout for VSCode-style workbench behavior
-                                    automaticLayout: true,
-                                    // Minimap
-                                    minimap: { enabled: showMinimap, side: minimapSide, scale: minimapScale, maxColumn: minimapMaxColumn, showSlider: minimapShowSlider },
-                                    // Font
-                                    fontSize: fontSize,
-                                    fontFamily: `'${fontFamily}', monospace`,
-                                    lineHeight: lineHeight,
-                                    fontLigatures: fontLigatures,
-                                    fontWeight: fontWeight,
-                                    letterSpacing: letterSpacing,
-                                    // Scrolling
-                                    smoothScrolling: smoothScrolling,
-                                    wordWrap: wordWrap,
-                                    wordWrapColumn: wordWrapColumn,
-                                    lineNumbers: showLineNumbers ? lineNumbers : 'off',
-                                    renderSideBySide: true,
-                                    readOnly: true, // Diff view is read-only for now
-                                }}
-                            />
-                        </>
+                        <DiffEditor
+                            key="diff-editor"
+                            height="100%"
+                            original={activeTab.diffBaseContent}
+                            modified={activeTab.content}
+                            language={activeTab.language}
+                            theme={theme === "dark" ? "fluxel-dark" : "fluxel-light"}
+                            onMount={(editor) => {
+                                diffEditorRef.current = editor;
+                            }}
+                            options={{
+                                automaticLayout: false,
+                                minimap: { enabled: showMinimap, side: minimapSide, scale: minimapScale, maxColumn: minimapMaxColumn, showSlider: minimapShowSlider },
+                                fontSize: fontSize,
+                                fontFamily: `'${fontFamily}', monospace`,
+                                lineHeight: lineHeight,
+                                fontLigatures: fontLigatures,
+                                fontWeight: fontWeight,
+                                letterSpacing: letterSpacing,
+                                smoothScrolling: smoothScrolling,
+                                wordWrap: wordWrap,
+                                wordWrapColumn: wordWrapColumn,
+                                lineNumbers: showLineNumbers ? lineNumbers : 'off',
+                                renderSideBySide: true,
+                                readOnly: true,
+                            }}
+                        />
                     ) : (
-                        <>
-                            <Editor
-                                key="code-editor"
-                                height="100%"
-                                path={toFileUri(activeTab.path)}
-                                language={activeTab.language}
-                                value={activeTab.content}
-                                onChange={handleEditorChange}
-                                onMount={handleEditorMount}
-                                theme={theme === "dark" ? "fluxel-dark" : "fluxel-light"}
-                                options={{
-                                    // Enable automatic layout for VSCode-style workbench behavior
-                                    // Monaco handles resize efficiently without manual ResizeObserver
-                                    automaticLayout: true,
-                                    // Minimap
-                                    minimap: { enabled: showMinimap, side: minimapSide, scale: minimapScale, maxColumn: minimapMaxColumn, showSlider: minimapShowSlider },
-                                    // Font
-                                    fontSize: fontSize,
-                                    fontFamily: `'${fontFamily}', monospace`,
-                                    lineHeight: lineHeight,
-                                    fontLigatures: fontLigatures,
-                                    fontWeight: fontWeight,
-                                    letterSpacing: letterSpacing,
-                                    // Cursor
-                                    cursorStyle: cursorStyle,
-                                    cursorBlinking: cursorBlinking,
-                                    cursorWidth: cursorWidth,
-                                    cursorSmoothCaretAnimation: cursorSmoothCaretAnimation,
-                                    // Layout
-                                    glyphMargin: glyphMargin,
-                                    // Line Numbers & Highlight
-                                    lineNumbers: showLineNumbers ? lineNumbers : 'off',
-                                    renderLineHighlight: renderLineHighlight,
-                                    // Whitespace & Indentation
-                                    tabSize: tabSize,
-                                    insertSpaces: insertSpaces,
-                                    renderWhitespace: renderWhitespace,
-                                    guides: {
-                                        bracketPairs: bracketPairGuides,
-                                        indentation: renderIndentGuides,
-                                        highlightActiveIndentation: highlightActiveIndentGuide,
-                                    },
-                                    // Brackets
-                                    bracketPairColorization: { enabled: bracketPairColorization },
-                                    // Folding
-                                    folding: folding,
-                                    foldingHighlight: foldingHighlight,
-                                    // Scrolling
-                                    smoothScrolling: smoothScrolling,
-                                    scrollBeyondLastLine: scrollBeyondLastLine,
-                                    stickyScroll: { enabled: stickyScroll },
-                                    // Word Wrap
-                                    wordWrap: wordWrap,
-                                    wordWrapColumn: wordWrapColumn,
-                                    // Auto Closing
-                                    autoClosingBrackets: autoClosingBrackets,
-                                    autoClosingQuotes: autoClosingQuotes,
-                                    // Formatting
-                                    formatOnPaste: formatOnPaste,
-                                    // Autocomplete
-                                    inlineSuggest: {
-                                        enabled: autocompleteEnabled,
-                                    },
-                                    suggest: {
-                                        showKeywords: true,
-                                        showSnippets: true,
-                                        showClasses: true,
-                                        showFunctions: true,
-                                        showVariables: true,
-                                        showFields: true,
-                                        showInterfaces: true,
-                                        showModules: true,
-                                        showProperties: true,
-                                        showEvents: true,
-                                        showOperators: true,
-                                        showUnits: true,
-                                        showValues: true,
-                                        showConstants: true,
-                                        showEnums: true,
-                                        showEnumMembers: true,
-                                        showStructs: true,
-                                        showTypeParameters: true,
-                                        showInlineDetails: true,
-                                    },
-                                    fixedOverflowWidgets: true,
-                                }}
-                            />
-                        </>
+                        <Editor
+                            key="code-editor"
+                            height="100%"
+                            path={toFileUri(activeTab.path)}
+                            language={activeTab.language}
+                            value={activeTab.content}
+                            onChange={handleEditorChange}
+                            onMount={handleEditorMount}
+                            theme={theme === "dark" ? "fluxel-dark" : "fluxel-light"}
+                            options={{
+                                automaticLayout: false,
+                                minimap: { enabled: showMinimap, side: minimapSide, scale: minimapScale, maxColumn: minimapMaxColumn, showSlider: minimapShowSlider },
+                                fontSize: fontSize,
+                                fontFamily: `'${fontFamily}', monospace`,
+                                lineHeight: lineHeight,
+                                fontLigatures: fontLigatures,
+                                fontWeight: fontWeight,
+                                letterSpacing: letterSpacing,
+                                cursorStyle: cursorStyle,
+                                cursorBlinking: cursorBlinking,
+                                cursorWidth: cursorWidth,
+                                cursorSmoothCaretAnimation: cursorSmoothCaretAnimation,
+                                glyphMargin: glyphMargin,
+                                lineNumbers: showLineNumbers ? lineNumbers : 'off',
+                                renderLineHighlight: renderLineHighlight,
+                                tabSize: tabSize,
+                                insertSpaces: insertSpaces,
+                                renderWhitespace: renderWhitespace,
+                                guides: {
+                                    bracketPairs: bracketPairGuides,
+                                    indentation: renderIndentGuides,
+                                    highlightActiveIndentation: highlightActiveIndentGuide,
+                                },
+                                bracketPairColorization: { enabled: bracketPairColorization },
+                                folding: folding,
+                                foldingHighlight: foldingHighlight,
+                                smoothScrolling: smoothScrolling,
+                                scrollBeyondLastLine: scrollBeyondLastLine,
+                                stickyScroll: { enabled: stickyScroll },
+                                wordWrap: wordWrap,
+                                wordWrapColumn: wordWrapColumn,
+                                autoClosingBrackets: autoClosingBrackets,
+                                autoClosingQuotes: autoClosingQuotes,
+                                formatOnPaste: formatOnPaste,
+                                inlineSuggest: {
+                                    enabled: autocompleteEnabled,
+                                },
+                                suggest: {
+                                    showKeywords: true,
+                                    showSnippets: true,
+                                    showClasses: true,
+                                    showFunctions: true,
+                                    showVariables: true,
+                                    showFields: true,
+                                    showInterfaces: true,
+                                    showModules: true,
+                                    showProperties: true,
+                                    showEvents: true,
+                                    showOperators: true,
+                                    showUnits: true,
+                                    showValues: true,
+                                    showConstants: true,
+                                    showEnums: true,
+                                    showEnumMembers: true,
+                                    showStructs: true,
+                                    showTypeParameters: true,
+                                    showInlineDetails: true,
+                                },
+                                fixedOverflowWidgets: true,
+                            }}
+                        />
                     )}
                 </div>
             </div>
         </ProfilerWrapper>
     );
-}
+});
+
+export default CodeEditorComponent;

@@ -21,9 +21,9 @@ function Sidebar() {
 
     return (
         <ProfilerWrapper>
-            <div className="h-full flex flex-col bg-muted/20">
+            <div className="h-full min-h-0 min-w-0 flex flex-col bg-muted/20 overflow-hidden">
                 <div
-                    className="flex items-center border-b border-border"
+                    className="flex items-center border-b border-border shrink-0"
                     style={{
                         height: 'calc(2.25rem + var(--density-padding-sm, 0.5rem))',
                         paddingLeft: 'var(--density-padding-md, 0.75rem)',
@@ -35,9 +35,9 @@ function Sidebar() {
                     </span>
                 </div>
 
-                <div className="flex-1 overflow-hidden">
+                <div className="flex-1 min-h-0 min-w-0 overflow-hidden relative">
                     {activeActivity === 'files' && (
-                        <ScrollableArea className="h-full">
+                        <ScrollableArea className="h-full w-full">
                             <FileTree />
                         </ScrollableArea>
                     )}
@@ -58,4 +58,3 @@ function Sidebar() {
 }
 
 export default memo(Sidebar);
-

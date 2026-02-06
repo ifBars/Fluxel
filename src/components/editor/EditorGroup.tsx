@@ -1,4 +1,4 @@
-import React from "react";
+import React, { memo, useMemo } from "react";
 import { Panel, Group, Separator } from "react-resizable-panels";
 import { useWorkbenchStore, useEditorStore } from "@/stores";
 import CodeEditor from "./CodeEditor";
@@ -7,16 +7,69 @@ import TabBar from "./TabBar";
 import { Code, Monitor, Columns } from "lucide-react";
 import appIcon from "../../../src-tauri/icons/icon.png";
 
-export default function EditorGroup() {
-    const { editorMode, setEditorMode } = useWorkbenchStore();
-    const { tabs, getActiveTab } = useEditorStore();
-    const activeTab = getActiveTab();
+// Memoized mode toggle button to prevent re-renders
+const ModeToggle = memo(function ModeToggle({ 
+    active, 
+    onClick, 
+    icon, 
+    label 
+}: { 
+    active: boolean; 
+    onClick: () => void; 
+    icon: React.ReactNode; 
+    label: string 
+}) {
+    return (
+        <button
+            onClick={onClick}
+            title={label}
+            className={`rounded-md flex items-center justify-center transition-all ${
+                active
+                    ? 'bg-background text-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/70'
+            }`}
+            style={{
+                padding: 'var(--density-padding-sm, 0.5rem)',
+            }}
+        >
+            {icon}
+        </button>
+    );
+});
+
+// Memoized empty state to prevent re-renders
+const EmptyEditorState = memo(function EmptyEditorState() {
+    return (
+        <div className="h-full w-full min-h-0 min-w-0 flex flex-col items-center justify-center bg-background text-muted-foreground overflow-hidden">
+            <div className="text-center max-w-md px-8">
+                <img src={appIcon} alt="Fluxel app icon" className="w-24 h-24 mx-auto" />
+                <h2 className="text-xl font-semibold text-foreground mb-2">Welcome to Fluxel</h2>
+                <p className="text-sm opacity-80 mb-6">
+                    Open a folder to get started, then click on files in the explorer to edit them.
+                </p>
+                <div className="text-xs space-y-1 opacity-60">
+                    <p>File → Open Folder</p>
+                    <p className="text-primary/70">or use the file explorer on the left</p>
+                </div>
+            </div>
+        </div>
+    );
+});
+
+function EditorGroup() {
+    const editorMode = useWorkbenchStore((state) => state.editorMode);
+    const setEditorMode = useWorkbenchStore((state) => state.setEditorMode);
+    const tabs = useEditorStore((state) => state.tabs);
+    const getActiveTab = useEditorStore((state) => state.getActiveTab);
+    
+    // Memoize activeTab to prevent unnecessary re-renders of CodeEditor
+    const activeTab = useMemo(() => getActiveTab(), [getActiveTab]);
 
     return (
-        <div className="h-full flex flex-col">
+        <div className="h-full min-h-0 min-w-0 flex flex-col overflow-hidden">
             {/* Editor Header / Tabs */}
             <div 
-                className="border-b border-border flex items-center justify-between bg-muted/20"
+                className="border-b border-border flex items-center justify-between bg-muted/20 shrink-0"
                 style={{
                     height: 'calc(2.5rem + var(--density-padding-sm, 0.5rem))',
                     paddingLeft: 'var(--density-padding-md, 0.75rem)',
@@ -24,7 +77,7 @@ export default function EditorGroup() {
                 }}
             >
                 {/* Tab Bar or empty state */}
-                <div className="flex-1 overflow-hidden">
+                <div className="flex-1 min-w-0 overflow-hidden">
                     {editorMode !== 'visual' && (
                         <>
                             {tabs.length > 0 ? (
@@ -71,7 +124,7 @@ export default function EditorGroup() {
             </div>
 
             {/* Editor Content Area - VSCode-style with proper flex containment */}
-            <div className="flex-1 min-h-0 relative">
+            <div className="flex-1 min-h-0 min-w-0 overflow-hidden relative">
                 {tabs.length === 0 && editorMode !== 'visual' ? (
                     <EmptyEditorState />
                 ) : (
@@ -87,18 +140,18 @@ export default function EditorGroup() {
 
                         {editorMode === 'split' && (
                             tabs.length > 0 ? (
-                                <Group orientation="horizontal" className="h-full">
-                                    <Panel defaultSize={50} minSize={20} className="h-full">
+                                <Group orientation="horizontal" className="h-full min-h-0 min-w-0">
+                                    <Panel defaultSize={50} minSize={20} className="h-full min-h-0 min-w-0 overflow-hidden">
                                         <CodeEditor activeTab={activeTab} />
                                     </Panel>
                                     <Separator
-                                        className="bg-border hover:bg-primary transition-colors"
+                                        className="bg-border hover:bg-primary transition-colors shrink-0"
                                         style={{
                                             width: 'var(--panel-handle-width, 4px)',
                                             minWidth: 'var(--panel-handle-width, 4px)',
                                         }}
                                     />
-                                    <Panel defaultSize={50} minSize={20} className="h-full">
+                                    <Panel defaultSize={50} minSize={20} className="h-full min-h-0 min-w-0 overflow-hidden">
                                         <VisualEditor />
                                     </Panel>
                                 </Group>
@@ -113,39 +166,4 @@ export default function EditorGroup() {
     );
 }
 
-function ModeToggle({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
-    return (
-        <button
-            onClick={onClick}
-            title={label}
-            className={`rounded-md flex items-center justify-center transition-all ${
-                active
-                    ? 'bg-background text-foreground'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/70'
-            }`}
-            style={{
-                padding: 'var(--density-padding-sm, 0.5rem)',
-            }}
-        >
-            {icon}
-        </button>
-    );
-}
-
-function EmptyEditorState() {
-    return (
-        <div className="h-full w-full flex flex-col items-center justify-center bg-background text-muted-foreground">
-            <div className="text-center max-w-md px-8">
-                <img src={appIcon} alt="Fluxel app icon" className="w-24 h-24 mx-auto" />
-                <h2 className="text-xl font-semibold text-foreground mb-2">Welcome to Fluxel</h2>
-                <p className="text-sm opacity-80 mb-6">
-                    Open a folder to get started, then click on files in the explorer to edit them.
-                </p>
-                <div className="text-xs space-y-1 opacity-60">
-                    <p>File → Open Folder</p>
-                    <p className="text-primary/70">or use the file explorer on the left</p>
-                </div>
-            </div>
-        </div>
-    );
-}
+export default memo(EditorGroup);

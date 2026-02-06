@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, memo, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { ChevronRight, ChevronDown, File, Loader2, AlertCircle, Search as SearchIcon } from 'lucide-react';
 import { useProjectStore, useEditorStore } from '@/stores';
@@ -17,16 +17,91 @@ interface SearchResult {
     total_matches: number;
 }
 
+// Memoized result item to prevent unnecessary re-renders
+const SearchResultItem = memo(function SearchResultItem({
+    group,
+    isExpanded,
+    onToggle,
+    onMatchClick,
+}: {
+    group: { filePath: string; matches: SearchMatch[] };
+    isExpanded: boolean;
+    onToggle: (filePath: string) => void;
+    onMatchClick: (match: SearchMatch) => void;
+}) {
+    const fileName = useMemo(() => group.filePath.split(/[\\/]/).pop() || group.filePath, [group.filePath]);
+    const fileDir = useMemo(() => {
+        const parts = group.filePath.split(/[\\/]/);
+        parts.pop();
+        return parts.join('/');
+    }, [group.filePath]);
+
+    return (
+        <div className="select-none">
+            <button
+                onClick={() => onToggle(group.filePath)}
+                className="w-full flex items-center gap-1.5 px-3 py-1.5 text-sm hover:bg-muted/50 transition-colors group"
+            >
+                <span className="w-4 h-4 flex items-center justify-center shrink-0">
+                    {isExpanded ? (
+                        <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+                    ) : (
+                        <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+                    )}
+                </span>
+                <File className="w-4 h-4 text-primary/70 shrink-0" />
+                <span className="text-left flex-1 min-w-0 overflow-hidden">
+                    <span className="block truncate text-foreground/90 group-hover:text-foreground">
+                        {fileName}
+                    </span>
+                    {fileDir && (
+                        <span className="block truncate text-muted-foreground text-xs">
+                            {fileDir}
+                        </span>
+                    )}
+                </span>
+                <span className="text-xs text-muted-foreground shrink-0 ml-2">
+                    {group.matches.length}
+                </span>
+            </button>
+
+            {isExpanded && (
+                <div className="pl-8">
+                    {group.matches.map((match, idx) => (
+                        <button
+                            key={`${match.file_path}-${match.line_number}-${idx}`}
+                            onClick={() => onMatchClick(match)}
+                            className="w-full text-left px-3 py-1 text-xs hover:bg-muted/30 transition-colors group"
+                        >
+                            <div className="flex items-start gap-2">
+                                <span className="text-muted-foreground shrink-0 min-w-[3ch] text-right">
+                                    {match.line_number}
+                                </span>
+                                <span 
+                                    className="flex-1 min-w-0 truncate font-mono text-foreground/80 group-hover:text-foreground" 
+                                    title={match.line_content}
+                                >
+                                    {match.line_content}
+                                </span>
+                            </div>
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+});
+
 export default function SearchPanel() {
-    const { currentProject } = useProjectStore();
-    const { openFile } = useEditorStore();
+    const currentProject = useProjectStore((state) => state.currentProject);
+    const openFile = useEditorStore((state) => state.openFile);
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<SearchResult | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
 
-    // Debounce search
+    // Debounce search with cleanup
     useEffect(() => {
         if (!query.trim() || !currentProject) {
             setResults(null);
@@ -34,7 +109,6 @@ export default function SearchPanel() {
             return;
         }
 
-        // Minimum query length
         if (query.length < 2) {
             setResults(null);
             return;
@@ -48,7 +122,7 @@ export default function SearchPanel() {
                 const searchResult = await invoke<SearchResult>('search_files', {
                     query: query.trim(),
                     rootPath: currentProject.rootPath,
-                    maxResults: 1000,
+                    maxResults: 100,
                 });
 
                 setResults(searchResult);
@@ -62,12 +136,35 @@ export default function SearchPanel() {
             } finally {
                 setIsLoading(false);
             }
-        }, 300); // 300ms debounce
+        }, 300);
 
         return () => clearTimeout(timeoutId);
     }, [query, currentProject]);
 
-    // Group matches by file
+    // Stable callbacks to prevent re-renders
+    const toggleFile = useCallback((filePath: string) => {
+        setExpandedFiles(prev => {
+            const newExpanded = new Set(prev);
+            if (newExpanded.has(filePath)) {
+                newExpanded.delete(filePath);
+            } else {
+                newExpanded.add(filePath);
+            }
+            return newExpanded;
+        });
+    }, []);
+
+    const handleMatchClick = useCallback(async (match: SearchMatch) => {
+        // Use requestAnimationFrame to defer file opening and prevent layout jitter
+        requestAnimationFrame(() => {
+            openFile(match.file_path, {
+                line: match.line_number,
+                column: (match.match_start ?? 0) + 1,
+            });
+        });
+    }, [openFile]);
+
+    // Memoize grouped results to prevent re-computation
     const groupedResults = useMemo(() => {
         if (!results || results.matches.length === 0) return [];
 
@@ -87,49 +184,25 @@ export default function SearchPanel() {
             .sort((a, b) => a.filePath.localeCompare(b.filePath));
     }, [results]);
 
-    const toggleFile = (filePath: string) => {
-        const newExpanded = new Set(expandedFiles);
-        if (newExpanded.has(filePath)) {
-            newExpanded.delete(filePath);
-        } else {
-            newExpanded.add(filePath);
-        }
-        setExpandedFiles(newExpanded);
-    };
-
-    const handleMatchClick = async (match: SearchMatch) => {
-        await openFile(match.file_path, {
-            line: match.line_number,
-            // match_start is zero-based; Monaco columns are 1-based
-            column: (match.match_start ?? 0) + 1,
-        });
-    };
-
-    const getFileName = (filePath: string) => {
-        return filePath.split(/[\\/]/).pop() || filePath;
-    };
-
-    const getFileDirectory = (filePath: string) => {
-        const parts = filePath.split(/[\\/]/);
-        parts.pop();
-        return parts.join('/');
-    };
-
     if (!currentProject) {
         return (
-            <div className="p-4 text-sm text-muted-foreground text-center">
-                <p>No project open</p>
-                <p className="text-xs mt-2 opacity-70">
-                    Open a folder to search files
-                </p>
+            <div className="h-full min-h-0 min-w-0 flex flex-col overflow-hidden">
+                <div className="flex-1 flex items-center justify-center p-4 text-sm text-muted-foreground text-center">
+                    <div>
+                        <p>No project open</p>
+                        <p className="text-xs mt-2 opacity-70">
+                            Open a folder to search files
+                        </p>
+                    </div>
+                </div>
             </div>
         );
     }
 
     return (
-        <div className="h-full flex flex-col">
+        <div className="h-full min-h-0 min-w-0 flex flex-col overflow-hidden">
             {/* Search Input */}
-            <div className="p-3 border-b border-border">
+            <div className="p-3 border-b border-border shrink-0">
                 <div className="relative">
                     <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <input
@@ -149,7 +222,7 @@ export default function SearchPanel() {
             </div>
 
             {/* Results */}
-            <div className="flex-1 overflow-auto">
+            <div className="flex-1 min-h-0 overflow-auto overscroll-contain" style={{ scrollbarGutter: 'stable' }}>
                 {isLoading && (
                     <div className="flex items-center justify-center py-8">
                         <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
@@ -176,74 +249,24 @@ export default function SearchPanel() {
                         ) : (
                             <>
                                 {/* Results Summary */}
-                                <div className="px-4 py-2 text-xs text-muted-foreground border-b border-border">
+                                <div className="px-3 py-2 text-xs text-muted-foreground border-b border-border sticky top-0 bg-background z-10">
                                     {results.total_matches} match{results.total_matches !== 1 ? 'es' : ''} in {groupedResults.length} file{groupedResults.length !== 1 ? 's' : ''}
-                                    {results.total_matches >= 1000 && (
-                                        <span className="ml-1 text-orange-500">(limited to 1000)</span>
+                                    {results.total_matches >= 100 && (
+                                        <span className="ml-1 text-orange-500">(limited to 100)</span>
                                     )}
                                 </div>
 
                                 {/* File Groups */}
                                 <div className="py-1">
-                                    {groupedResults.map((group) => {
-                                        const isExpanded = expandedFiles.has(group.filePath);
-                                        const fileName = getFileName(group.filePath);
-                                        const fileDir = getFileDirectory(group.filePath);
-
-                                        return (
-                                            <div key={group.filePath} className="select-none">
-                                                {/* File Header */}
-                                                <button
-                                                    onClick={() => toggleFile(group.filePath)}
-                                                    className="w-full flex items-center gap-1.5 px-4 py-1.5 text-sm hover:bg-muted/50 transition-colors group"
-                                                >
-                                                    <span className="w-4 h-4 flex items-center justify-center shrink-0">
-                                                        {isExpanded ? (
-                                                            <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
-                                                        ) : (
-                                                            <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
-                                                        )}
-                                                    </span>
-                                                    <File className="w-4 h-4 text-primary/70 shrink-0" />
-                                                    <span className="truncate text-left flex-1">
-                                                        <span className="text-foreground/90 group-hover:text-foreground">
-                                                            {fileName}
-                                                        </span>
-                                                        {fileDir && (
-                                                            <span className="text-muted-foreground ml-1 text-xs">
-                                                                {fileDir}
-                                                            </span>
-                                                        )}
-                                                    </span>
-                                                    <span className="text-xs text-muted-foreground shrink-0">
-                                                        {group.matches.length}
-                                                    </span>
-                                                </button>
-
-                                                {/* Match Lines */}
-                                                {isExpanded && (
-                                                    <div className="pl-4">
-                                                        {group.matches.map((match, idx) => (
-                                                            <button
-                                                                key={`${match.file_path}-${match.line_number}-${idx}`}
-                                                                onClick={() => handleMatchClick(match)}
-                                                                className="w-full text-left px-4 py-1.5 text-xs hover:bg-muted/30 transition-colors group"
-                                                            >
-                                                                <div className="flex items-start gap-2">
-                                                                    <span className="text-muted-foreground shrink-0 min-w-[3ch] text-right">
-                                                                        {match.line_number}
-                                                                    </span>
-                                                                    <span className="flex-1 font-mono break-all text-foreground/80 group-hover:text-foreground">
-                                                                        {match.line_content}
-                                                                    </span>
-                                                                </div>
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
+                                    {groupedResults.map((group) => (
+                                        <SearchResultItem
+                                            key={group.filePath}
+                                            group={group}
+                                            isExpanded={expandedFiles.has(group.filePath)}
+                                            onToggle={toggleFile}
+                                            onMatchClick={handleMatchClick}
+                                        />
+                                    ))}
                                 </div>
                             </>
                         )}
@@ -263,4 +286,3 @@ export default function SearchPanel() {
         </div>
     );
 }
-

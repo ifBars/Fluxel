@@ -36,20 +36,20 @@ function Workbench() {
     // Use the profiler hook - ProfilerWrapper is extracted later
     useProfiler('Workbench');
 
-    // Store selectors - no individual profiling to reduce overhead
-    // Profiling overhead (~0.05-0.1ms per span) exceeds selector execution time (<0.01ms each)
-    // The overall workbench_init span captures the total time
+    // Store selectors - optimized to prevent unnecessary re-renders
     const defaultSidebarOpen = useWorkbenchStore((state) => state.defaultSidebarOpen);
 
+    // Use individual selectors for editor store to prevent re-renders when other fields change
     const tabs = useEditorStore((state) => state.tabs);
     const activeTabId = useEditorStore((state) => state.activeTabId);
     const cursorPosition = useEditorStore((state) => state.cursorPosition);
 
+    // Settings store selectors
     const uiDensity = useSettingsStore((state) => state.uiDensity);
     const tabSize = useSettingsStore((state) => state.tabSize);
     const wordWrap = useSettingsStore((state) => state.wordWrap);
 
-    // Simple single-value selectors
+    // Other store selectors
     const isBuildPanelOpen = useBuildPanelStore((state) => state.isOpen);
     const isLoading = useTypeLoadingStore((state) => state.isLoading);
     const loadingMessage = useTypeLoadingStore((state) => state.loadingMessage);
@@ -64,8 +64,7 @@ function Workbench() {
     const isQuickOutlineOpen = useNavigationStore((state) => state.isQuickOutlineOpen);
     const closeQuickOutline = useNavigationStore((state) => state.closeQuickOutline);
 
-    // UseMemo hooks - React already optimizes these, profiling adds overhead
-    // Only profile if computation is expensive (these are simple lookups)
+    // Memoized computations
     const activeTab = useMemo(() => {
         return tabs.find((t) => t.id === activeTabId) ?? null;
     }, [tabs, activeTabId]);
@@ -90,17 +89,17 @@ function Workbench() {
     // Density config is a simple object lookup - no need to profile
     const densityConfig = useMemo(() => densityConfigs[uiDensity], [uiDensity]);
 
-    // Callbacks - React already optimizes these, profiling adds overhead
+    // Stable callbacks
     const handleSettingsClick = useCallback(() => {
         setSettingsSection(undefined);
         setIsSettingsOpen(true);
     }, []);
+    
     const handleSettingsClose = useCallback(() => {
         setIsSettingsOpen(false);
         setSettingsSection(undefined);
-        // Also close agent settings trigger if it was open
         if (agentSettingsOpen) {
-            agentToggleSettings(); // Close the agent trigger
+            agentToggleSettings();
         }
     }, [agentSettingsOpen, agentToggleSettings]);
 
@@ -112,15 +111,14 @@ function Workbench() {
         }
     }, [agentSettingsOpen, agentSettingsSection]);
 
-    // Keyboard shortcuts hook - no need to profile hook initialization
+    // Keyboard shortcuts hook
     useKeyboardShortcuts(sidebarPanelRef);
 
     // Register default commands for command palette
     useDefaultCommands();
 
-    // Combine component initialization tracking into a single useEffect to reduce hook overhead
+    // Combine component initialization tracking into a single useEffect
     useEffect(() => {
-        // Clear old v3 panel layouts on first mount (one-time migration)
         clearOldPanelLayouts();
 
         FrontendProfiler.trackInteraction('ActivityBar:init', { component: 'ActivityBar' });
@@ -129,11 +127,8 @@ function Workbench() {
     }, []);
 
     // End init span after mount effects complete
-    // Use requestIdleCallback to defer non-critical work and improve initial render
     useEffect(() => {
         if (initSpanRef.current) {
-            // Use requestIdleCallback to defer span ending
-            // This allows the UI to render first, then finalize profiling in idle time
             const scheduleProfiling = () => {
                 initSpanRef.current?.end({
                     storeSelectorsCount: '15',
@@ -142,12 +137,10 @@ function Workbench() {
                 initSpanRef.current = null;
             };
 
-            // Defer to next idle period for better initial render performance
             if (typeof requestIdleCallback !== 'undefined') {
                 const idleId = requestIdleCallback(scheduleProfiling, { timeout: 100 });
                 return () => cancelIdleCallback(idleId);
             } else {
-                // Fallback to setTimeout for browsers without requestIdleCallback
                 const timeoutId = setTimeout(scheduleProfiling, 0);
                 return () => clearTimeout(timeoutId);
             }
@@ -156,8 +149,8 @@ function Workbench() {
 
     return (
         <ProfilerWrapper>
-            <div className="flex-1 flex flex-col overflow-hidden h-full bg-background text-foreground">
-                <div className="flex-1 flex overflow-hidden">
+            <div className="flex-1 flex flex-col overflow-hidden h-full min-h-0 min-w-0 bg-background text-foreground">
+                <div className="flex-1 flex overflow-hidden min-h-0 min-w-0">
                     {/* Activity Bar Section - Fixed Width */}
                     <ActivityBar
                         onSettingsClick={handleSettingsClick}
@@ -165,7 +158,7 @@ function Workbench() {
                     />
 
                     {/* Main Resizable Area */}
-                    <Group id="workbench-main" orientation="horizontal" className="flex-1">
+                    <Group id="workbench-main" orientation="horizontal" className="flex-1 min-h-0 min-w-0">
                         {/* Sidebar Panel */}
                         <Panel
                             id="sidebar"
@@ -175,12 +168,12 @@ function Workbench() {
                             maxSize={densityConfig.sidebarMaxSize}
                             collapsible
                             collapsedSize={0}
-                            className="bg-muted/10 border-r border-border"
+                            className="bg-muted/10 border-r border-border min-h-0 min-w-0 overflow-hidden"
                         >
                             <Sidebar />
                         </Panel>
                         <Separator
-                            className="panel-resize-handle bg-border hover:bg-primary transition-colors cursor-col-resize active:bg-primary z-20 transition-all opacity-60 hover:opacity-100"
+                            className="panel-resize-handle bg-border hover:bg-primary transition-colors cursor-col-resize active:bg-primary z-20 transition-all opacity-60 hover:opacity-100 shrink-0"
                             style={{
                                 width: densityConfig.panelHandleWidth,
                                 minWidth: densityConfig.panelHandleWidth,
@@ -188,10 +181,10 @@ function Workbench() {
                         />
 
                         {/* Editor + Build Panel Area (Vertical Split) */}
-                        <Panel id="main-content" minSize={30} className="flex flex-col">
-                            <Group id="editor-build-group" orientation="vertical" className="flex-1 h-full">
+                        <Panel id="main-content" minSize={30} className="flex flex-col min-h-0 min-w-0 overflow-hidden">
+                            <Group id="editor-build-group" orientation="vertical" className="flex-1 h-full min-h-0 min-w-0">
                                 {/* Editor Area */}
-                                <Panel id="editor" minSize={densityConfig.editorMinSize} className="h-full">
+                                <Panel id="editor" minSize={densityConfig.editorMinSize} className="h-full min-h-0 min-w-0 overflow-hidden">
                                     <EditorGroup />
                                 </Panel>
 
@@ -199,7 +192,7 @@ function Workbench() {
                                 {isBuildPanelOpen && (
                                     <>
                                         <Separator
-                                            className="group panel-resize-handle bg-transparent cursor-row-resize z-10 flex items-center justify-center outline-none"
+                                            className="group panel-resize-handle bg-transparent cursor-row-resize z-10 flex items-center justify-center outline-none shrink-0"
                                             style={{
                                                 height: '10px',
                                                 minHeight: '10px',
@@ -222,7 +215,7 @@ function Workbench() {
                                             defaultSize={densityConfig.buildPanelDefaultSize}
                                             minSize={densityConfig.buildPanelMinSize}
                                             maxSize={densityConfig.buildPanelMaxSize}
-                                            className="h-full"
+                                            className="h-full min-h-0 min-w-0 overflow-hidden"
                                         >
                                             <Suspense fallback={<div className="flex items-center justify-center h-full">Loading...</div>}>
                                                 <BuildPanel />
@@ -237,7 +230,7 @@ function Workbench() {
                         {isInspectorOpen && (
                             <>
                                 <Separator
-                                    className="panel-resize-handle bg-border hover:bg-primary transition-colors cursor-col-resize active:bg-primary z-20 transition-all opacity-60 hover:opacity-100"
+                                    className="panel-resize-handle bg-border hover:bg-primary transition-colors cursor-col-resize active:bg-primary z-20 transition-all opacity-60 hover:opacity-100 shrink-0"
                                     style={{
                                         width: densityConfig.panelHandleWidth,
                                         minWidth: densityConfig.panelHandleWidth,
@@ -251,6 +244,7 @@ function Workbench() {
                                     defaultSize="350px"
                                     collapsible
                                     collapsedSize={0}
+                                    className="min-h-0 min-w-0 overflow-hidden"
                                 >
                                     <Suspense fallback={<div className="flex items-center justify-center h-full">Loading...</div>}>
                                         <InspectorPanel />
@@ -263,7 +257,7 @@ function Workbench() {
                         {isAgentOpen && (
                             <>
                                 <Separator
-                                    className="panel-resize-handle bg-border hover:bg-primary transition-colors cursor-col-resize active:bg-primary z-20 transition-all opacity-60 hover:opacity-100"
+                                    className="panel-resize-handle bg-border hover:bg-primary transition-colors cursor-col-resize active:bg-primary z-20 transition-all opacity-60 hover:opacity-100 shrink-0"
                                     style={{
                                         width: densityConfig.panelHandleWidth,
                                         minWidth: densityConfig.panelHandleWidth,
@@ -276,6 +270,7 @@ function Workbench() {
                                     defaultSize={densityConfig.agentPanelDefaultSize}
                                     collapsible
                                     collapsedSize={0}
+                                    className="min-h-0 min-w-0 overflow-hidden"
                                 >
                                     <Suspense fallback={<div className="flex items-center justify-center h-full">Loading...</div>}>
                                         <AgentPanel />
@@ -288,7 +283,7 @@ function Workbench() {
                         {isDebugOpen && (
                             <>
                                 <Separator
-                                    className="panel-resize-handle bg-border hover:bg-primary transition-colors cursor-col-resize active:bg-primary z-20 transition-all opacity-60 hover:opacity-100"
+                                    className="panel-resize-handle bg-border hover:bg-primary transition-colors cursor-col-resize active:bg-primary z-20 transition-all opacity-60 hover:opacity-100 shrink-0"
                                     style={{
                                         width: densityConfig.panelHandleWidth,
                                         minWidth: densityConfig.panelHandleWidth,
@@ -301,6 +296,7 @@ function Workbench() {
                                     defaultSize={densityConfig.debugPanelDefaultSize}
                                     collapsible
                                     collapsedSize={0}
+                                    className="min-h-0 min-w-0 overflow-hidden"
                                 >
                                     <Suspense fallback={<div className="flex items-center justify-center h-full">Loading...</div>}>
                                         <DebugPanel />
