@@ -15,6 +15,7 @@ import type {
     CompletionProvider,
     SyntaxRule,
     CompletionItem,
+    NewFileTemplate,
 } from './types';
 
 /**
@@ -33,6 +34,7 @@ export function createPluginContext(
     monaco: MonacoInstance,
     getWorkspaceRoot: () => string | null,
     onRegisterProjectDetector: (detector: ProjectDetector) => Disposable,
+    onRegisterNewFileTemplates: (pluginId: string, templates: NewFileTemplate[]) => Disposable,
 ): PluginContext {
     const subscriptions: Disposable[] = [];
 
@@ -82,6 +84,12 @@ export function createPluginContext(
 
         registerProjectDetector(detector: ProjectDetector): Disposable {
             const disposable = onRegisterProjectDetector(detector);
+            subscriptions.push(disposable);
+            return disposable;
+        },
+
+        registerNewFileTemplates(templates: NewFileTemplate[]): Disposable {
+            const disposable = onRegisterNewFileTemplates(pluginId, templates);
             subscriptions.push(disposable);
             return disposable;
         },

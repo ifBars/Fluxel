@@ -8,14 +8,14 @@ import type { PluginManifest } from '@/lib/plugins/types';
 
 export const S1API_PLUGIN_MANIFEST: PluginManifest = {
     id: 'fluxel.s1api',
-    name: 'S1API Support',
+    name: 'Schedule 1 Modding Support',
     version: '1.0.0',
-    description: 'Provides IntelliSense, syntax highlighting, and documentation for S1API mod development.',
+    description: 'Provides Schedule 1-specific completions, docs, and project detection for S1API, S1MAPI, and SteamNetworkLib workflows.',
     author: 'Fluxel',
-    repository: 'https://github.com/ifbars/S1API',
     activationEvents: [
+        'onStartup',
         'onLanguage:csharp',
-        'onProject:s1api',
+        'onProject:schedule-one-mod',
     ],
     dependencies: [],
     isCore: true,

@@ -1,213 +1,348 @@
 /**
- * S1API Project Detector
- * 
- * Detects S1API/MelonLoader mod projects by checking for:
- * - References to S1API.dll or S1API.Forked NuGet package in .csproj files
- * - MelonLoader references in project files
- * - Presence of classes inheriting from PhoneApp, Saveable, etc.
+ * Schedule 1 Modding Project Detector
+ *
+ * Detects Schedule 1 mod projects that use Schedule-specific libraries such as
+ * S1API, S1MAPI, or SteamNetworkLib. Generic Unity and MelonLoader indicators
+ * are only used as supporting signals.
  */
 
-import type { ProjectDetector, DetectedProject } from '@/lib/plugins/types';
+import type { DetectedProject, ProjectDetector } from '@/lib/plugins/types';
 
-/**
- * Patterns that indicate an S1API project
- */
-const S1API_INDICATORS = {
-    // NuGet package references
-    nugetPackages: [
-        'S1API',
-        'S1API.Forked',
-    ],
-    // Assembly references
-    assemblyRefs: [
-        'S1API.dll',
-        'S1API',
-    ],
-    // MelonLoader indicators
-    melonLoader: [
-        'MelonLoader',
-        'MelonMod',
-        'MelonPlugin',
-    ],
-    // S1API namespace patterns in code
-    namespaces: [
-        'S1API.PhoneApp',
-        'S1API.Saveables',
-        'S1API.PhoneCalls',
-        'S1API.UI',
-        'S1API.Internal',
-    ],
-    // Base class patterns
-    baseClasses: [
-        'PhoneApp',
-        'Saveable',
-        'PhoneCallDefinition',
-    ],
-};
+import type {
+    ScheduleOneFeature,
+    ScheduleOneFramework,
+    ScheduleOneLibrary,
+    ScheduleOneProjectMetadata,
+    ScheduleOneRuntime,
+} from './projectProfile';
 
-/**
- * Check if a .csproj file contains S1API references
- */
-async function checkCsprojForS1API(content: string): Promise<{ found: boolean; confidence: number }> {
+interface MutableScheduleOneProjectMetadata {
+    libraries: Set<ScheduleOneLibrary>;
+    frameworks: Set<ScheduleOneFramework>;
+    runtimes: Set<ScheduleOneRuntime>;
+    features: Set<ScheduleOneFeature>;
+    csprojCount: number;
+    signalCount: number;
+}
+
+interface DetectionSignal {
+    confidence: number;
+    metadata: ScheduleOneProjectMetadata;
+}
+
+function createMutableMetadata(): MutableScheduleOneProjectMetadata {
+    return {
+        libraries: new Set(),
+        frameworks: new Set(),
+        runtimes: new Set(),
+        features: new Set(),
+        csprojCount: 0,
+        signalCount: 0,
+    };
+}
+
+function finalizeMetadata(metadata: MutableScheduleOneProjectMetadata): ScheduleOneProjectMetadata {
+    return {
+        libraries: Array.from(metadata.libraries),
+        frameworks: Array.from(metadata.frameworks),
+        runtimes: Array.from(metadata.runtimes),
+        features: Array.from(metadata.features),
+        csprojCount: metadata.csprojCount,
+        signalCount: metadata.signalCount,
+    };
+}
+
+function addLibrarySignal(
+    metadata: MutableScheduleOneProjectMetadata,
+    library: ScheduleOneLibrary,
+    confidence: number
+): number {
+    metadata.libraries.add(library);
+    metadata.signalCount += 1;
+    return confidence;
+}
+
+function addFeatureSignal(
+    metadata: MutableScheduleOneProjectMetadata,
+    feature: ScheduleOneFeature,
+    confidence: number
+): number {
+    metadata.features.add(feature);
+    metadata.signalCount += 1;
+    return confidence;
+}
+
+function addFrameworkContext(
+    metadata: MutableScheduleOneProjectMetadata,
+    framework: ScheduleOneFramework,
+    confidence = 0
+): number {
+    metadata.frameworks.add(framework);
+    return confidence;
+}
+
+function addRuntimeContext(
+    metadata: MutableScheduleOneProjectMetadata,
+    runtime: ScheduleOneRuntime,
+    confidence = 0
+): number {
+    metadata.runtimes.add(runtime);
+    return confidence;
+}
+
+function mergeMetadata(
+    target: MutableScheduleOneProjectMetadata,
+    source: ScheduleOneProjectMetadata
+): void {
+    source.libraries.forEach((library) => target.libraries.add(library));
+    source.frameworks.forEach((framework) => target.frameworks.add(framework));
+    source.runtimes.forEach((runtime) => target.runtimes.add(runtime));
+    source.features.forEach((feature) => target.features.add(feature));
+    target.csprojCount += source.csprojCount;
+    target.signalCount += source.signalCount;
+}
+
+function hasScheduleOneSpecificSignal(metadata: ScheduleOneProjectMetadata): boolean {
+    return metadata.libraries.length > 0 || metadata.features.length > 0;
+}
+
+export function inspectScheduleOneCsproj(content: string): DetectionSignal {
+    const metadata = createMutableMetadata();
+    metadata.csprojCount = 1;
+
     let confidence = 0;
 
-    // Check for NuGet package references
-    for (const pkg of S1API_INDICATORS.nugetPackages) {
-        const pattern = new RegExp(`<PackageReference\\s+Include=["']${pkg}["']`, 'i');
-        if (pattern.test(content)) {
-            confidence += 0.5;
-        }
+    if (/(<PackageReference\s+Include=["']S1API(?:\.Forked)?["'])|(<Reference\s+Include=["']S1API(?:\.Forked)?["'])/i.test(content)) {
+        confidence += addLibrarySignal(metadata, 's1api', 0.55);
     }
 
-    // Check for assembly references
-    for (const asm of S1API_INDICATORS.assemblyRefs) {
-        const pattern = new RegExp(`<Reference\\s+Include=["']${asm}["']|<HintPath>.*${asm}`, 'i');
-        if (pattern.test(content)) {
-            confidence += 0.4;
-        }
+    if (/(<PackageReference\s+Include=["']S1MAPI["'])|(<Reference\s+Include=["'](?:S1MAPI|MAPI)["'])/i.test(content)) {
+        confidence += addLibrarySignal(metadata, 's1mapi', 0.5);
+        confidence += addFeatureSignal(metadata, 'building', 0.08);
     }
 
-    // Check for MelonLoader references
-    for (const ml of S1API_INDICATORS.melonLoader) {
-        const pattern = new RegExp(`<PackageReference\\s+Include=["']${ml}|<Reference\\s+Include=["']${ml}`, 'i');
-        if (pattern.test(content)) {
-            confidence += 0.2;
-        }
+    if (/(<PackageReference\s+Include=["']SteamNetworkLib["'])|(<Reference\s+Include=["']SteamNetworkLib["'])/i.test(content)) {
+        confidence += addLibrarySignal(metadata, 'steamnetworklib', 0.5);
+        confidence += addFeatureSignal(metadata, 'networking', 0.08);
+    }
+
+    if (/(<PackageReference\s+Include=["']LavaGang\.MelonLoader["'])|(<Reference\s+Include=["']MelonLoader["'])/i.test(content)) {
+        confidence += addFrameworkContext(metadata, 'melonloader', 0.04);
+    }
+
+    if (/(<PackageReference\s+Include=["']0Harmony["'])|(<Reference\s+Include=["']0Harmony["'])/i.test(content)) {
+        confidence += addFrameworkContext(metadata, 'harmony', 0.03);
+    }
+
+    if (/\b(Mono|MonoMelon)\b/i.test(content)) {
+        addRuntimeContext(metadata, 'mono');
+    }
+
+    if (/\b(Il2Cpp|Il2cpp|Il2CppMelon)\b/i.test(content)) {
+        addRuntimeContext(metadata, 'il2cpp');
+    }
+
+    if (/\b(CrossCompat|UseLocalS1APIForked)\b/i.test(content)) {
+        addRuntimeContext(metadata, 'cross-compat');
+    }
+
+    if (/TVGS|Schedule I|ScheduleOne/i.test(content)) {
+        confidence += 0.03;
     }
 
     return {
-        found: confidence > 0,
-        confidence: Math.min(confidence, 1.0),
+        confidence: Math.min(confidence, 1),
+        metadata: finalizeMetadata(metadata),
+    };
+}
+
+export function inspectScheduleOneSource(content: string): DetectionSignal {
+    const metadata = createMutableMetadata();
+    let confidence = 0;
+
+    if (/\busing\s+S1API\b|\busing\s+S1API\./i.test(content)) {
+        confidence += addLibrarySignal(metadata, 's1api', 0.35);
+    }
+
+    if (/\busing\s+S1MAPI\b|\busing\s+S1MAPI\./i.test(content)) {
+        confidence += addLibrarySignal(metadata, 's1mapi', 0.32);
+        confidence += addFeatureSignal(metadata, 'building', 0.08);
+    }
+
+    if (/\busing\s+SteamNetworkLib\b|\busing\s+SteamNetworkLib\./i.test(content)) {
+        confidence += addLibrarySignal(metadata, 'steamnetworklib', 0.32);
+        confidence += addFeatureSignal(metadata, 'networking', 0.08);
+    }
+
+    if (/\bPhoneApp\b|\bAppName\b|\bUIFactory\./.test(content)) {
+        confidence += addFeatureSignal(metadata, 'phone-app', 0.18);
+    }
+
+    if (/\bSaveable\b|\[SaveableField\b/.test(content)) {
+        confidence += addFeatureSignal(metadata, 'saveable', 0.18);
+    }
+
+    if (/\bNPCPrefabBuilder\b|\bEntities\.NPCs\b|\bCustomNPC\b|\bConfigurePrefab\b/.test(content)) {
+        confidence += addFeatureSignal(metadata, 'custom-npc', 0.18);
+    }
+
+    if (/\bBuildingBuilder\b|\bInteriorBuilder\b|\bPrefabPlacer\b|\bGltfLoader\b|\bPrefabRef\b/.test(content)) {
+        confidence += addFeatureSignal(metadata, 'building', 0.18);
+    }
+
+    if (/\bSteamNetworkClient\b|\bHostSyncVar\b|\bClientSyncVar\b|\bRegisterMessageHandler\b|\bProcessIncomingMessages\b/.test(content)) {
+        confidence += addFeatureSignal(metadata, 'networking', 0.18);
+    }
+
+    if (/\bMelonMod\b|\[assembly:\s*MelonInfo\b|\[assembly:\s*MelonGame\b/.test(content)) {
+        confidence += addFrameworkContext(metadata, 'melonloader', 0.03);
+    }
+
+    if (/\bHarmonyPatch\b|\bHarmonyLib\.Harmony\b/.test(content)) {
+        confidence += addFrameworkContext(metadata, 'harmony', 0.02);
+    }
+
+    if (/#if\s+MONO\b/.test(content)) {
+        addRuntimeContext(metadata, 'mono');
+    }
+
+    if (/#if\s+IL2CPP\b|\bIl2CppInterop\b/.test(content)) {
+        addRuntimeContext(metadata, 'il2cpp');
+    }
+
+    if (/#if\s+(?:MONO|IL2CPP)\b/.test(content) && /#elif\s+(?:MONO|IL2CPP)\b/.test(content)) {
+        addRuntimeContext(metadata, 'cross-compat');
+    }
+
+    if (/Schedule I|ScheduleOne|TVGS/.test(content)) {
+        confidence += 0.02;
+    }
+
+    return {
+        confidence: Math.min(confidence, 1),
+        metadata: finalizeMetadata(metadata),
+    };
+}
+
+export function mergeScheduleOneSignals(signals: DetectionSignal[]): DetectionSignal {
+    if (signals.length === 0) {
+        return {
+            confidence: 0,
+            metadata: finalizeMetadata(createMutableMetadata()),
+        };
+    }
+
+    const combined = createMutableMetadata();
+    let totalConfidence = 0;
+    let contributingSignals = 0;
+
+    for (const signal of signals) {
+        if (!hasScheduleOneSpecificSignal(signal.metadata)) {
+            continue;
+        }
+
+        mergeMetadata(combined, signal.metadata);
+        totalConfidence += signal.confidence;
+        contributingSignals += 1;
+    }
+
+    if (contributingSignals === 0) {
+        return {
+            confidence: 0,
+            metadata: finalizeMetadata(combined),
+        };
+    }
+
+    const normalizedConfidence = Math.min(
+        totalConfidence / contributingSignals + Math.min(combined.signalCount * 0.03, 0.2),
+        1
+    );
+
+    return {
+        confidence: normalizedConfidence,
+        metadata: finalizeMetadata(combined),
     };
 }
 
 /**
- * Check if a C# file contains S1API usage patterns
- */
-function checkCSharpForS1API(content: string): { found: boolean; confidence: number } {
-    let confidence = 0;
-
-    // Check for S1API using statements
-    for (const ns of S1API_INDICATORS.namespaces) {
-        const pattern = new RegExp(`using\\s+${ns.replace('.', '\\.')}`, 'i');
-        if (pattern.test(content)) {
-            confidence += 0.15;
-        }
-    }
-
-    // Check for S1API base class inheritance
-    for (const baseClass of S1API_INDICATORS.baseClasses) {
-        const pattern = new RegExp(`:\\s*${baseClass}\\b`, 'i');
-        if (pattern.test(content)) {
-            confidence += 0.25;
-        }
-    }
-
-    // Check for [SaveableField] attribute
-    if (/\[SaveableField\s*\(/.test(content)) {
-        confidence += 0.2;
-    }
-
-    // Check for UIFactory usage
-    if (/UIFactory\.(Panel|Text|Button|Layout)/.test(content)) {
-        confidence += 0.15;
-    }
-
-    return {
-        found: confidence > 0,
-        confidence: Math.min(confidence, 1.0),
-    };
-}
-
-/**
- * S1API Project Detector
+ * Schedule 1 Project Detector
  */
 export const s1apiProjectDetector: ProjectDetector = {
-    id: 's1api-detector',
-    projectType: 's1api',
+    id: 'schedule-one-mod-detector',
+    projectType: 'schedule-one-mod',
 
     async detect(workspaceRoot: string): Promise<DetectedProject | null> {
         try {
             const { invoke } = await import('@tauri-apps/api/core');
             const { join } = await import('@tauri-apps/api/path');
-            const { readTextFile, exists } = await import('@tauri-apps/plugin-fs');
+            const { exists, readTextFile } = await import('@tauri-apps/plugin-fs');
 
-            let totalConfidence = 0;
-            let checksPerformed = 0;
-
-            // Find and check .csproj files
             interface DirEntry {
                 name: string;
-                isFile: boolean;
                 isDirectory: boolean;
+                isIgnored?: boolean;
             }
 
             const entries = await invoke<DirEntry[]>('list_directory_entries', {
                 path: workspaceRoot,
+                workspaceRoot,
+                maxEntries: 250,
             }).catch(() => [] as DirEntry[]);
 
-            const csprojFiles = entries.filter(e => e.isFile && e.name.endsWith('.csproj'));
+            const signals: DetectionSignal[] = [];
+            const csprojFiles = entries.filter((entry) => !entry.isDirectory && entry.name.endsWith('.csproj'));
+            const sourceFiles = entries.filter((entry) => !entry.isDirectory && entry.name.endsWith('.cs')).slice(0, 12);
 
-            for (const csproj of csprojFiles) {
+            for (const csprojFile of csprojFiles) {
                 try {
-                    const csprojPath = await join(workspaceRoot, csproj.name);
+                    const csprojPath = await join(workspaceRoot, csprojFile.name);
                     const content = await readTextFile(csprojPath);
-                    const result = await checkCsprojForS1API(content);
-                    if (result.found) {
-                        totalConfidence += result.confidence;
-                        checksPerformed++;
-                    }
+                    signals.push(inspectScheduleOneCsproj(content));
                 } catch {
-                    // Ignore read errors
+                    // Ignore unreadable project files
                 }
             }
 
-            // Sample a few .cs files for S1API patterns
-            const csFiles = entries.filter(e => e.isFile && e.name.endsWith('.cs')).slice(0, 5);
-
-            for (const csFile of csFiles) {
+            for (const sourceFile of sourceFiles) {
                 try {
-                    const csPath = await join(workspaceRoot, csFile.name);
-                    const content = await readTextFile(csPath);
-                    const result = checkCSharpForS1API(content);
-                    if (result.found) {
-                        totalConfidence += result.confidence;
-                        checksPerformed++;
-                    }
+                    const sourcePath = await join(workspaceRoot, sourceFile.name);
+                    const content = await readTextFile(sourcePath);
+                    signals.push(inspectScheduleOneSource(content));
                 } catch {
-                    // Ignore read errors
+                    // Ignore unreadable source files
                 }
             }
 
-            // Check for common MelonLoader mod structure
-            const melonModJson = await join(workspaceRoot, 'MelonInfo.cs');
-            if (await exists(melonModJson)) {
-                totalConfidence += 0.3;
-                checksPerformed++;
+            const melonInfoPath = await join(workspaceRoot, 'MelonInfo.cs');
+            if (await exists(melonInfoPath)) {
+                signals.push(
+                    inspectScheduleOneSource(
+                        '[assembly: MelonInfo(typeof(Core), "Schedule I Mod", "1.0.0", "Fluxel")]'
+                    )
+                );
             }
 
-            // Calculate final confidence
-            const finalConfidence = checksPerformed > 0 
-                ? Math.min(totalConfidence / Math.max(checksPerformed, 1), 1.0)
-                : 0;
-
-            if (finalConfidence >= 0.3) {
-                return {
-                    type: 's1api',
-                    name: 'S1API Mod Project',
-                    confidence: finalConfidence,
-                    metadata: {
-                        csprojCount: csprojFiles.length,
-                        hasS1APIRefs: totalConfidence > 0,
-                    },
-                };
+            const combined = mergeScheduleOneSignals(signals);
+            if (!hasScheduleOneSpecificSignal(combined.metadata) || combined.confidence < 0.32) {
+                return null;
             }
 
-            return null;
+            return {
+                type: 'schedule-one-mod',
+                name: 'Schedule 1 Mod Project',
+                confidence: combined.confidence,
+                metadata: {
+                    libraries: combined.metadata.libraries,
+                    frameworks: combined.metadata.frameworks,
+                    runtimes: combined.metadata.runtimes,
+                    features: combined.metadata.features,
+                    csprojCount: combined.metadata.csprojCount,
+                    signalCount: combined.metadata.signalCount,
+                },
+            };
         } catch (error) {
-            console.error('[S1API Detector] Detection failed:', error);
+            console.error('[ScheduleOne Detector] Detection failed:', error);
             return null;
         }
     },
 };
-

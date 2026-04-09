@@ -42,7 +42,7 @@ interface FileSystemState {
 
     // File operations
     /** Create a new file at the given path */
-    createFile: (parentPath: string, fileName: string) => Promise<string | null>;
+    createFile: (parentPath: string, fileName: string, content?: string) => Promise<string | null>;
     /** Create a new folder at the given path */
     createFolder: (parentPath: string, folderName: string) => Promise<string | null>;
     /** Delete a file or folder */
@@ -488,13 +488,13 @@ export const useFileSystemStore = create<FileSystemState>((set, get) => ({
         set({ clipboardPath: path });
     },
 
-    createFile: async (parentPath: string, fileName: string) => {
+    createFile: async (parentPath: string, fileName: string, content = '') => {
         try {
             const normalizedParent = parentPath.replace(/\\/g, '/');
             const filePath = `${normalizedParent}/${fileName}`;
             
-            // Create empty file
-            await writeTextFile(filePath, '');
+            // Create file with optional template content
+            await writeTextFile(filePath, content);
             
             // Refresh the parent folder to show the new file
             await get().refreshFolder(normalizedParent);

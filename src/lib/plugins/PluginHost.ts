@@ -19,6 +19,8 @@ import type {
     Disposable,
     MonacoInstance,
     ActivationEvent,
+    NewFileTemplate,
+    NewFileTemplateContext,
 } from './types';
 import { createPluginContext, disposePluginContext } from './PluginContext';
 
@@ -32,6 +34,7 @@ export class PluginHost {
     private contexts = new Map<string, PluginContext>();
     private projectDetectors = new Map<string, ProjectDetector>();
     private detectedProjects = new Map<string, DetectedProject>();
+    private newFileTemplates = new Map<string, NewFileTemplate[]>();
     private eventListeners = new Map<PluginEventType, Set<PluginEventListener>>();
     
     private monaco: MonacoInstance | null = null;
@@ -196,6 +199,7 @@ export class PluginHost {
                 this.monaco,
                 () => this.workspaceRoot,
                 (detector) => this.registerProjectDetector(detector),
+                (ownerPluginId, templates) => this.registerNewFileTemplates(ownerPluginId, templates),
             );
             
             this.contexts.set(pluginId, context);
@@ -317,6 +321,27 @@ export class PluginHost {
     }
 
     /**
+     * Register new file templates contributed by a plugin
+     */
+    private registerNewFileTemplates(pluginId: string, templates: NewFileTemplate[]): Disposable {
+        const existing = this.newFileTemplates.get(pluginId) ?? [];
+        this.newFileTemplates.set(pluginId, [...existing, ...templates]);
+
+        return {
+            dispose: () => {
+                const current = this.newFileTemplates.get(pluginId) ?? [];
+                const remaining = current.filter((template) => !templates.includes(template));
+                if (remaining.length === 0) {
+                    this.newFileTemplates.delete(pluginId);
+                    return;
+                }
+
+                this.newFileTemplates.set(pluginId, remaining);
+            },
+        };
+    }
+
+    /**
      * Run a specific project detector
      */
     private async runDetector(detector: ProjectDetector): Promise<void> {
@@ -361,6 +386,16 @@ export class PluginHost {
      */
     getDetectedProjects(): DetectedProject[] {
         return Array.from(this.detectedProjects.values());
+    }
+
+    /**
+     * Get all plugin-contributed new file templates that match the current context
+     */
+    getNewFileTemplates(context: NewFileTemplateContext): NewFileTemplate[] {
+        return Array.from(this.newFileTemplates.values())
+            .flat()
+            .filter((template) => template.matches?.(context) ?? true)
+            .sort((left, right) => (right.priority ?? 0) - (left.priority ?? 0));
     }
 
     /**
@@ -446,6 +481,7 @@ export class PluginHost {
         this.contexts.clear();
         this.projectDetectors.clear();
         this.detectedProjects.clear();
+        this.newFileTemplates.clear();
         this.eventListeners.clear();
         this.initialized = false;
 

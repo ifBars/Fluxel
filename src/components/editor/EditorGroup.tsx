@@ -8,26 +8,25 @@ import { Code, Monitor, Columns } from "lucide-react";
 import appIcon from "../../../src-tauri/icons/icon.png";
 
 // Memoized mode toggle button to prevent re-renders
-const ModeToggle = memo(function ModeToggle({ 
-    active, 
-    onClick, 
-    icon, 
-    label 
-}: { 
-    active: boolean; 
-    onClick: () => void; 
-    icon: React.ReactNode; 
-    label: string 
+const ModeToggle = memo(function ModeToggle({
+    active,
+    onClick,
+    icon,
+    label
+}: {
+    active: boolean;
+    onClick: () => void;
+    icon: React.ReactNode;
+    label: string
 }) {
     return (
         <button
             onClick={onClick}
             title={label}
-            className={`rounded-md flex items-center justify-center transition-all ${
-                active
+            className={`rounded-md flex items-center justify-center transition-all ${active
                     ? 'bg-background text-foreground'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted/70'
-            }`}
+                }`}
             style={{
                 padding: 'var(--density-padding-sm, 0.5rem)',
             }}
@@ -68,10 +67,10 @@ function EditorGroup() {
     return (
         <div className="h-full min-h-0 min-w-0 flex flex-col overflow-hidden">
             {/* Editor Header / Tabs */}
-            <div 
+            <div
                 className="border-b border-border flex items-center justify-between bg-muted/20 shrink-0"
                 style={{
-                    height: 'calc(2.5rem + var(--density-padding-sm, 0.5rem))',
+                    height: 'calc(2.25rem + var(--density-padding-sm, 0.5rem))',
                     paddingLeft: 'var(--density-padding-md, 0.75rem)',
                     paddingRight: 'var(--density-padding-md, 0.75rem)',
                 }}
@@ -83,7 +82,7 @@ function EditorGroup() {
                             {tabs.length > 0 ? (
                                 <TabBar />
                             ) : (
-                                <span 
+                                <span
                                     className="text-xs text-muted-foreground"
                                     style={{ paddingLeft: 'var(--density-padding-sm, 0.5rem)' }}
                                 >
@@ -95,7 +94,7 @@ function EditorGroup() {
                 </div>
 
                 {/* Mode toggle buttons */}
-                <div 
+                <div
                     className="flex bg-muted/50 rounded-full border border-border/50 shrink-0 overflow-hidden"
                     style={{
                         padding: 'var(--density-gap-sm, 0.125rem)',

@@ -1,11 +1,12 @@
 import { useState, useRef, useMemo, useCallback, memo, lazy, Suspense, useEffect } from "react";
 import { Panel, Group, Separator, usePanelRef } from "react-resizable-panels";
-import { useWorkbenchStore, useEditorStore, useSettingsStore, densityConfigs, useBuildPanelStore, useTypeLoadingStore, useInspectorStore, useCSharpStore, useAgentStore, useNavigationStore, useDebugStore } from "@/stores";
+import { useWorkbenchStore, useEditorStore, useSettingsStore, densityConfigs, useBuildPanelStore, useTypeLoadingStore, useInspectorStore, useCSharpStore, useAgentStore, useNavigationStore, useDebugStore, usePluginStore } from "@/stores";
 import { FrontendProfiler } from "@/lib/services";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useDefaultCommands } from "@/hooks/useCommands";
 import { useProfiler } from "@/hooks/useProfiler";
 import { clearOldPanelLayouts } from "@/lib/utils/clearPanelLayouts";
+import { formatScheduleOneProjectTags, isScheduleOneDetectedProject } from "@/plugins/s1api/projectProfile";
 import ActivityBar from "./ActivityBar";
 import Sidebar from "./SideBar";
 import SettingsDialog from "./SettingsDialog";
@@ -57,6 +58,7 @@ function Workbench() {
     const isLoadingBuildConfigs = useCSharpStore((state) => state.isLoadingConfigs);
     const isAgentOpen = useAgentStore((state) => state.isOpen);
     const isDebugOpen = useDebugStore((state) => state.isPanelOpen);
+    const detectedProjects = usePluginStore((state) => state.detectedProjects);
 
     // Navigation dialogs
     const isSymbolSearchOpen = useNavigationStore((state) => state.isSymbolSearchOpen);
@@ -73,6 +75,11 @@ function Workbench() {
         if (!activeTab) return false;
         return activeTab.content !== activeTab.originalContent;
     }, [activeTab]);
+
+    const scheduleOneProjectTags = useMemo(() => {
+        const detectedProject = detectedProjects.find((project) => isScheduleOneDetectedProject(project));
+        return formatScheduleOneProjectTags(detectedProject);
+    }, [detectedProjects]);
 
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [settingsSection, setSettingsSection] = useState<string | undefined>();
@@ -391,6 +398,19 @@ function Workbench() {
                                 </svg>
                                 Loading build config...
                             </span>
+                        )}
+
+                        {scheduleOneProjectTags.length > 0 && (
+                            <div className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-[0.14em]">
+                                {scheduleOneProjectTags.map((tag) => (
+                                    <span
+                                        key={tag}
+                                        className="rounded-sm bg-primary-foreground/14 px-2 py-0.5 text-primary-foreground/90"
+                                    >
+                                        {tag}
+                                    </span>
+                                ))}
+                            </div>
                         )}
                     </div>
                     <div

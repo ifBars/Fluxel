@@ -6,6 +6,8 @@
 
 import type * as Monaco from 'monaco-editor';
 
+import type { ProjectProfile } from '@/types/project';
+
 // ============================================================================
 // Core Plugin Types
 // ============================================================================
@@ -112,6 +114,9 @@ export interface PluginContext {
 
     /** Register syntax highlighting rules */
     registerSyntaxHighlighting(languageId: string, rules: SyntaxRule[]): Disposable;
+
+    /** Register project-aware new file templates */
+    registerNewFileTemplates(templates: NewFileTemplate[]): Disposable;
 
     /** Log a message with plugin context */
     log(message: string, level?: 'info' | 'warn' | 'error'): void;
@@ -262,6 +267,37 @@ export interface ProjectDetector {
      * @returns Detection result or null if not detected
      */
     detect(workspaceRoot: string): Promise<DetectedProject | null>;
+}
+
+// ============================================================================
+// New File Templates
+// ============================================================================
+
+export interface NewFileTemplateContext {
+    workspaceRoot: string | null;
+    parentPath: string;
+    projectProfile: ProjectProfile | null;
+    detectedProjects: DetectedProject[];
+}
+
+export interface NewFileTemplateBuildArgs {
+    fileName: string;
+    baseName: string;
+    typeName: string;
+    namespaceName: string | null;
+    context: NewFileTemplateContext;
+}
+
+export interface NewFileTemplate {
+    id: string;
+    label: string;
+    description?: string;
+    category?: string;
+    extension?: string | null;
+    suggestedBaseName?: string;
+    priority?: number;
+    matches?: (context: NewFileTemplateContext) => boolean;
+    buildContent?: (args: NewFileTemplateBuildArgs) => string;
 }
 
 // ============================================================================

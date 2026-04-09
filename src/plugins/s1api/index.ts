@@ -1,23 +1,26 @@
 /**
- * S1API Plugin
- * 
- * Provides comprehensive support for S1API mod development in Fluxel.
- * S1API is a modular, developer-friendly API for building mods for Schedule One.
+ * Schedule 1 Modding Plugin
+ *
+ * Provides Schedule 1-specific modding support in Fluxel.
+ * The plugin focuses on the Schedule 1 ecosystem libraries rather than generic
+ * Unity or MelonLoader support.
  * 
  * ## Features
  * 
- * - **Syntax highlighting**: S1API-specific patterns (PhoneApp, Saveables, UIFactory)
- * - **IntelliSense**: Completions for S1API classes, methods, and patterns
- * - **Hover documentation**: Links to official S1API docs
- * - **Project detection**: Auto-detect S1API/MelonLoader projects
+ * - **Syntax highlighting**: Schedule 1 API patterns across S1API, S1MAPI, and SteamNetworkLib
+ * - **IntelliSense**: Completions for common Schedule 1 modding workflows
+ * - **Hover documentation**: Quick docs for Schedule 1-specific libraries and patterns
+ * - **Project detection**: Auto-detect Schedule 1 mod projects from their library stack
  * 
  * ## Activation
  * 
  * This plugin activates on:
+ * - `onStartup` - Registers project detection early
  * - `onLanguage:csharp` - When a C# file is opened
- * - `onProject:s1api` - When an S1API project is detected
+ * - `onProject:schedule-one-mod` - When a Schedule 1 mod project is detected
  * 
- * @see https://ifbars.github.io/S1API/docs/ - Official S1API Documentation
+ * @see https://ifbars.github.io/S1API/docs/ - S1API Documentation
+ * @see https://ifbars.github.io/S1MAPI/ - S1MAPI Documentation
  * @module plugins/s1api
  */
 
@@ -28,19 +31,20 @@ import { s1apiProjectDetector } from './detector';
 import { registerS1APISyntax } from './syntax';
 import { registerS1APIIntelliSense } from './intellisense';
 import { registerS1APIHover } from './hover';
+import { scheduleOneNewFileTemplates } from './newFileTemplates';
 
 /**
- * S1API Plugin Implementation
- * 
- * Core plugin that provides S1API mod development support in Fluxel.
+ * Schedule 1 Modding Plugin Implementation
+ *
+ * Core plugin that provides Schedule 1-specific mod development support in Fluxel.
  */
 export const S1APIPlugin: FluxelPlugin = {
     ...S1API_PLUGIN_MANIFEST,
 
     async activate(context: PluginContext): Promise<void> {
-        context.log('Activating S1API plugin...');
+        context.log('Activating Schedule 1 modding plugin...');
 
-        // Register project detector for S1API/MelonLoader mods
+        // Register project detector for Schedule 1 mod projects
         context.registerProjectDetector(s1apiProjectDetector);
         context.log('Project detector registered');
 
@@ -53,11 +57,14 @@ export const S1APIPlugin: FluxelPlugin = {
         // Register hover documentation provider with S1API docs links
         registerS1APIHover(context);
 
-        context.log('S1API plugin activated successfully');
+        // Register Schedule 1-specific file creation templates
+        context.registerNewFileTemplates(scheduleOneNewFileTemplates);
+
+        context.log('Schedule 1 modding plugin activated successfully');
     },
 
     async deactivate(): Promise<void> {
-        console.log('[S1API Plugin] Deactivating...');
+        console.log('[ScheduleOne Plugin] Deactivating...');
         // NOTE: Cleanup is handled automatically by context.subscriptions
     },
 };
@@ -68,6 +75,7 @@ export { s1apiProjectDetector } from './detector';
 export { registerS1APISyntax, s1apiSyntaxRules, s1apiTokenColors } from './syntax';
 export { registerS1APIIntelliSense, createS1APICompletionProvider } from './intellisense';
 export { registerS1APIHover, createS1APIHoverProvider } from './hover';
+export { scheduleOneNewFileTemplates } from './newFileTemplates';
 
 // Default export for ESM imports
 export default S1APIPlugin;

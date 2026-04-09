@@ -1,13 +1,20 @@
 import { memo, useCallback, useState, useEffect, useMemo, useRef, createContext, useContext } from 'react';
-import { useFileSystemStore, useEditorStore } from '@/stores';
+import { useEditorStore, useFileSystemStore, usePluginStore, useProjectStore } from '@/stores';
 import type { FileEntry } from '@/types/fs';
 import { getFileExtension } from '@/types/fs';
 import { useFileIcon } from '@/lib/icons';
 import { useProfiler } from '@/hooks/useProfiler';
 import { FrontendProfiler } from '@/lib/services';
+import type { NewFileTemplate } from '@/lib/plugins/types';
+import {
+    buildCSharpNamespace,
+    buildTemplateTypeName,
+    resolveNewFileTemplates,
+} from '@/lib/workspace/newFileTemplates';
 import { open as shellOpen } from '@tauri-apps/plugin-shell';
 import { confirm } from '@tauri-apps/plugin-dialog';
 import FileTreeContextMenu, { type ContextMenuPosition, type ContextMenuTarget } from './FileTreeContextMenu';
+import NewFileDialog from './NewFileDialog';
 import { FilePlus } from 'lucide-react';
 
 // Inline SVG icons to avoid eager loading react-icons during app initialization
@@ -216,7 +223,7 @@ const FileTreeNode = memo(function FileTreeNode({ entry, depth }: FileTreeNodePr
     const showNewInput = entry.isDirectory && 
         isExpanded && 
         context?.editingParentPath === entry.path && 
-        (context?.editingType === 'newFile' || context?.editingType === 'newFolder');
+        context?.editingType === 'newFolder';
 
     return (
         <div>
@@ -270,8 +277,8 @@ const FileTreeNode = memo(function FileTreeNode({ entry, depth }: FileTreeNodePr
             {/* New file/folder input */}
             {showNewInput && (
                 <InlineInput
-                    defaultValue={context?.editingType === 'newFolder' ? 'New Folder' : 'newfile.txt'}
-                    isFolder={context?.editingType === 'newFolder'}
+                    defaultValue="New Folder"
+                    isFolder
                     onSubmit={context!.onEditComplete}
                     onCancel={context!.onEditCancel}
                     depth={depth + 1}
@@ -362,6 +369,7 @@ function ChunkedFileTree({ children }: { children: FileEntry[] }) {
 
 function FileTree() {
     const rootEntry = useFileSystemStore((state) => state.rootEntry);
+    const rootPath = useFileSystemStore((state) => state.rootPath);
     const isLoading = useFileSystemStore((state) => state.isLoading);
     const error = useFileSystemStore((state) => state.error);
     const clipboardPath = useFileSystemStore((state) => state.clipboardPath);
@@ -375,12 +383,18 @@ function FileTree() {
     const toggleFolder = useFileSystemStore((state) => state.toggleFolder);
     const expandedPaths = useFileSystemStore((state) => state.expandedPaths);
     const openFile = useEditorStore((state) => state.openFile);
+    const projectProfile = useProjectStore((state) => state.projectProfile);
+    const detectedProjects = usePluginStore((state) => state.detectedProjects);
     const { ProfilerWrapper } = useProfiler('FileTree');
 
     // Context menu state
     const [contextMenu, setContextMenu] = useState<{
         position: ContextMenuPosition;
         target: ContextMenuTarget;
+    } | null>(null);
+    const [newFileDialog, setNewFileDialog] = useState<{
+        parentPath: string;
+        parentLabel: string;
     } | null>(null);
 
     // Inline editing state
@@ -409,10 +423,13 @@ function FileTree() {
         if (!expandedPaths.has(parentPath)) {
             await toggleFolder(parentPath);
         }
-        setEditingParentPath(parentPath);
-        setEditingType('newFile');
-        setEditingPath(null);
-    }, [expandedPaths, toggleFolder]);
+        setNewFileDialog({
+            parentPath,
+            parentLabel: parentPath === rootEntry?.path
+                ? rootEntry.name
+                : parentPath.substring(parentPath.lastIndexOf('/') + 1),
+        });
+    }, [expandedPaths, rootEntry, toggleFolder]);
 
     const handleNewFolder = useCallback(async (parentPath: string) => {
         // Ensure folder is expanded first
@@ -475,15 +492,53 @@ function FileTree() {
         refreshTree();
     }, [refreshTree]);
 
+    const availableNewFileTemplates = useMemo(() => {
+        if (!newFileDialog) {
+            return [];
+        }
+
+        return resolveNewFileTemplates({
+            workspaceRoot: rootPath,
+            parentPath: newFileDialog.parentPath,
+            projectProfile,
+            detectedProjects,
+        });
+    }, [detectedProjects, newFileDialog, projectProfile, rootPath]);
+
+    const handleCreateFileFromTemplate = useCallback(async (template: NewFileTemplate, fileName: string) => {
+        if (!newFileDialog) {
+            return;
+        }
+
+        const baseName = fileName.replace(/\.[^.]+$/, '');
+        const typeName = buildTemplateTypeName(fileName);
+        const namespaceName = template.extension === 'cs'
+            ? buildCSharpNamespace(rootPath, newFileDialog.parentPath)
+            : null;
+
+        const content = template.buildContent?.({
+            fileName,
+            baseName,
+            typeName,
+            namespaceName,
+            context: {
+                workspaceRoot: rootPath,
+                parentPath: newFileDialog.parentPath,
+                projectProfile,
+                detectedProjects,
+            },
+        }) ?? '';
+
+        const newPath = await createFile(newFileDialog.parentPath, fileName, content);
+        if (newPath) {
+            setNewFileDialog(null);
+            await openFile(newPath);
+        }
+    }, [createFile, detectedProjects, newFileDialog, openFile, projectProfile, rootPath]);
+
     const handleEditComplete = useCallback(async (newName: string) => {
         if (editingType === 'rename' && editingPath) {
             await renameEntry(editingPath, newName);
-        } else if (editingType === 'newFile' && editingParentPath) {
-            const newPath = await createFile(editingParentPath, newName);
-            if (newPath) {
-                // Open the new file
-                await openFile(newPath);
-            }
         } else if (editingType === 'newFolder' && editingParentPath) {
             await createFolder(editingParentPath, newName);
         }
@@ -492,7 +547,7 @@ function FileTree() {
         setEditingPath(null);
         setEditingType(null);
         setEditingParentPath(null);
-    }, [editingType, editingPath, editingParentPath, renameEntry, createFile, createFolder, openFile]);
+    }, [editingType, editingPath, editingParentPath, renameEntry, createFolder]);
 
     const handleEditCancel = useCallback(() => {
         setEditingPath(null);
@@ -559,8 +614,7 @@ function FileTree() {
     }
 
     // Check if we should show new input at root level
-    const showRootNewInput = editingParentPath === rootEntry.path && 
-        (editingType === 'newFile' || editingType === 'newFolder');
+    const showRootNewInput = editingParentPath === rootEntry.path && editingType === 'newFolder';
 
     return (
         <ProfilerWrapper>
@@ -569,8 +623,8 @@ function FileTree() {
                     {/* New file/folder input at root */}
                     {showRootNewInput && (
                         <InlineInput
-                            defaultValue={editingType === 'newFolder' ? 'New Folder' : 'newfile.txt'}
-                            isFolder={editingType === 'newFolder'}
+                            defaultValue="New Folder"
+                            isFolder
                             onSubmit={handleEditComplete}
                             onCancel={handleEditCancel}
                             depth={0}
@@ -601,6 +655,14 @@ function FileTree() {
                     onCopyPath={handleCopyPath}
                     onRefresh={handleRefresh}
                     clipboardPath={clipboardPath}
+                />
+
+                <NewFileDialog
+                    isOpen={Boolean(newFileDialog)}
+                    parentLabel={newFileDialog?.parentLabel ?? rootEntry.name}
+                    templates={availableNewFileTemplates}
+                    onClose={() => setNewFileDialog(null)}
+                    onCreate={handleCreateFileFromTemplate}
                 />
             </FileTreeContext.Provider>
         </ProfilerWrapper>

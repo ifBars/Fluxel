@@ -27,7 +27,7 @@ import { S1APIPlugin } from '../s1api';
 export function registerCorePlugins(): void {
     const loader = getPluginLoader();
 
-    // Register S1API plugin for MelonLoader mod development
+    // Register Schedule 1-specific modding support
     loader.registerCorePlugin(S1APIPlugin);
 
     // TODO: Add more core plugins here as they are developed
