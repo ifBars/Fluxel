@@ -3,12 +3,15 @@ import { BaseLSPClient } from '../base/BaseLSPClient';
 import type { LSPClientConfig } from '../base/types';
 import { fsPathToLspUri } from '../base/fileUris';
 import { FrontendProfiler } from '@/lib/services';
+import { resolveWorkspaceBuildConfiguration } from './workspaceConfiguration';
 
 /**
  * C#-specific LSP client
  * Extends BaseLSPClient with C#-specific functionality
  */
 export class CSharpLSPClient extends BaseLSPClient {
+    private activeBuildConfiguration: string | null = null;
+
     constructor() {
         const config: LSPClientConfig = {
             languageId: 'csharp',
@@ -30,6 +33,7 @@ export class CSharpLSPClient extends BaseLSPClient {
             }
 
             try {
+                this.activeBuildConfiguration = await resolveWorkspaceBuildConfiguration(workspaceRoot);
                 console.log('[CSharpLSP] This may take a moment if csharp-ls needs to be installed...');
                 await super.start(workspaceRoot);
             } catch (error) {
@@ -44,6 +48,13 @@ export class CSharpLSPClient extends BaseLSPClient {
                 throw error;
             }
         }, { workspaceRoot: workspaceRoot || 'undefined' });
+    }
+
+    protected buildStartCommandArgs(workspaceRoot?: string): Record<string, unknown> {
+        return {
+            workspace_root: workspaceRoot,
+            configuration: this.activeBuildConfiguration,
+        };
     }
 
     /**

@@ -5,13 +5,14 @@
 use ignore::WalkBuilder;
 use serde::Serialize;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::process::Command;
 use tokio::sync::RwLock;
 
 use crate::languages::csharp::parser::{parse_csproj_configurations, BuildConfiguration};
+use crate::languages::lsp_manager::{find_project_file, find_solution_file};
 
 // ============================================================================
 // Build Diagnostic Types
@@ -198,6 +199,10 @@ impl ProjectConfigCache {
     }
 }
 
+fn resolve_build_target(workspace_root: &Path) -> Option<PathBuf> {
+    find_solution_file(workspace_root).or_else(|| find_project_file(workspace_root))
+}
+
 /// Get available build configurations from a C# project
 /// Uses caching to avoid repeated file system walks for the same workspace
 #[cfg_attr(
@@ -346,6 +351,13 @@ pub async fn build_csharp_project(
 
     println!("[Tauri] Running dotnet build in {:?}", root);
 
+    let build_target = resolve_build_target(&root);
+    if let Some(target) = &build_target {
+        println!("[Tauri] Resolved explicit build target: {:?}", target);
+    } else {
+        println!("[Tauri] No solution or project file resolved, falling back to workspace root");
+    }
+
     #[cfg(feature = "profiling")]
     let config_str = configuration.as_deref().unwrap_or("default");
     #[cfg(feature = "profiling")]
@@ -358,6 +370,10 @@ pub async fn build_csharp_project(
 
     let mut cmd = Command::new("dotnet");
     cmd.arg("build").current_dir(&root);
+
+    if let Some(target) = &build_target {
+        cmd.arg(target);
+    }
 
     // Add configuration flag if specified
     if let Some(ref config) = configuration {
@@ -426,6 +442,18 @@ pub async fn build_csharp_project(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn create_temp_workspace(test_name: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("fluxel-build-{test_name}-{unique}"));
+        fs::create_dir_all(&path).expect("temporary workspace should be created");
+        path
+    }
 
     #[test]
     fn test_parse_simple_error() {
@@ -531,5 +559,34 @@ Build failed.
         assert_eq!(diagnostics.len(), 1);
         assert!(diagnostics[0].message.contains("Console"));
         assert!(diagnostics[0].message.contains("using directive"));
+    }
+
+    #[test]
+    fn resolve_build_target_prefers_solution_files() {
+        let workspace = create_temp_workspace("prefer-sln");
+        let solution = workspace.join("BigWillyMod.sln");
+        let project = workspace.join("BigWillyMod.csproj");
+        fs::write(&solution, "Microsoft Visual Studio Solution File")
+            .expect("solution file should be written");
+        fs::write(&project, "<Project />").expect("project file should be written");
+
+        let target = resolve_build_target(&workspace);
+
+        assert_eq!(target.as_deref(), Some(solution.as_path()));
+
+        fs::remove_dir_all(workspace).expect("temporary workspace should be removed");
+    }
+
+    #[test]
+    fn resolve_build_target_falls_back_to_project_file() {
+        let workspace = create_temp_workspace("fallback-csproj");
+        let project = workspace.join("BigWillyMod.csproj");
+        fs::write(&project, "<Project />").expect("project file should be written");
+
+        let target = resolve_build_target(&workspace);
+
+        assert_eq!(target.as_deref(), Some(project.as_path()));
+
+        fs::remove_dir_all(workspace).expect("temporary workspace should be removed");
     }
 }

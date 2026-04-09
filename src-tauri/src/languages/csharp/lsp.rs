@@ -21,10 +21,11 @@ pub async fn start_csharp_ls(
     state: tauri::State<'_, LSPState>,
     window: tauri::Window,
     workspace_root: Option<String>,
+    configuration: Option<String>,
 ) -> Result<(), String> {
     println!(
-        "[Tauri:csharp] start_csharp_ls called with workspace: {:?}",
-        workspace_root
+        "[Tauri:csharp] start_csharp_ls called with workspace: {:?}, configuration: {:?}",
+        workspace_root, configuration
     );
 
     // Check if csharp-ls is installed
@@ -85,6 +86,9 @@ pub async fn start_csharp_ls(
     let mut env = Vec::new();
     if let Some(path) = get_path_with_dotnet_tools() {
         env.push(("PATH".to_string(), path));
+    }
+    if let Some(configuration) = configuration.filter(|value| !value.trim().is_empty()) {
+        env.push(("Configuration".to_string(), configuration));
     }
 
     // Create LSP server configuration

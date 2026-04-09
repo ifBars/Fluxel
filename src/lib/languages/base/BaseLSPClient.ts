@@ -69,7 +69,7 @@ export class BaseLSPClient {
                 });
 
                 // Start the language server process
-                await invoke(this.config.startCommand, { workspace_root: workspaceRoot });
+                await invoke(this.config.startCommand, this.buildStartCommandArgs(workspaceRoot));
 
                 this.isStarted = true;
                 console.log(`[LSPClient:${this.config.languageId}] Language server started`);
@@ -84,6 +84,14 @@ export class BaseLSPClient {
         } finally {
             this.startPromise = null;
         }
+    }
+
+    /**
+     * Build the invoke payload used to start the language server.
+     * Subclasses can override to pass language-specific startup parameters.
+     */
+    protected buildStartCommandArgs(workspaceRoot?: string): Record<string, unknown> {
+        return { workspace_root: workspaceRoot };
     }
 
     /**

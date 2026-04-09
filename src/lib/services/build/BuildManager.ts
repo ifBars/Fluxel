@@ -1,5 +1,6 @@
 import { Command } from '@tauri-apps/plugin-shell';
 import { buildCSharpProject, type BuildDiagnostic } from '@/lib/languages/csharp';
+import { resolveWorkspaceBuildConfiguration } from '@/lib/languages/csharp/workspaceConfiguration';
 import { useCSharpStore, useDiagnosticsStore, type BuildSystem, type Diagnostic } from '@/stores';
 import { invoke } from '@tauri-apps/api/core';
 import type { ProjectProfile } from '@/types/project';
@@ -226,10 +227,17 @@ export async function executeBuild(options: BuildOptions): Promise<BuildResult> 
 async function executeDotNetBuild(projectRoot: string): Promise<BuildResult> {
     const span = FrontendProfiler.startSpan('dotnet_build', 'frontend_network');
     try {
-        const { selectedConfiguration } = useCSharpStore.getState();
-        console.log(`[BuildManager] Building with configuration: ${selectedConfiguration || 'default'}`);
+        const csharpState = useCSharpStore.getState();
+        const selectedConfiguration = csharpState.lastLoadedWorkspace === projectRoot
+            ? csharpState.selectedConfiguration
+            : null;
+        const resolvedConfiguration = selectedConfiguration
+            ?? await resolveWorkspaceBuildConfiguration(projectRoot)
+            ?? undefined;
 
-        const result = await buildCSharpProject(projectRoot, selectedConfiguration || undefined);
+        console.log(`[BuildManager] Building with configuration: ${resolvedConfiguration || 'default'}`);
+
+        const result = await buildCSharpProject(projectRoot, resolvedConfiguration);
 
         // Convert build diagnostics to store format and update the diagnostics store
         const storeDiagnostics = result.diagnostics.map((diag, index) =>
@@ -248,7 +256,7 @@ async function executeDotNetBuild(projectRoot: string): Promise<BuildResult> {
             errorCount: result.diagnostics.filter(d => d.severity === 'error').length.toString(),
             warningCount: result.diagnostics.filter(d => d.severity === 'warning').length.toString(),
             durationMs: result.duration_ms.toString(),
-            configuration: selectedConfiguration || 'default'
+            configuration: resolvedConfiguration || 'default'
         });
 
         if (result.success) {

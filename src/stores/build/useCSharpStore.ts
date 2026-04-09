@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import { getProjectConfigurations, BuildConfiguration } from '@/lib/languages/csharp';
+import { getCSharpLSPClient } from '@/lib/languages/csharp/CSharpLSPClient';
+import { choosePreferredBuildConfiguration } from '@/lib/languages/csharp/workspaceConfiguration';
 import { FrontendProfiler } from '@/lib/services';
+import { useProjectSettingsStore } from '@/stores/project/useProjectSettingsStore';
 
 interface CSharpStore {
     configurations: BuildConfiguration[];
@@ -23,7 +26,33 @@ export const useCSharpStore = create<CSharpStore>((set, get) => ({
 
     setConfigurations: (configs) => set({ configurations: configs }),
 
-    setSelectedConfiguration: (config) => set({ selectedConfiguration: config }),
+    setSelectedConfiguration: (config) => {
+        const workspaceRoot = get().lastLoadedWorkspace;
+        set({ selectedConfiguration: config });
+
+        if (!workspaceRoot) {
+            return;
+        }
+
+        useProjectSettingsStore.getState().setSettings(workspaceRoot, {
+            selectedBuildConfiguration: config,
+        });
+
+        const lspClient = getCSharpLSPClient();
+        if (!config || lspClient.getWorkspaceRoot() !== workspaceRoot || !lspClient.getIsStarted()) {
+            return;
+        }
+
+        void (async () => {
+            try {
+                await lspClient.stop();
+                await lspClient.start(workspaceRoot);
+                await lspClient.initialize(workspaceRoot);
+            } catch (error) {
+                console.error('[CSharp] Failed to reload LSP for configuration change:', error);
+            }
+        })();
+    },
 
     loadProjectConfigurations: async (workspaceRoot) => {
         // Skip if we've already loaded configurations for this workspace
@@ -58,7 +87,10 @@ export const useCSharpStore = create<CSharpStore>((set, get) => ({
                 }
             }
 
-            const selectedConfig = configs.find((c) => c.name === 'Debug')?.name || configs[0]?.name || null;
+            const savedConfig = useProjectSettingsStore.getState()
+                .getSettings(workspaceRoot)
+                .selectedBuildConfiguration;
+            const selectedConfig = choosePreferredBuildConfiguration(configs, savedConfig);
 
             if (import.meta.env.DEV) {
                 console.log('[CSharp] About to update store with', {
@@ -76,6 +108,12 @@ export const useCSharpStore = create<CSharpStore>((set, get) => ({
                 lastLoadedWorkspace: workspaceRoot,
                 isLoadingConfigs: false,
             });
+
+            if (selectedConfig) {
+                useProjectSettingsStore.getState().setSettings(workspaceRoot, {
+                    selectedBuildConfiguration: selectedConfig,
+                });
+            }
 
             if (import.meta.env.DEV) {
                 console.log('[CSharp] Store updated', {
@@ -122,4 +160,3 @@ export const useCSharpStore = create<CSharpStore>((set, get) => ({
         set({ configurations: [], selectedConfiguration: null, lastLoadedWorkspace: null, isLoadingConfigs: false });
     },
 }));
-
