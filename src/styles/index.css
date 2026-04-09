@@ -261,26 +261,26 @@
   /* Resizable panel handle respects density variables */
   .panel-resize-handle {
     width: var(--panel-handle-width, 3px);
-    transition: all 0.15s ease;
-  }
-
-  .panel-resize-handle:active {
-    width: var(--panel-handle-active-width, 5px);
+    transition: background-color 0.15s ease, opacity 0.15s ease;
   }
 
   /* Prevent panels from being draggable - only resize handles should work */
   [data-panel-group] [data-panel],
-  [data-panel-group-direction] [data-panel] {
+  [data-panel-group-direction] [data-panel],
+  [data-group] [data-panel] {
     -webkit-app-region: no-drag;
     app-region: no-drag;
     user-select: none;
   }
 
-  /* Ensure panel resize handles are properly draggable */
-  [data-panel-resize-handle] {
+  /* Ensure panel resize handles are properly draggable across react-resizable-panels versions */
+  [data-panel-resize-handle],
+  [data-separator] {
     -webkit-app-region: no-drag;
     app-region: no-drag;
     touch-action: none;
+    user-select: none;
+    pointer-events: auto;
   }
 
   /* Custom scrollbar styling for Explorer and other scrollable areas */

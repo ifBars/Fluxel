@@ -1,9 +1,15 @@
 import { useEffect } from 'react';
 import { useMonaco } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
-import { useProjectStore } from '@/stores';
+import { useEditorStore, useProjectStore } from '@/stores';
 import { getLanguageRegistry } from '@/lib/languages/registry';
 import { CSharpProvider } from '@/lib/languages/csharp';
+
+export function shouldActivateCSharpProvider(projectKind?: string | null, activeTabLanguage?: string | null): boolean {
+    return projectKind === 'dotnet'
+        || projectKind === 'mixed'
+        || activeTabLanguage === 'csharp';
+}
 
 /**
  * Controller that manages the lifecycle of language services (LSP, Providers)
@@ -11,7 +17,10 @@ import { CSharpProvider } from '@/lib/languages/csharp';
  */
 export function LanguageController() {
     const monaco = useMonaco() as unknown as typeof Monaco;
-    const { projectProfile, projectInitStatus, currentProject } = useProjectStore();
+    const { projectProfile, currentProject } = useProjectStore();
+    const activeTabLanguage = useEditorStore((state) =>
+        state.tabs.find((tab) => tab.id === state.activeTabId)?.language ?? null
+    );
 
     // Initialize Language Registry & Providers
     useEffect(() => {
@@ -37,14 +46,14 @@ export function LanguageController() {
 
     // Manage C# Provider Lifecycle based on Project
     useEffect(() => {
-        if (!monaco || projectInitStatus !== 'ready' || !projectProfile) return;
+        if (!monaco) return;
 
         const registry = getLanguageRegistry();
-        const shouldActiveCSharp = projectProfile.kind === 'dotnet' || projectProfile.kind === 'mixed';
+        const shouldActivateCSharp = shouldActivateCSharpProvider(projectProfile?.kind, activeTabLanguage);
 
         const manageProvider = async () => {
             try {
-                if (shouldActiveCSharp) {
+                if (shouldActivateCSharp) {
                     // Start provider if it's not active
                     // checks are internal to startProvider/CSharpProvider
                     await registry.startProvider('csharp', currentProject?.rootPath);
@@ -66,7 +75,7 @@ export function LanguageController() {
             // The ProjectManager/ProjectStore handles the heavy LSP process stop.
             // This controller mainly ensures the *UI providers* are effectively managed/synced.
         };
-    }, [monaco, projectProfile, projectInitStatus, currentProject?.rootPath]);
+    }, [monaco, projectProfile?.kind, currentProject?.rootPath, activeTabLanguage]);
 
     return null; // Headless component
 }

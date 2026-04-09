@@ -27,6 +27,24 @@ export interface Project {
     lastOpened?: Date;
 }
 
+export const CSHARP_SOURCE_EXTENSIONS = ['cs', 'csx', 'cake'] as const;
+export const DOTNET_WORKSPACE_EXTENSIONS = ['csproj', 'sln', 'slnx', 'props', 'targets', 'nuspec'] as const;
+export const CSHARP_TEMPLATE_EXTENSIONS = ['razor', 'cshtml'] as const;
+
+export function isCSharpSourceExtension(extension: string): boolean {
+    return CSHARP_SOURCE_EXTENSIONS.includes(extension as (typeof CSHARP_SOURCE_EXTENSIONS)[number]);
+}
+
+export function isDotNetWorkspaceExtension(extension: string): boolean {
+    return DOTNET_WORKSPACE_EXTENSIONS.includes(extension as (typeof DOTNET_WORKSPACE_EXTENSIONS)[number]);
+}
+
+export function isCSharpRelatedExtension(extension: string): boolean {
+    return isCSharpSourceExtension(extension)
+        || isDotNetWorkspaceExtension(extension)
+        || CSHARP_TEMPLATE_EXTENSIONS.includes(extension as (typeof CSHARP_TEMPLATE_EXTENSIONS)[number]);
+}
+
 /**
  * Get file extension from path
  */
@@ -47,6 +65,14 @@ export function getFileName(path: string): string {
  * Infer Monaco language from file extension
  */
 export function getLanguageFromExtension(extension: string): string {
+    if (isCSharpSourceExtension(extension)) {
+        return 'csharp';
+    }
+
+    if (CSHARP_TEMPLATE_EXTENSIONS.includes(extension as (typeof CSHARP_TEMPLATE_EXTENSIONS)[number])) {
+        return 'html';
+    }
+
     const languageMap: Record<string, string> = {
         'ts': 'typescript',
         'tsx': 'typescript',
@@ -82,11 +108,9 @@ export function getLanguageFromExtension(extension: string): string {
         'cpp': 'cpp',
         'h': 'c',
         'hpp': 'cpp',
-        // C# / .NET / Unity (MelonLoader)
-        'cs': 'csharp',
-        'csx': 'csharp',
         'csproj': 'xml',
         'sln': 'plaintext',
+        'slnx': 'plaintext',
         'props': 'xml',
         'targets': 'xml',
         'nuspec': 'xml',

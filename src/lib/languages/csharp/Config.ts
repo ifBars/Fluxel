@@ -56,7 +56,11 @@ export function registerCSharpLanguage(monaco: typeof Monaco): void {
     }
 
     // Register the language
-    monaco.languages.register({ id: 'csharp', extensions: ['.cs', '.csx'] });
+    monaco.languages.register({
+        id: 'csharp',
+        extensions: ['.cs', '.csx', '.cake'],
+        aliases: ['C#', 'csharp', 'cs'],
+    });
 
     // Set language configuration (brackets, comments, etc.)
     monaco.languages.setLanguageConfiguration('csharp', csharpLanguageConfig);

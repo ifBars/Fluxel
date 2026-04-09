@@ -120,7 +120,10 @@ pub async fn discover_community_plugins(
 }
 
 /// Load and parse a plugin manifest file
-fn load_plugin_manifest(manifest_path: &PathBuf, plugin_dir: &PathBuf) -> Option<CommunityPluginMeta> {
+fn load_plugin_manifest(
+    manifest_path: &PathBuf,
+    plugin_dir: &PathBuf,
+) -> Option<CommunityPluginMeta> {
     let content = std::fs::read_to_string(manifest_path).ok()?;
     let manifest: PluginManifest = serde_json::from_str(&content).ok()?;
 
@@ -130,7 +133,9 @@ fn load_plugin_manifest(manifest_path: &PathBuf, plugin_dir: &PathBuf) -> Option
         .and_then(|n| n.to_str())
         .unwrap_or("unknown");
 
-    let id = manifest.id.unwrap_or_else(|| format!("community.{}", dir_name));
+    let id = manifest
+        .id
+        .unwrap_or_else(|| format!("community.{}", dir_name));
 
     Some(CommunityPluginMeta {
         id,
@@ -161,9 +166,8 @@ pub fn validate_plugin_directory(path: String) -> bool {
     }
 
     // Check for manifest file
-    let has_manifest = plugin_dir.join("plugin.json").exists()
-        || plugin_dir.join("package.json").exists();
+    let has_manifest =
+        plugin_dir.join("plugin.json").exists() || plugin_dir.join("package.json").exists();
 
     has_manifest
 }
-

@@ -103,6 +103,30 @@ function Workbench() {
         }
     }, [agentSettingsOpen, agentToggleSettings]);
 
+    const handleWorkbenchLayoutChange = useCallback(() => {
+        window.dispatchEvent(new Event("fluxel:workbench-layout"));
+    }, []);
+
+    const renderVerticalSeparator = useCallback(() => (
+        <Separator
+            className="group panel-resize-handle bg-transparent cursor-col-resize z-20 flex items-center justify-center outline-none shrink-0"
+            style={{
+                width: "10px",
+                minWidth: "10px",
+                marginLeft: "-5px",
+                marginRight: "-5px",
+                position: "relative",
+            }}
+        >
+            <div
+                className="h-full bg-border group-hover:bg-primary group-active:bg-primary transition-colors opacity-60 group-hover:opacity-100"
+                style={{
+                    width: densityConfig.panelHandleWidth,
+                }}
+            />
+        </Separator>
+    ), [densityConfig.panelHandleWidth]);
+
     // Sync AgentStore settings trigger to local state
     useEffect(() => {
         if (agentSettingsOpen) {
@@ -158,7 +182,12 @@ function Workbench() {
                     />
 
                     {/* Main Resizable Area */}
-                    <Group id="workbench-main" orientation="horizontal" className="flex-1 min-h-0 min-w-0">
+                    <Group
+                        id="workbench-main"
+                        orientation="horizontal"
+                        onLayoutChange={handleWorkbenchLayoutChange}
+                        className="flex-1 min-h-0 min-w-0"
+                    >
                         {/* Sidebar Panel */}
                         <Panel
                             id="sidebar"
@@ -172,17 +201,16 @@ function Workbench() {
                         >
                             <Sidebar />
                         </Panel>
-                        <Separator
-                            className="panel-resize-handle bg-border hover:bg-primary transition-colors cursor-col-resize active:bg-primary z-20 transition-all opacity-60 hover:opacity-100 shrink-0"
-                            style={{
-                                width: densityConfig.panelHandleWidth,
-                                minWidth: densityConfig.panelHandleWidth,
-                            }}
-                        />
+                        {renderVerticalSeparator()}
 
                         {/* Editor + Build Panel Area (Vertical Split) */}
-                        <Panel id="main-content" minSize={30} className="flex flex-col min-h-0 min-w-0 overflow-hidden">
-                            <Group id="editor-build-group" orientation="vertical" className="flex-1 h-full min-h-0 min-w-0">
+                        <Panel id="main-content" minSize="30%" className="flex flex-col min-h-0 min-w-0 overflow-hidden">
+                            <Group
+                                id="editor-build-group"
+                                orientation="vertical"
+                                onLayoutChange={handleWorkbenchLayoutChange}
+                                className="flex-1 h-full min-h-0 min-w-0"
+                            >
                                 {/* Editor Area */}
                                 <Panel id="editor" minSize={densityConfig.editorMinSize} className="h-full min-h-0 min-w-0 overflow-hidden">
                                     <EditorGroup />
@@ -229,13 +257,7 @@ function Workbench() {
                         {/* Inspector Panel (Right Sidebar) */}
                         {isInspectorOpen && (
                             <>
-                                <Separator
-                                    className="panel-resize-handle bg-border hover:bg-primary transition-colors cursor-col-resize active:bg-primary z-20 transition-all opacity-60 hover:opacity-100 shrink-0"
-                                    style={{
-                                        width: densityConfig.panelHandleWidth,
-                                        minWidth: densityConfig.panelHandleWidth,
-                                    }}
-                                />
+                                {renderVerticalSeparator()}
                                 <Panel
                                     id="inspector"
                                     panelRef={inspectorPanelRef}
@@ -256,13 +278,7 @@ function Workbench() {
                         {/* Agent Panel (Right Sidebar) */}
                         {isAgentOpen && (
                             <>
-                                <Separator
-                                    className="panel-resize-handle bg-border hover:bg-primary transition-colors cursor-col-resize active:bg-primary z-20 transition-all opacity-60 hover:opacity-100 shrink-0"
-                                    style={{
-                                        width: densityConfig.panelHandleWidth,
-                                        minWidth: densityConfig.panelHandleWidth,
-                                    }}
-                                />
+                                {renderVerticalSeparator()}
                                 <Panel
                                     id="agent"
                                     minSize={densityConfig.agentPanelMinSize}
@@ -282,13 +298,7 @@ function Workbench() {
                         {/* Debug Panel (Right Sidebar) */}
                         {isDebugOpen && (
                             <>
-                                <Separator
-                                    className="panel-resize-handle bg-border hover:bg-primary transition-colors cursor-col-resize active:bg-primary z-20 transition-all opacity-60 hover:opacity-100 shrink-0"
-                                    style={{
-                                        width: densityConfig.panelHandleWidth,
-                                        minWidth: densityConfig.panelHandleWidth,
-                                    }}
-                                />
+                                {renderVerticalSeparator()}
                                 <Panel
                                     id="debug"
                                     minSize={densityConfig.debugPanelMinSize}

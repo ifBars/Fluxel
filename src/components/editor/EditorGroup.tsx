@@ -1,4 +1,4 @@
-import React, { memo, useMemo } from "react";
+import React, { memo, useCallback } from "react";
 import { Panel, Group, Separator } from "react-resizable-panels";
 import { useWorkbenchStore, useEditorStore } from "@/stores";
 import CodeEditor from "./CodeEditor";
@@ -60,10 +60,10 @@ function EditorGroup() {
     const editorMode = useWorkbenchStore((state) => state.editorMode);
     const setEditorMode = useWorkbenchStore((state) => state.setEditorMode);
     const tabs = useEditorStore((state) => state.tabs);
-    const getActiveTab = useEditorStore((state) => state.getActiveTab);
-    
-    // Memoize activeTab to prevent unnecessary re-renders of CodeEditor
-    const activeTab = useMemo(() => getActiveTab(), [getActiveTab]);
+    const activeTab = useEditorStore((state) => state.tabs.find((tab) => tab.id === state.activeTabId) ?? null);
+    const handleSplitLayoutChange = useCallback(() => {
+        window.dispatchEvent(new Event("fluxel:workbench-layout"));
+    }, []);
 
     return (
         <div className="h-full min-h-0 min-w-0 flex flex-col overflow-hidden">
@@ -140,18 +140,33 @@ function EditorGroup() {
 
                         {editorMode === 'split' && (
                             tabs.length > 0 ? (
-                                <Group orientation="horizontal" className="h-full min-h-0 min-w-0">
-                                    <Panel defaultSize={50} minSize={20} className="h-full min-h-0 min-w-0 overflow-hidden">
+                                <Group
+                                    id="editor-split"
+                                    orientation="horizontal"
+                                    onLayoutChange={handleSplitLayoutChange}
+                                    className="h-full min-h-0 min-w-0"
+                                >
+                                    <Panel id="editor-split-code" defaultSize="50%" minSize="20%" className="h-full min-h-0 min-w-0 overflow-hidden">
                                         <CodeEditor activeTab={activeTab} />
                                     </Panel>
                                     <Separator
-                                        className="bg-border hover:bg-primary transition-colors shrink-0"
+                                        className="group panel-resize-handle bg-transparent cursor-col-resize z-20 flex items-center justify-center outline-none shrink-0"
                                         style={{
-                                            width: 'var(--panel-handle-width, 4px)',
-                                            minWidth: 'var(--panel-handle-width, 4px)',
+                                            width: "10px",
+                                            minWidth: "10px",
+                                            marginLeft: "-5px",
+                                            marginRight: "-5px",
+                                            position: "relative",
                                         }}
-                                    />
-                                    <Panel defaultSize={50} minSize={20} className="h-full min-h-0 min-w-0 overflow-hidden">
+                                    >
+                                        <div
+                                            className="h-full bg-border group-hover:bg-primary group-active:bg-primary transition-colors opacity-60 group-hover:opacity-100"
+                                            style={{
+                                                width: "var(--panel-handle-width, 4px)",
+                                            }}
+                                        />
+                                    </Separator>
+                                    <Panel id="editor-split-visual" defaultSize="50%" minSize="20%" className="h-full min-h-0 min-w-0 overflow-hidden">
                                         <VisualEditor />
                                     </Panel>
                                 </Group>

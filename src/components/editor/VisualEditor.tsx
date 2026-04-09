@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react';
 import { Eye, Terminal, Hammer } from 'lucide-react';
 import { useEditorStore, useProjectStore } from '@/stores';
 import type { ProjectProfile } from '@/types/project';
+import { isCSharpRelatedExtension } from '@/types/fs';
 
 // Lazy-load preview components to avoid loading them until needed
 const WebPreview = lazy(() => import('./previews/WebPreview'));
@@ -60,7 +61,7 @@ function getPreviewType(filename: string, projectProfile?: ProjectProfile | null
     }
 
     // C# files - show C# specific preview
-    if (extension && ['cs', 'csx', 'csproj', 'sln'].includes(extension)) {
+    if (extension && isCSharpRelatedExtension(extension)) {
         return 'csharp';
     }
 

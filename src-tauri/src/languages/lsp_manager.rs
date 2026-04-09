@@ -307,11 +307,10 @@ pub fn find_solution_file(workspace_root: &Path) -> Option<PathBuf> {
         .into_iter()
         .filter_map(|entry| entry.ok())
         .find(|entry| {
-            entry
-                .path()
-                .extension()
-                .map(|ext| ext == "sln")
-                .unwrap_or(false)
+            matches!(
+                entry.path().extension().and_then(|ext| ext.to_str()),
+                Some("sln" | "slnx")
+            )
         })
         .map(|entry| entry.into_path())
 }
@@ -406,5 +405,37 @@ impl LSPState {
         Self {
             manager: Arc::new(Mutex::new(LSPManager::new("csharp-ls"))),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::find_solution_file;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn create_temp_workspace(test_name: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("fluxel-{test_name}-{unique}"));
+        fs::create_dir_all(&path).expect("temporary workspace should be created");
+        path
+    }
+
+    #[test]
+    fn finds_slnx_solution_files() {
+        let workspace = create_temp_workspace("slnx-solution");
+        let solution = workspace.join("Game.slnx");
+        fs::write(&solution, "Microsoft Visual Studio Solution File")
+            .expect("solution file should be written");
+
+        let found = find_solution_file(&workspace);
+
+        assert_eq!(found.as_deref(), Some(solution.as_path()));
+
+        fs::remove_dir_all(workspace).expect("temporary workspace should be removed");
     }
 }

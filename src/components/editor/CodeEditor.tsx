@@ -69,6 +69,10 @@ interface CodeEditorProps {
     activeTab: EditorTab | null;
 }
 
+type LayoutTargetEditor =
+    | Monaco.editor.IStandaloneCodeEditor
+    | Monaco.editor.IStandaloneDiffEditor;
+
 // Memoized editor component to prevent unnecessary re-renders
 const CodeEditorComponent = memo(function CodeEditorComponent({ activeTab }: CodeEditorProps) {
     const { ProfilerWrapper, startSpan, trackInteraction } = useProfiler('CodeEditor');
@@ -146,6 +150,31 @@ const CodeEditorComponent = memo(function CodeEditorComponent({ activeTab }: Cod
     const openedDocsRef = useRef<Set<string>>(new Set());
     const currentOpenUriRef = useRef<string | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const lastLayoutSizeRef = useRef<{ width: number; height: number }>({ width: -1, height: -1 });
+
+    const layoutEditorToContainer = useCallback((targetEditor: LayoutTargetEditor | null, force = false) => {
+        const container = containerRef.current;
+        if (!container || !targetEditor) return;
+
+        const rect = container.getBoundingClientRect();
+        const width = Math.floor(rect.width);
+        const height = Math.floor(rect.height);
+
+        if (width <= 0 || height <= 0) return;
+
+        const previous = lastLayoutSizeRef.current;
+        if (!force && previous.width === width && previous.height === height) {
+            return;
+        }
+
+        lastLayoutSizeRef.current = { width, height };
+
+        try {
+            targetEditor.layout({ width, height });
+        } catch {
+            // Ignore layout after unmount/dispose.
+        }
+    }, []);
 
     // Clear stale diff editor references when leaving diff mode.
     useEffect(() => {
@@ -595,6 +624,10 @@ const CodeEditorComponent = memo(function CodeEditorComponent({ activeTab }: Cod
 
         setEditorInstance(editor);
 
+        requestAnimationFrame(() => {
+            layoutEditorToContainer(editor, true);
+        });
+
         const editorService = (editor as any)._codeEditorService;
         if (editorService) {
             const originalOpenCodeEditor = editorService.openCodeEditor.bind(editorService);
@@ -639,7 +672,7 @@ const CodeEditorComponent = memo(function CodeEditorComponent({ activeTab }: Cod
         return () => {
             mouseDownListener.dispose();
         };
-    }, [openFile, startSpan, monaco]);
+    }, [openFile, startSpan, monaco, layoutEditorToContainer]);
 
     // Track cursor position changes
     useEffect(() => {
@@ -689,63 +722,38 @@ const CodeEditorComponent = memo(function CodeEditorComponent({ activeTab }: Cod
         };
     }, [editorInstance, activeTab, setCursorPosition]);
 
-    // IMPORTANT: Layout Monaco ONLY when necessary
-    // We use a ResizeObserver but with strict throttling and dimension checking
-    // to prevent layout fighting with react-resizable-panels
+    // Keep Monaco sized to its container without causing observer/layout feedback loops.
     useEffect(() => {
-        if (!containerRef.current) return;
+        const container = containerRef.current;
+        if (!container) return;
 
         let frameId = 0;
-        let lastWidth = -1;
-        let lastHeight = -1;
-        let layoutAttempts = 0;
-        const MAX_LAYOUT_ATTEMPTS = 3;
-
-        const observer = new ResizeObserver((entries) => {
-            const entry = entries[0];
-            if (!entry) return;
-
-            const width = Math.floor(entry.contentRect.width);
-            const height = Math.floor(entry.contentRect.height);
-
-            if (width <= 0 || height <= 0) return;
-            
-            // Only layout if dimensions changed significantly (at least 2px)
-            // This prevents micro-layouts that cause jitter
-            if (Math.abs(width - lastWidth) < 2 && Math.abs(height - lastHeight) < 2) {
-                return;
-            }
-
-            lastWidth = width;
-            lastHeight = height;
-            layoutAttempts = 0;
-
+        const scheduleLayout = () => {
             cancelAnimationFrame(frameId);
             frameId = requestAnimationFrame(() => {
                 const targetEditor = activeTab?.type === 'diff' ? diffEditorRef.current : editorInstance;
-                if (!targetEditor) return;
-
-                // Prevent layout loops by limiting attempts
-                if (layoutAttempts >= MAX_LAYOUT_ATTEMPTS) {
-                    return;
-                }
-                layoutAttempts++;
-
-                try {
-                    targetEditor.layout({ width, height });
-                } catch {
-                    // Ignore layout after unmount/dispose.
-                }
+                layoutEditorToContainer(targetEditor);
             });
+        };
+
+        const observer = new ResizeObserver(() => {
+            scheduleLayout();
         });
 
-        observer.observe(containerRef.current);
+        const handleWorkbenchLayout = () => {
+            scheduleLayout();
+        };
+
+        observer.observe(container);
+        window.addEventListener("fluxel:workbench-layout", handleWorkbenchLayout);
+        scheduleLayout();
 
         return () => {
             observer.disconnect();
+            window.removeEventListener("fluxel:workbench-layout", handleWorkbenchLayout);
             cancelAnimationFrame(frameId);
         };
-    }, [activeTab?.type, editorInstance]);
+    }, [activeTab?.type, editorInstance, layoutEditorToContainer]);
 
     // Reveal pending selection/line when requested
     useEffect(() => {
@@ -864,6 +872,9 @@ const CodeEditorComponent = memo(function CodeEditorComponent({ activeTab }: Cod
                             theme={theme === "dark" ? "fluxel-dark" : "fluxel-light"}
                             onMount={(editor) => {
                                 diffEditorRef.current = editor;
+                                requestAnimationFrame(() => {
+                                    layoutEditorToContainer(editor, true);
+                                });
                             }}
                             options={{
                                 automaticLayout: false,

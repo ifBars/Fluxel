@@ -4,6 +4,7 @@ import { useCSharpStore, useDiagnosticsStore, type BuildSystem, type Diagnostic 
 import { invoke } from '@tauri-apps/api/core';
 import type { ProjectProfile } from '@/types/project';
 import { FrontendProfiler } from '../profiling/FrontendProfiler';
+import { getFileExtension, isDotNetWorkspaceExtension } from '@/types/fs';
 
 export interface BuildOptions {
     projectRoot: string;
@@ -75,17 +76,20 @@ async function detectProjectType(projectRoot: string): Promise<'dotnet' | 'javas
             const { readDir } = await import('@tauri-apps/plugin-fs');
             const entries = await readDir(projectRoot);
 
-            const hasCsproj = entries.some(entry => entry.name?.endsWith('.csproj') || entry.name?.endsWith('.sln'));
+            const hasDotnetWorkspaceFile = entries.some((entry) => {
+                const extension = getFileExtension(entry.name ?? '');
+                return Boolean(extension) && isDotNetWorkspaceExtension(extension);
+            });
             const hasPackageJson = entries.some(entry => entry.name === 'package.json');
 
-            const result = hasCsproj ? 'dotnet' : hasPackageJson ? 'javascript' : 'unknown';
+            const result = hasDotnetWorkspaceFile ? 'dotnet' : hasPackageJson ? 'javascript' : 'unknown';
             await span.end({
                 projectKind: result,
                 projectRoot,
                 fallback: 'true'
             });
 
-            if (hasCsproj) return 'dotnet';
+            if (hasDotnetWorkspaceFile) return 'dotnet';
             if (hasPackageJson) return 'javascript';
         } catch {
             // ignore

@@ -208,7 +208,7 @@ export function getCSharpLSPClient(): CSharpLSPClient {
 }
 
 /**
- * Attempt to find a .sln file near the workspace root (depth 3 to match backend)
+ * Attempt to find a .sln or .slnx file near the workspace root (depth 3 to match backend)
  */
 async function findSolutionFile(workspaceRoot?: string): Promise<string | null> {
     if (!workspaceRoot) return null;
@@ -217,7 +217,7 @@ async function findSolutionFile(workspaceRoot?: string): Promise<string | null> 
         try {
             // Check root directory first
             const rootEntries = await readDir(workspaceRoot);
-            const rootSln = rootEntries.find((entry) => entry.name?.toLowerCase().endsWith('.sln') && !entry.isDirectory);
+            const rootSln = rootEntries.find((entry) => isDotNetSolutionFile(entry.name) && !entry.isDirectory);
             if (rootSln && rootSln.name) {
                 return normalizePath(`${workspaceRoot}/${rootSln.name}`);
             }
@@ -228,7 +228,7 @@ async function findSolutionFile(workspaceRoot?: string): Promise<string | null> 
                 const depth1Path = normalizePath(`${workspaceRoot}/${entry.name}`);
 
                 const depth1Entries = await readDir(depth1Path);
-                const depth1Sln = depth1Entries.find((child) => child.name?.toLowerCase().endsWith('.sln') && !child.isDirectory);
+                const depth1Sln = depth1Entries.find((child) => isDotNetSolutionFile(child.name) && !child.isDirectory);
                 if (depth1Sln && depth1Sln.name) {
                     return normalizePath(`${depth1Path}/${depth1Sln.name}`);
                 }
@@ -239,7 +239,7 @@ async function findSolutionFile(workspaceRoot?: string): Promise<string | null> 
                     const depth2Path = normalizePath(`${depth1Path}/${depth1Entry.name}`);
 
                     const depth2Entries = await readDir(depth2Path);
-                    const depth2Sln = depth2Entries.find((child) => child.name?.toLowerCase().endsWith('.sln') && !child.isDirectory);
+                    const depth2Sln = depth2Entries.find((child) => isDotNetSolutionFile(child.name) && !child.isDirectory);
                     if (depth2Sln && depth2Sln.name) {
                         return normalizePath(`${depth2Path}/${depth2Sln.name}`);
                     }
@@ -254,7 +254,7 @@ async function findSolutionFile(workspaceRoot?: string): Promise<string | null> 
 }
 
 /**
- * Find a .sln (preferred) or .csproj file near the workspace root (depth 3 to match backend).
+ * Find a .sln/.slnx (preferred) or .csproj file near the workspace root (depth 3 to match backend).
  */
 async function findSolutionOrProjectFile(workspaceRoot?: string): Promise<string | null> {
     if (!workspaceRoot) return null;
@@ -304,4 +304,9 @@ async function findSolutionOrProjectFile(workspaceRoot?: string): Promise<string
 
 function normalizePath(path: string): string {
     return path.replace(/\\/g, '/');
+}
+
+function isDotNetSolutionFile(name?: string | null): boolean {
+    const normalizedName = name?.toLowerCase();
+    return normalizedName?.endsWith('.sln') || normalizedName?.endsWith('.slnx') || false;
 }

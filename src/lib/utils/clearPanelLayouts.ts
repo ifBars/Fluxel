@@ -7,6 +7,11 @@ export function clearOldPanelLayouts() {
         return;
     }
 
+    const migrationMarker = 'fluxel:panel-layout-migration-v4-complete';
+    if (localStorage.getItem(migrationMarker) === 'true') {
+        return;
+    }
+
     const prefix = 'react-resizable-panels:';
     const keys = Object.keys(localStorage);
     
@@ -17,4 +22,6 @@ export function clearOldPanelLayouts() {
             localStorage.removeItem(key);
         }
     });
+
+    localStorage.setItem(migrationMarker, 'true');
 }
