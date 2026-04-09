@@ -1,6 +1,6 @@
 /**
  * MiniMax integration module
- * Exports client for MiniMax M2.1 API with Anthropic compatibility
+ * Exports client for MiniMax native chatcompletion_v2 API
  */
 
 export {

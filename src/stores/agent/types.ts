@@ -19,6 +19,7 @@ export interface ChatMessage {
     role: MessageRole;
     content: string;
     timestamp: Date;
+    toolCallId?: string;
     toolCalls?: ToolCall[];
     toolResults?: ToolResult[];
     isStreaming?: boolean;

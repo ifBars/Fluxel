@@ -1,9 +1,9 @@
 /**
  * MiniMax Provider Implementation
- * Handles communication with MiniMax API (Anthropic-compatible format)
+ * Handles communication with MiniMax native chat API format.
  */
 
-import { streamMinimaxChat, convertToolsToMinimaxFormat } from '@/lib/minimax';
+import { streamMinimaxChat, convertToolsToMinimaxFormat, type MinimaxMessage } from '@/lib/minimax';
 import type {
     AgentProvider,
     ProviderMessage,
@@ -17,92 +17,49 @@ import type {
 } from './types';
 
 /**
- * Convert unified messages to MiniMax/Anthropic format
- * Handles the special tool_result format required by Anthropic API
+ * Convert unified messages to MiniMax native message format.
  */
-function toMinimaxMessages(messages: ProviderMessage[]): Array<{
-    role: string;
-    content: string | Array<{ type: string;[key: string]: unknown }>;
-}> {
-    const result: Array<{
-        role: string;
-        content: string | Array<{ type: string;[key: string]: unknown }>;
-    }> = [];
+function toMinimaxMessages(messages: ProviderMessage[]): MinimaxMessage[] {
+    const toolNamesById = new Map<string, string>();
 
-    // Group consecutive tool results into a single user message
-    let pendingToolResults: ToolResult[] = [];
-
-    for (const msg of messages) {
-        if (msg.role === 'system') {
-            // System is handled separately in Anthropic format
-            continue;
-        }
-
-        if (msg.role === 'tool') {
-            // Accumulate tool results
-            pendingToolResults.push({
-                toolCallId: msg.toolCallId || '',
-                content: msg.content,
-            });
-            continue;
-        }
-
-        // Flush pending tool results before adding other messages
-        if (pendingToolResults.length > 0) {
-            result.push({
-                role: 'user',
-                content: pendingToolResults.map(tr => ({
-                    type: 'tool_result',
-                    tool_use_id: tr.toolCallId,
-                    content: tr.content,
-                })),
-            });
-            pendingToolResults = [];
-        }
-
-        if (msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0) {
-            // Assistant message with tool calls needs special formatting
-            const contentBlocks: Array<{ type: string;[key: string]: unknown }> = [];
-
-            if (msg.content) {
-                contentBlocks.push({ type: 'text', text: msg.content });
-            }
-
-            for (const tc of msg.toolCalls) {
-                contentBlocks.push({
-                    type: 'tool_use',
+    return messages
+        .filter(msg => msg.role !== 'system')
+        .map(msg => {
+            if (msg.role === 'assistant') {
+                const toolCalls = msg.toolCalls?.map(tc => ({
+                    type: 'function' as const,
                     id: tc.id,
-                    name: tc.name,
-                    input: tc.arguments,
-                });
+                    function: {
+                        name: tc.name,
+                        arguments: JSON.stringify(tc.arguments ?? {}),
+                    },
+                }));
+
+                for (const tc of msg.toolCalls ?? []) {
+                    toolNamesById.set(tc.id, tc.name);
+                }
+
+                return {
+                    role: 'assistant',
+                    content: msg.content || undefined,
+                    tool_calls: toolCalls && toolCalls.length > 0 ? toolCalls : undefined,
+                };
             }
 
-            result.push({
-                role: 'assistant',
-                content: contentBlocks,
-            });
-        } else {
-            // Simple text message
-            result.push({
+            if (msg.role === 'tool') {
+                return {
+                    role: 'tool',
+                    content: msg.content,
+                    tool_call_id: msg.toolCallId,
+                    name: msg.toolCallId ? toolNamesById.get(msg.toolCallId) : undefined,
+                };
+            }
+
+            return {
                 role: msg.role,
                 content: msg.content,
-            });
-        }
-    }
-
-    // Flush any remaining tool results
-    if (pendingToolResults.length > 0) {
-        result.push({
-            role: 'user',
-            content: pendingToolResults.map(tr => ({
-                type: 'tool_result',
-                tool_use_id: tr.toolCallId,
-                content: tr.content,
-            })),
+            };
         });
-    }
-
-    return result;
 }
 
 export const minimaxProvider: AgentProvider = {
@@ -124,23 +81,25 @@ export const minimaxProvider: AgentProvider = {
         let accumulatedThinking = '';
         const collectedToolCalls: ToolCall[] = [];
 
-        const minimaxMessages = toMinimaxMessages(messages);
+        const minimaxMessages: MinimaxMessage[] = [
+            { role: 'system', content: systemPrompt },
+            ...toMinimaxMessages(messages),
+        ];
+
         const minimaxTools = convertToolsToMinimaxFormat(
             tools.map(t => ({ type: 'function', function: t.function }))
         );
 
-        console.log('[MiniMax Provider] Sending messages:', JSON.stringify(minimaxMessages, null, 2));
-
         const response = streamMinimaxChat(
             {
                 model: options.model,
-                messages: minimaxMessages as any,
-                system: systemPrompt,
+                messages: minimaxMessages,
                 maxTokens: options.maxTokens || 4096,
                 temperature: options.temperature,
                 tools: minimaxTools,
             },
             config.apiKey,
+            config.apiBase,
             options.abortSignal
         );
 
@@ -170,8 +129,6 @@ export const minimaxProvider: AgentProvider = {
     },
 
     formatToolResult(result: ToolResult): ProviderMessage {
-        // MiniMax/Anthropic requires tool_result format
-        // This will be grouped into a user message by toMinimaxMessages
         return {
             role: 'tool',
             content: result.content,

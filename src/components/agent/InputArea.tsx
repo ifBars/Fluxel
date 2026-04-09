@@ -117,6 +117,7 @@ export function InputArea({ }: { panelWidth?: number }) {
             const history = conversation?.messages.map(m => ({
                 role: m.role,
                 content: m.content,
+                toolCallId: m.toolCallId,
                 toolCalls: m.toolCalls?.map(tc => ({
                     id: tc.id,
                     name: tc.name,
@@ -228,6 +229,7 @@ export function InputArea({ }: { panelWidth?: number }) {
                         addMessage({
                             role: 'tool',
                             content: `Tool ${call.name} output:\n\`\`\`\n${resultString}\n\`\`\``,
+                            toolCallId: call.id,
                         });
 
                         // Add tool result to current turn (properly formatted for API)
