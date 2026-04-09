@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useCallback, Suspense, lazy, memo, useMemo, useTransition, useRef } from "react";
+import { useState, useLayoutEffect, useCallback, Suspense, lazy, memo, useMemo, useTransition, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { TitleBar } from "./components/ui/titlebar";
@@ -9,6 +9,7 @@ import { useGlobalShortcuts } from "@/hooks/useGlobalShortcuts";
 import { preloadIconPack } from "@/lib/icons";
 import { ProfilerPanel } from "./components/ProfilerPanel";
 import "./styles/index.css";
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 
 // Lazy-load all views to minimize initial bundle size
 const AuthPage = lazy(() => import("./components/auth/AuthPage"));
@@ -46,7 +47,7 @@ function TrackedSuspenseFallback({ view }: { view: string }) {
   }
 
   // End span on unmount (when lazy component finishes loading)
-  useEffect(() => {
+  useReactiveEffect(() => {
     const loadDuration = performance.now() - startTimeRef.current;
     return () => {
       if (spanRef.current) {
@@ -69,12 +70,12 @@ function App() {
   useGlobalShortcuts();
 
   // Initialize appearance settings on mount
-  useEffect(() => {
+  useReactiveEffect(() => {
     useSettingsStore.getState().initAppearance();
   }, []); // Run only once on mount
 
   // Preload icon pack in parallel with launch path check (optimized startup)
-  useEffect(() => {
+  useReactiveEffect(() => {
     const iconPack = useSettingsStore.getState().iconPack;
     const packKey = iconPack in { 'material-design': true, 'feather': true, 'heroicons': true, 'bootstrap': true, 'phosphor': true, 'lucide': true, 'exuanbo': true, 'material': true }
       ? iconPack as 'material-design' | 'feather' | 'heroicons' | 'bootstrap' | 'phosphor' | 'lucide' | 'exuanbo' | 'material'
@@ -179,7 +180,7 @@ function App() {
   const openExternalProjectRef = useRef(openExternalProject);
   openExternalProjectRef.current = openExternalProject;
 
-  useEffect(() => {
+  useReactiveEffect(() => {
     // Guard against duplicate calls (React Strict Mode, dep changes)
     if (hasCheckedLaunchPath.current) return;
     hasCheckedLaunchPath.current = true;
@@ -212,7 +213,7 @@ function App() {
   }, []); // Run only on mount
 
   // Setup window close handler to cleanup processes before exit
-  useEffect(() => {
+  useReactiveEffect(() => {
     let unlisten: (() => void) | undefined;
 
     const setupCloseHandler = async () => {

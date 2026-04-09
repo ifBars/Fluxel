@@ -1,5 +1,6 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { AlertCircle, Type } from 'lucide-react';
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 
 interface TextControlsProps {
     textContent: string | null;
@@ -24,7 +25,7 @@ export default function TextControls({
     const [isExpanded, setIsExpanded] = useState(true);
 
     // Sync with prop changes
-    useEffect(() => {
+    useReactiveEffect(() => {
         setLocalText(textContent || '');
     }, [textContent]);
 

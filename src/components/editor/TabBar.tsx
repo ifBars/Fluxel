@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import { useEditorStore } from '@/stores';
 import ScrollableArea from '@/components/ui/scrollable-area';
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 
 export default function TabBar() {
     const {
@@ -65,7 +66,7 @@ export default function TabBar() {
         setContextMenu(null);
     };
 
-    useEffect(() => {
+    useReactiveEffect(() => {
         const handleGlobalClick = () => setContextMenu(null);
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {

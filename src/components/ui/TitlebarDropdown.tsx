@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { ChevronDown, Check } from 'lucide-react';
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 
 export interface DropdownOption {
     value: string;
@@ -46,7 +47,7 @@ export function TitlebarDropdown({
     const selectedOption = options.find((opt) => opt.value === value);
 
     // Close dropdown when clicking outside
-    useEffect(() => {
+    useReactiveEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
             if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
                 setIsOpen(false);
@@ -61,7 +62,7 @@ export function TitlebarDropdown({
     }, [isOpen]);
 
     // Keyboard navigation
-    useEffect(() => {
+    useReactiveEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (!isOpen) return;
 

@@ -1,4 +1,5 @@
-import { memo, useEffect, useRef, useCallback } from 'react';
+import { memo, useRef, useCallback } from 'react';
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 import {
     FilePlus,
     FolderPlus,
@@ -106,7 +107,7 @@ const FileTreeContextMenu = memo(function FileTreeContextMenu({
     const menuRef = useRef<HTMLDivElement>(null);
 
     // Close on click outside
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (!position) return;
 
         const handleClickOutside = (e: MouseEvent) => {

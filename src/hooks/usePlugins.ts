@@ -1,3 +1,4 @@
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 /**
  * usePlugins Hook
  * 
@@ -5,7 +6,7 @@
  * Provides a React-friendly interface to the plugin system.
  */
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useRef, useCallback } from 'react';
 import { useMonaco } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
 
@@ -139,14 +140,14 @@ export function usePlugins(options: UsePluginsOptions = {}): UsePluginsReturn {
     }, []);
 
     // Auto-initialize when Monaco is available
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (autoInit && monaco && !hasInitializedRef.current && !isInitializingRef.current) {
             void initialize();
         }
     }, [autoInit, monaco, initialize]);
 
     // Update workspace root when project changes
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (!hasInitializedRef.current) return;
 
         const host = getPluginHost();
@@ -180,7 +181,7 @@ export function usePluginLanguageActivation(language: string | null): void {
     const { isInitialized } = usePluginStore();
     const activatedLanguagesRef = useRef<Set<string>>(new Set());
 
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (!isInitialized || !language) return;
 
         // Only trigger once per language

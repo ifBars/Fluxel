@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, useCallback, memo, lazy, Suspense, useEffect } from "react";
+import { useState, useRef, useMemo, useCallback, memo, lazy, Suspense } from "react";
 import { Panel, Group, Separator, usePanelRef } from "react-resizable-panels";
 import { useWorkbenchStore, useEditorStore, useSettingsStore, densityConfigs, useBuildPanelStore, useTypeLoadingStore, useInspectorStore, useCSharpStore, useAgentStore, useNavigationStore, useDebugStore, usePluginStore } from "@/stores";
 import { FrontendProfiler } from "@/lib/services";
@@ -14,6 +14,7 @@ import CommandPalette from "./CommandPalette";
 import SymbolSearchDialog from "./SymbolSearchDialog";
 import QuickOutline from "./QuickOutline";
 import EditorGroup from "@/components/editor/EditorGroup";
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 
 
 // Lazy load conditional panels to reduce initial bundle size
@@ -135,7 +136,7 @@ function Workbench() {
     ), [densityConfig.panelHandleWidth]);
 
     // Sync AgentStore settings trigger to local state
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (agentSettingsOpen) {
             setSettingsSection(agentSettingsSection);
             setIsSettingsOpen(true);
@@ -148,8 +149,8 @@ function Workbench() {
     // Register default commands for command palette
     useDefaultCommands();
 
-    // Combine component initialization tracking into a single useEffect
-    useEffect(() => {
+    // Combine component initialization tracking into a single useReactiveEffect
+    useReactiveEffect(() => {
         clearOldPanelLayouts();
 
         FrontendProfiler.trackInteraction('ActivityBar:init', { component: 'ActivityBar' });
@@ -158,7 +159,7 @@ function Workbench() {
     }, []);
 
     // End init span after mount effects complete
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (initSpanRef.current) {
             const scheduleProfiling = () => {
                 initSpanRef.current?.end({

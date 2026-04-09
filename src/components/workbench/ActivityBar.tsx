@@ -1,7 +1,8 @@
-import { useEffect, RefObject } from "react";
+import { RefObject } from "react";
 import { Files, Search, GitBranch, Settings, Activity, Bot, Bug } from "lucide-react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import { useWorkbenchStore, type ActivityItem, useProfilerStore, useAgentStore, useDebugStore } from "@/stores";
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 
 interface ActivityBarProps {
     onSettingsClick: () => void;
@@ -15,7 +16,7 @@ export default function ActivityBar({ onSettingsClick, sidebarPanelRef }: Activi
     const { isPanelOpen: isDebugOpen, togglePanel: toggleDebug } = useDebugStore();
 
     // Initialize profiler store to check availability
-    useEffect(() => {
+    useReactiveEffect(() => {
         initialize();
     }, [initialize]);
 

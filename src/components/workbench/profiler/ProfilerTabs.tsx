@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { CategoryBreakdown } from './CategoryBreakdown';
 import { HotspotList } from './HotspotList';
 import { SpanDetails } from './SpanDetails';
@@ -7,6 +7,7 @@ import { FlameGraphView } from './FlameGraphView';
 import { useProfilerStore } from '@/stores/profiler';
 import { PieChart, List, Activity, GitBranch, Flame } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 
 type Tab = 'calltree' | 'flamegraph' | 'summary' | 'hotspots' | 'details';
 
@@ -15,7 +16,7 @@ export const ProfilerTabs: React.FC = () => {
     const [activeTab, setActiveTab] = useState<Tab>('calltree');
 
     // Auto-switch to details when a span is selected
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (selectedSpan) {
             setActiveTab('details');
         }

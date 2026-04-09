@@ -143,7 +143,7 @@ function BuildPanel() {
 	const { configurations, selectedConfiguration, setSelectedConfiguration } = useCSharpStore();
 
 	// Load configurations when workspace changes
-	useEffect(() => {
+	useReactiveEffect(() => {
 		if (workspaceRoot) {
 			useCSharpStore.getState().loadProjectConfigurations(workspaceRoot);
 		}

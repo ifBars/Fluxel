@@ -1,6 +1,7 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useMemo, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { FileCode2, Hash, Layers3, PanelTop, Plus, Type, X } from 'lucide-react';
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 
 import type { NewFileTemplate } from '@/lib/plugins/types';
 import { ensureTemplateFileName } from '@/lib/workspace/newFileTemplates';
@@ -70,7 +71,7 @@ function NewFileDialog({
         return ensureTemplateFileName(name.trim() || fallbackName, selectedTemplate?.extension);
     }, [name, selectedTemplate]);
 
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (!isOpen) {
             return;
         }
@@ -81,7 +82,7 @@ function NewFileDialog({
         setIsSubmitting(false);
     }, [isOpen, templates]);
 
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (!isOpen) {
             return;
         }
@@ -94,7 +95,7 @@ function NewFileDialog({
         return () => window.clearTimeout(timeoutId);
     }, [isOpen, selectedTemplateId]);
 
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (!isOpen) {
             return;
         }

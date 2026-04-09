@@ -1,5 +1,6 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { z } from "zod";
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 import {
   Code,
   GitBranch,
@@ -61,7 +62,7 @@ export default function SettingsDialog({
   const [sidebarSize, setSidebarSize] = useState(workbench.sidebarDefaultSize);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  useEffect(() => {
+  useReactiveEffect(() => {
     if (isOpen) {
       setSidebarSize(workbench.sidebarDefaultSize);
       setErrors({});
@@ -77,7 +78,7 @@ export default function SettingsDialog({
     initialSection,
   ]);
 
-  useEffect(() => {
+  useReactiveEffect(() => {
     if (!isOpen) return;
 
     const onKeyDown = (event: KeyboardEvent) => {

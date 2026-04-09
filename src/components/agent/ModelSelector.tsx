@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { useAgentStore } from '@/stores/agent/useAgentStore';
 import { Bot, Cloud, ChevronUp, Check, Settings } from 'lucide-react';
 import type { ModelConfig } from '@/stores/agent/types';
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 
 interface ModelSelectorProps {
     className?: string;
@@ -21,7 +22,7 @@ export function ModelSelector({ className = '' }: ModelSelectorProps) {
     const enabledModels = models.filter((m: ModelConfig) => m.enabled);
 
     // Close on click outside
-    useEffect(() => {
+    useReactiveEffect(() => {
         function handleClickOutside(event: MouseEvent) {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
                 setIsOpen(false);

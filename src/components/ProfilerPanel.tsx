@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { useProfilerStore, useSettingsStore, densityConfigs } from '@/stores';
 import { SessionControls } from '@/components/workbench/profiler/SessionControls';
 import { SpanTimeline } from '@/components/workbench/profiler/SpanTimeline';
@@ -6,6 +6,7 @@ import { ProfilerTabs } from '@/components/workbench/profiler/ProfilerTabs';
 import { X, Maximize2, Minimize2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Panel, Group, Separator } from "react-resizable-panels";
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 
 export const ProfilerPanel: React.FC = () => {
     const {
@@ -25,7 +26,7 @@ export const ProfilerPanel: React.FC = () => {
     const densityConfig = useMemo(() => densityConfigs[uiDensity], [uiDensity]);
 
     // Initial load and polling
-    useEffect(() => {
+    useReactiveEffect(() => {
         initialize();
         const interval = setInterval(refresh, 1000); // Poll every second for updates
         return () => clearInterval(interval);

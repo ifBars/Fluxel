@@ -6,10 +6,11 @@ import jsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
 import cssWorker from "monaco-editor/esm/vs/language/css/css.worker?worker";
 import htmlWorker from "monaco-editor/esm/vs/language/html/html.worker?worker";
 import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 
 // Use the bundled Monaco instead of the CDN loader (avoids tracking-prevention blocks)
 loader.config({ monaco: monacoApi });
-import { useEffect, useCallback, useState, useRef, memo } from "react";
+import { useCallback, useState, useRef, memo } from "react";
 import { useSettingsStore, useEditorStore, type EditorTab, useProjectStore } from "@/stores";
 import { useProfiler } from "@/hooks/useProfiler";
 import { usePluginLanguageActivation } from "@/hooks/usePlugins";
@@ -177,14 +178,14 @@ const CodeEditorComponent = memo(function CodeEditorComponent({ activeTab }: Cod
     }, []);
 
     // Clear stale diff editor references when leaving diff mode.
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (activeTab?.type !== 'diff') {
             diffEditorRef.current = null;
         }
     }, [activeTab?.id, activeTab?.type]);
 
     // Configure Monaco TypeScript to behave like VSCode (full IntelliSense)
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (!monaco) return;
 
         const shouldConfigureTS = !currentProject ||
@@ -209,7 +210,7 @@ const CodeEditorComponent = memo(function CodeEditorComponent({ activeTab }: Cod
     }, [monaco, currentProject?.rootPath, projectProfile?.kind]);
 
     // Hydrate Monaco with project types/models when the workspace changes
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (!monaco) return;
         const projectRoot = currentProject?.rootPath ?? null;
 
@@ -266,7 +267,7 @@ const CodeEditorComponent = memo(function CodeEditorComponent({ activeTab }: Cod
     }, [monaco, currentProject?.rootPath, projectProfile, projectInitStatus]);
 
     // Proactively trigger type loading when a TypeScript/JavaScript file is opened
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (!monaco || !activeTab) return;
         const projectRoot = currentProject?.rootPath ?? null;
         if (!projectRoot) return;
@@ -355,14 +356,14 @@ const CodeEditorComponent = memo(function CodeEditorComponent({ activeTab }: Cod
     }, [monaco, activeTab?.id, activeTab?.language, currentProject?.rootPath, projectInitStatus, projectProfile]);
 
     // Initialize language registry
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (!monaco) return;
         const registry = getLanguageRegistry();
         registry.initialize(monaco);
     }, [monaco]);
 
     // Define custom Fluxel themes and register all C# color themes
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (!monaco) return;
 
         registerCSharpColorThemes(monaco);
@@ -370,7 +371,7 @@ const CodeEditorComponent = memo(function CodeEditorComponent({ activeTab }: Cod
     }, [monaco, theme]);
 
     // Register Ollama inline completion provider
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (!monaco) {
             return;
         }
@@ -405,7 +406,7 @@ const CodeEditorComponent = memo(function CodeEditorComponent({ activeTab }: Cod
         lspClientRef.current.getWorkspaceRoot()?.replace(/\\/g, '/') === normalizedProjectRoot;
 
     // Ensure C# LSP is ready when editing C# files
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (activeTab?.language !== 'csharp') return;
         if (!currentProject?.rootPath) return;
         if (lspReady || csharpLspStatus === 'starting') return;
@@ -413,14 +414,14 @@ const CodeEditorComponent = memo(function CodeEditorComponent({ activeTab }: Cod
     }, [activeTab?.language, currentProject?.rootPath, csharpLspStatus, lspReady, ensureCSharpLspReady]);
 
     // Clear document version tracking when workspace/LSP is not active.
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (!currentProject?.rootPath || csharpLspStatus === 'stopped') {
             docVersionsRef.current = {};
         }
     }, [currentProject?.rootPath, csharpLspStatus]);
 
     // If the server stops/restarts, forget locally-opened documents
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (!lspReady) {
             openedDocsRef.current.clear();
             currentOpenUriRef.current = null;
@@ -428,7 +429,7 @@ const CodeEditorComponent = memo(function CodeEditorComponent({ activeTab }: Cod
     }, [lspReady]);
 
     // Send textDocument/didOpen when C# file is opened and LSP is ready
-    useEffect(() => {
+    useReactiveEffect(() => {
         const lspClient = lspClientRef.current;
 
         if (activeTab?.language === 'csharp' && lspReady && activeTab && lspClient.getIsStarted()) {
@@ -487,7 +488,7 @@ const CodeEditorComponent = memo(function CodeEditorComponent({ activeTab }: Cod
     }, [activeTab?.id, activeTab?.language, activeTab?.path, lspReady]);
 
     // Handle pending editor actions (from menu)
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (!editorInstance || !useEditorStore.getState().pendingAction) return;
 
         const unsubscribe = useEditorStore.subscribe((state) => {
@@ -675,7 +676,7 @@ const CodeEditorComponent = memo(function CodeEditorComponent({ activeTab }: Cod
     }, [openFile, startSpan, monaco, layoutEditorToContainer]);
 
     // Track cursor position changes
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (!editorInstance || !activeTab) {
             if (!activeTab) {
                 setCursorPosition(null);
@@ -723,7 +724,7 @@ const CodeEditorComponent = memo(function CodeEditorComponent({ activeTab }: Cod
     }, [editorInstance, activeTab, setCursorPosition]);
 
     // Keep Monaco sized to its container without causing observer/layout feedback loops.
-    useEffect(() => {
+    useReactiveEffect(() => {
         const container = containerRef.current;
         if (!container) return;
 
@@ -756,7 +757,7 @@ const CodeEditorComponent = memo(function CodeEditorComponent({ activeTab }: Cod
     }, [activeTab?.type, editorInstance, layoutEditorToContainer]);
 
     // Reveal pending selection/line when requested
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (!editorInstance || !pendingReveal || !activeTab || pendingReveal.tabId !== activeTab.id) {
             return;
         }
@@ -779,7 +780,7 @@ const CodeEditorComponent = memo(function CodeEditorComponent({ activeTab }: Cod
     }, [editorInstance, pendingReveal, activeTab, clearPendingReveal]);
 
     // Register keyboard shortcut for save
-    useEffect(() => {
+    useReactiveEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if ((e.ctrlKey || e.metaKey) && e.key === 's') {
                 e.preventDefault();

@@ -1,5 +1,6 @@
-import { ReactNode, useState, useEffect, useMemo } from 'react';
+import { ReactNode, useState, useMemo } from 'react';
 import { useSettingsStore } from '@/stores';
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 
 // Type definitions for different icon pack function signatures
 type IconPackFn2Args = (name: string, extension: string) => ReactNode;
@@ -58,7 +59,7 @@ export function useFileIcon(name: string, extension: string): ReactNode {
         return `${packKey}:${name}:${extension}`;
     }, [iconPack, name, extension]);
 
-    useEffect(() => {
+    useReactiveEffect(() => {
         const packKey = iconPack in iconPackLoaders ? iconPack : 'material-design';
         
         // Check icon cache first (most common case for large directories)

@@ -1,7 +1,8 @@
-import { memo, useState, useRef, useEffect } from 'react';
+import { memo, useState, useRef } from 'react';
 import { Plus, X, Terminal, SplitSquareHorizontal, SplitSquareVertical, Square, MoreHorizontal, Trash2, Edit2, Palette } from 'lucide-react';
 import { useTerminalStore, type TerminalInstance, type TerminalColor } from '@/stores/terminal/useTerminalStore';
 import { cn } from '@/lib/utils';
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 
 // ============================================================================
 // Color Configuration
@@ -47,7 +48,7 @@ const TerminalTab = memo(function TerminalTab({
     const color = colorConfig[terminal.color];
 
     // Focus input when editing starts
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (isEditing && inputRef.current) {
             inputRef.current.focus();
             inputRef.current.select();
@@ -55,7 +56,7 @@ const TerminalTab = memo(function TerminalTab({
     }, [isEditing]);
 
     // Close menu when clicking outside
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (!showMenu) return;
 
         const handleClickOutside = (e: MouseEvent) => {

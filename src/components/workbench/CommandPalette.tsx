@@ -1,7 +1,8 @@
-import { useEffect, useRef, useCallback, memo } from 'react';
+import { useRef, useCallback, memo } from 'react';
 import { Command as CommandIcon, Search, ChevronRight } from 'lucide-react';
 import { useCommandStore, type Command, type CommandCategory } from '@/stores/commands';
 import { cn } from '@/lib/utils';
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 
 // ============================================================================
 // Category Icons & Labels
@@ -112,7 +113,7 @@ function CommandPalette() {
     const filteredCommands = getFilteredCommands();
     
     // Focus input when opened
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (isOpen && inputRef.current) {
             // Small delay to ensure modal is rendered
             requestAnimationFrame(() => {
@@ -122,7 +123,7 @@ function CommandPalette() {
     }, [isOpen]);
     
     // Scroll selected item into view
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (listRef.current && filteredCommands.length > 0) {
             const selectedElement = listRef.current.children[selectedIndex] as HTMLElement;
             if (selectedElement) {

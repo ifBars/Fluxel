@@ -1,10 +1,11 @@
-import { memo, useCallback, useState, useEffect, useMemo, useRef, createContext, useContext } from 'react';
+import { memo, useCallback, useState, useMemo, useRef, createContext, useContext } from 'react';
 import { useEditorStore, useFileSystemStore, usePluginStore, useProjectStore } from '@/stores';
 import type { FileEntry } from '@/types/fs';
 import { getFileExtension } from '@/types/fs';
 import { useFileIcon } from '@/lib/icons';
 import { useProfiler } from '@/hooks/useProfiler';
 import { FrontendProfiler } from '@/lib/services';
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 import type { NewFileTemplate } from '@/lib/plugins/types';
 import {
     buildCSharpNamespace,
@@ -74,7 +75,7 @@ const InlineInput = memo(function InlineInput({
     const inputRef = useRef<HTMLInputElement>(null);
     const paddingLeft = 8 + depth * 16 + 20; // Align with file names (after chevron)
 
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (inputRef.current) {
             inputRef.current.focus();
             // Select filename without extension for files
@@ -311,7 +312,7 @@ function ChunkedFileTree({ children }: { children: FileEntry[] }) {
         return Math.min(childrenLength, shouldUseSmallBatches ? 50 : 200);
     });
 
-    useEffect(() => {
+    useReactiveEffect(() => {
         const initialVisible = Math.min(childrenLength, shouldUseSmallBatches ? 50 : 200);
 
         if (visibleCount > childrenLength || visibleCount < initialVisible) {

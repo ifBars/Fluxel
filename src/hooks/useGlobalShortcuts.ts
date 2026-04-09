@@ -1,8 +1,9 @@
-import { useEffect } from 'react';
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
+
 import { useProfilerStore } from '@/stores';
 
 export function useGlobalShortcuts() {
-    useEffect(() => {
+    useReactiveEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
             // Use Meta key on Mac, Control on Windows/Linux
             const modifier = event.metaKey || event.ctrlKey;

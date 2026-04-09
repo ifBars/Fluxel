@@ -1,7 +1,8 @@
-import { useEffect, useRef, useCallback, useState, memo } from 'react';
+import { useRef, useCallback, useState, memo } from 'react';
 import { Hash, Type, Box, Braces, Variable, Zap, FileCode, ChevronRight, Search, Loader2, List } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useEditorStore } from '@/stores';
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 
 // ============================================================================
 // Types
@@ -200,7 +201,7 @@ function QuickOutline({ isOpen, onClose }: QuickOutlineProps) {
     const activeTab = tabs.find(t => t.id === activeTabId);
     
     // Focus input when opened
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (isOpen && inputRef.current) {
             requestAnimationFrame(() => {
                 inputRef.current?.focus();
@@ -212,7 +213,7 @@ function QuickOutline({ isOpen, onClose }: QuickOutlineProps) {
     }, [isOpen]);
     
     // Load document symbols when opened
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (!isOpen || !activeTab) {
             setSymbols([]);
             return;
@@ -334,7 +335,7 @@ function QuickOutline({ isOpen, onClose }: QuickOutlineProps) {
     }, [isOpen, activeTab]);
     
     // Filter symbols based on search query
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (!searchQuery.trim()) {
             setFilteredSymbols(symbols);
             return;
@@ -351,7 +352,7 @@ function QuickOutline({ isOpen, onClose }: QuickOutlineProps) {
     }, [searchQuery, symbols]);
     
     // Scroll selected item into view
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (listRef.current && filteredSymbols.length > 0) {
             const selectedElement = listRef.current.children[selectedIndex] as HTMLElement;
             if (selectedElement) {

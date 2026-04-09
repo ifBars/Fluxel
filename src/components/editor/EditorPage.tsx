@@ -1,9 +1,10 @@
-import { memo, useEffect, useRef } from "react";
+import { memo, useRef } from "react";
 import Workbench from "../workbench/Workbench";
 import { useProfiler } from "@/hooks/useProfiler";
 import { usePlugins } from "@/hooks/usePlugins";
 import { FrontendProfiler } from "@/lib/services";
 import { LanguageController } from "./LanguageController";
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 
 function EditorPage() {
     const { ProfilerWrapper } = useProfiler('EditorPage');
@@ -25,7 +26,7 @@ function EditorPage() {
     }
 
     // End mount span after effects run and first paint completes
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (mountSpanRef.current) {
             // Use requestAnimationFrame to capture after first paint
             requestAnimationFrame(() => {

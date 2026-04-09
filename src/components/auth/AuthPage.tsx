@@ -1,9 +1,10 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { AuthAuroraBackdrop } from "./AuthAuroraBackdrop";
 import { useSettingsStore, type AccentColor } from "@/stores";
 import { FrontendProfiler } from "@/lib/services";
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 
 // Inline SVG icons to avoid eager loading lucide-react during app initialization
 const GithubIcon = ({ className }: { className?: string }) => (
@@ -56,7 +57,7 @@ export default function AuthPage({
     const pickerRef = useRef<HTMLDivElement>(null);
 
     // Close on click outside
-    useEffect(() => {
+    useReactiveEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (pickerRef.current && !pickerRef.current.contains(event.target as Node)) {
                 setIsExpanded(false);

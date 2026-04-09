@@ -1,9 +1,10 @@
-import { useEffect, useRef, useCallback, useState, memo } from 'react';
+import { useRef, useCallback, useState, memo } from 'react';
 import { Hash, Type, Box, Braces, Variable, Zap, FileCode, ChevronRight, Search, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { searchWorkspaceSymbols, SymbolKind, type SymbolInfo } from '@/lib/languages/csharp/WorkspaceSymbols';
 import { useEditorStore, useProjectStore } from '@/stores';
 import { fileUriToFsPath } from '@/lib/languages/base/fileUris';
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 
 // ============================================================================
 // Symbol Kind Icons
@@ -126,7 +127,7 @@ function SymbolSearchDialog({ isOpen, onClose }: SymbolSearchDialogProps) {
     const projectRoot = useProjectStore(state => state.currentProject?.rootPath ?? null);
     
     // Focus input when opened
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (isOpen && inputRef.current) {
             requestAnimationFrame(() => {
                 inputRef.current?.focus();
@@ -139,7 +140,7 @@ function SymbolSearchDialog({ isOpen, onClose }: SymbolSearchDialogProps) {
     }, [isOpen]);
     
     // Debounced search
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (!isOpen) return;
         
         if (searchTimeoutRef.current) {
@@ -174,7 +175,7 @@ function SymbolSearchDialog({ isOpen, onClose }: SymbolSearchDialogProps) {
     }, [searchQuery, isOpen]);
     
     // Scroll selected item into view
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (listRef.current && symbols.length > 0) {
             const selectedElement = listRef.current.children[selectedIndex] as HTMLElement;
             if (selectedElement) {

@@ -1,11 +1,12 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { useProfilerStore } from '@/stores/profiler';
 import { Clock, AlertTriangle, List, Activity } from 'lucide-react';
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 
 export const SpanDetails: React.FC = () => {
     const { selectedSpan, attribution, analyzeSpan, isLoading } = useProfilerStore();
 
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (selectedSpan && !attribution) {
             analyzeSpan(selectedSpan.id);
         }

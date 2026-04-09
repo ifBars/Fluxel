@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo, memo, useCallback } from 'react';
+import { useState, useMemo, memo, useCallback, useDeferredValue } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { useQuery } from '@tanstack/react-query';
 import { ChevronRight, ChevronDown, File, Loader2, AlertCircle, Search as SearchIcon } from 'lucide-react';
 import { useProjectStore, useEditorStore } from '@/stores';
 
@@ -96,61 +97,45 @@ export default function SearchPanel() {
     const currentProject = useProjectStore((state) => state.currentProject);
     const openFile = useEditorStore((state) => state.openFile);
     const [query, setQuery] = useState('');
-    const [results, setResults] = useState<SearchResult | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
+    const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
 
-    // Debounce search with cleanup
-    useEffect(() => {
-        if (!query.trim() || !currentProject) {
-            setResults(null);
-            setIsLoading(false);
-            return;
-        }
+    const searchTerm = useDeferredValue(query.trim());
+    const hasSearchInput = query.trim().length > 0;
+    const canSearch = Boolean(currentProject && searchTerm.length >= 2);
 
-        if (query.length < 2) {
-            setResults(null);
-            return;
-        }
-
-        const timeoutId = setTimeout(async () => {
-            setIsLoading(true);
-            setError(null);
-
-            try {
-                const searchResult = await invoke<SearchResult>('search_files', {
-                    query: query.trim(),
-                    rootPath: currentProject.rootPath,
-                    maxResults: 100,
-                });
-
-                setResults(searchResult);
-
-                // Auto-expand files with matches
-                const filePaths = new Set(searchResult.matches.map(m => m.file_path));
-                setExpandedFiles(filePaths);
-            } catch (err) {
-                setError(err instanceof Error ? err.message : 'Search failed');
-                setResults(null);
-            } finally {
-                setIsLoading(false);
+    const searchResultsQuery = useQuery({
+        queryKey: ['workspace-search', currentProject?.rootPath ?? '', searchTerm],
+        enabled: canSearch,
+        staleTime: 10_000,
+        queryFn: async () => {
+            if (!currentProject) {
+                throw new Error('No project open');
             }
-        }, 300);
 
-        return () => clearTimeout(timeoutId);
-    }, [query, currentProject]);
+            return invoke<SearchResult>('search_files', {
+                query: searchTerm,
+                rootPath: currentProject.rootPath,
+                maxResults: 100,
+            });
+        },
+    });
+
+    const results = canSearch ? searchResultsQuery.data ?? null : null;
+    const isLoading = canSearch && searchResultsQuery.isPending;
+    const error = canSearch && searchResultsQuery.isError
+        ? (searchResultsQuery.error instanceof Error ? searchResultsQuery.error.message : 'Search failed')
+        : null;
 
     // Stable callbacks to prevent re-renders
     const toggleFile = useCallback((filePath: string) => {
-        setExpandedFiles(prev => {
-            const newExpanded = new Set(prev);
-            if (newExpanded.has(filePath)) {
-                newExpanded.delete(filePath);
+        setCollapsedFiles(prev => {
+            const next = new Set(prev);
+            if (next.has(filePath)) {
+                next.delete(filePath);
             } else {
-                newExpanded.add(filePath);
+                next.add(filePath);
             }
-            return newExpanded;
+            return next;
         });
     }, []);
 
@@ -208,13 +193,16 @@ export default function SearchPanel() {
                     <input
                         type="text"
                         value={query}
-                        onChange={(e) => setQuery(e.target.value)}
+                        onChange={(e) => {
+                            setQuery(e.target.value);
+                            setCollapsedFiles(new Set());
+                        }}
                         placeholder="Search files..."
                         className="w-full pl-8 pr-3 py-1.5 bg-background border border-border rounded text-sm focus:outline-none focus:ring-1 focus:ring-primary"
                         autoFocus
                     />
                 </div>
-                {query.length > 0 && query.length < 2 && (
+                {hasSearchInput && searchTerm.length < 2 && (
                     <p className="text-xs text-muted-foreground mt-1.5 px-1">
                         Type at least 2 characters to search
                     </p>
@@ -237,7 +225,7 @@ export default function SearchPanel() {
                     </div>
                 )}
 
-                {!isLoading && !error && query.length >= 2 && results && (
+                {!isLoading && !error && searchTerm.length >= 2 && results && (
                     <>
                         {results.total_matches === 0 ? (
                             <div className="p-4 text-sm text-muted-foreground text-center">
@@ -262,7 +250,7 @@ export default function SearchPanel() {
                                         <SearchResultItem
                                             key={group.filePath}
                                             group={group}
-                                            isExpanded={expandedFiles.has(group.filePath)}
+                                            isExpanded={!collapsedFiles.has(group.filePath)}
                                             onToggle={toggleFile}
                                             onMatchClick={handleMatchClick}
                                         />
@@ -273,7 +261,7 @@ export default function SearchPanel() {
                     </>
                 )}
 
-                {!isLoading && !error && query.length === 0 && (
+                {!isLoading && !error && !hasSearchInput && (
                     <div className="p-4 text-sm text-muted-foreground text-center">
                         <SearchIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
                         <p>Search across all project files</p>

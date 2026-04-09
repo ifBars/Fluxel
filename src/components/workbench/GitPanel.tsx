@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { readTextFile } from '@tauri-apps/plugin-fs';
 import { useGitStore, useProjectStore, useSettingsStore, useEditorStore } from '@/stores';
 import { RefreshCw, GitCommit, Upload, Download, Loader2, Trash2, CheckSquare, Square } from 'lucide-react';
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 
 export default function GitPanel() {
     const {
@@ -25,7 +26,7 @@ export default function GitPanel() {
     const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
 
     // Initialize selection when files change
-    useEffect(() => {
+    useReactiveEffect(() => {
         // By default select all files that are not already selected (to preserve unselected state if we wanted distinct behavior, 
         // but here we just re-select everything on refresh effectively similar to VSCode's behavior of staging all new changes 
         // if we consider "files" as "changes"). 
@@ -59,7 +60,7 @@ export default function GitPanel() {
         }
     };
 
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (currentProject) {
             refreshStatus(currentProject.rootPath).catch(() => {
                 // Error is handled in the store state and displayed in the UI

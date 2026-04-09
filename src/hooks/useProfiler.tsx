@@ -1,3 +1,4 @@
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 /**
  * useProfiler - React hook for component profiling
  * 
@@ -5,7 +6,7 @@
  * All operations are no-ops when profiling is not available.
  */
 
-import { useRef, useCallback, useEffect, useMemo, type ReactNode } from 'react';
+import { useRef, useCallback, useMemo, type ReactNode } from 'react';
 import { Profiler, type ProfilerProps } from 'react';
 import { FrontendProfiler, type SpanHandle } from '@/lib/services';
 import type { FrontendCategory } from '@/types/profiling';
@@ -61,7 +62,7 @@ export function useProfiler(componentName: string): UseProfilerReturn {
     const activeSpansRef = useRef<Set<SpanHandle>>(new Set());
 
     // Cleanup on unmount
-    useEffect(() => {
+    useReactiveEffect(() => {
         return () => {
             // Cancel any active spans when component unmounts
             activeSpansRef.current.forEach(span => span.cancel());
@@ -144,7 +145,7 @@ export function useProfiledEffect(
     effect: () => Promise<void> | void,
     deps: React.DependencyList = []
 ): void {
-    useEffect(() => {
+    useReactiveEffect(() => {
         const run = async () => {
             const result = effect();
             if (result instanceof Promise) {
@@ -166,7 +167,7 @@ export function useProfiledEffect(
  * useProfiledMount('ExpensiveComponent');
  */
 export function useProfiledMount(componentName: string): void {
-    useEffect(() => {
+    useReactiveEffect(() => {
         FrontendProfiler.trackInteraction(`${componentName}:mount`);
 
         return () => {

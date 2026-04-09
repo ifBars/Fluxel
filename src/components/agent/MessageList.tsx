@@ -1,7 +1,8 @@
-import { useRef, useEffect } from 'react';
+import { useRef } from 'react';
 import { useAgentStore } from '@/stores/agent/useAgentStore';
 import { ChatMessage } from './ChatMessage';
 import ScrollableArea from '@/components/ui/scrollable-area';
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 
 export function MessageList() {
     const conversations = useAgentStore(state => state.conversations);
@@ -16,7 +17,7 @@ export function MessageList() {
     const messages = activeConversation?.messages ?? [];
 
     // Auto-scroll to bottom when new messages arrive or streaming
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (scrollRef.current) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }

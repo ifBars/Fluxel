@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
+
 import { useCommandStore, type Command } from '@/stores/commands';
 import { useEditorStore, useBuildPanelStore, useAgentStore, useWorkbenchStore, useDiagnosticsStore, useNavigationStore, useDebugStore } from '@/stores';
 
@@ -9,7 +10,7 @@ import { useEditorStore, useBuildPanelStore, useAgentStore, useWorkbenchStore, u
 export function useDefaultCommands() {
     const registerCommand = useCommandStore(state => state.registerCommand);
 
-    useEffect(() => {
+    useReactiveEffect(() => {
         const commands: Command[] = [
             // ================================================================
             // File Commands
@@ -566,7 +567,7 @@ export function useRegisterCommands(commands: Command[]) {
     const registerCommand = useCommandStore(state => state.registerCommand);
     const unregisterCommand = useCommandStore(state => state.unregisterCommand);
 
-    useEffect(() => {
+    useReactiveEffect(() => {
         commands.forEach(cmd => registerCommand(cmd));
 
         return () => {

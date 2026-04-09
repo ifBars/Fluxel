@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
+
 import { useMonaco } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
 import { useEditorStore, useProjectStore } from '@/stores';
@@ -23,7 +24,7 @@ export function LanguageController() {
     );
 
     // Initialize Language Registry & Providers
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (!monaco) return;
 
         const registry = getLanguageRegistry();
@@ -45,7 +46,7 @@ export function LanguageController() {
     }, [monaco]);
 
     // Manage C# Provider Lifecycle based on Project
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (!monaco) return;
 
         const registry = getLanguageRegistry();

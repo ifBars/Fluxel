@@ -1,11 +1,12 @@
-import { useEffect, RefObject } from 'react';
+import { RefObject } from 'react';
 import type { PanelImperativeHandle } from 'react-resizable-panels';
 import { useWorkbenchStore, useBuildPanelStore, useAgentStore, useDiagnosticsStore, useCommandStore, useNavigationStore } from '@/stores';
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 
 export function useKeyboardShortcuts(sidebarPanelRef: RefObject<PanelImperativeHandle | null>) {
     const { setActiveActivity } = useWorkbenchStore();
 
-    useEffect(() => {
+    useReactiveEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
             // Check if editor has focus (avoid interfering with input fields)
             const target = event.target as HTMLElement;

@@ -1,9 +1,10 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { Command } from '@tauri-apps/plugin-shell';
 import { RefreshCw, ExternalLink, Settings, AlertCircle, Loader2, Power, Play, MousePointer2 } from 'lucide-react';
 import { usePreviewStore, useProjectStore, useInspectorStore } from '@/stores';
 import { isInspectorMessage } from '@/lib/inspector/inspectorMessages';
 import type { IframeToParentMessage } from '@/lib/inspector/inspectorMessages';
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 
 export default function WebPreview() {
     const { currentProject, projectProfile } = useProjectStore();
@@ -36,7 +37,7 @@ export default function WebPreview() {
     const iframeRef = useRef<HTMLIFrameElement>(null);
 
     // Store iframe ref in inspector store so InspectorPanel can access it
-    useEffect(() => {
+    useReactiveEffect(() => {
         setIframeRef(iframeRef as React.RefObject<HTMLIFrameElement>);
         return () => setIframeRef(null);
     }, [setIframeRef]);
@@ -47,7 +48,7 @@ export default function WebPreview() {
 
 
     // Handle messages from iframe
-    useEffect(() => {
+    useReactiveEffect(() => {
         const handleMessage = (event: MessageEvent) => {
             // Log all messages from inspector prefix to debug flow
             if (import.meta.env.DEV && event.data && typeof event.data === 'object' && event.data.__source === 'fluxel-inspector:') {
@@ -97,7 +98,7 @@ export default function WebPreview() {
     }, [isInspectorMode, selectElement, setHoveredElement, setComponentTree]);
 
     // Load inspector bridge script lazily when preview is running or inspector is enabled
-    useEffect(() => {
+    useReactiveEffect(() => {
         if ((isServerRunning || isInspectorOpen) && !inspectorBridgeScript) {
             // Dynamically import the inspector bridge script only when needed
             import('@/lib/inspector/inspectorBridgeInline.js?raw')
@@ -114,7 +115,7 @@ export default function WebPreview() {
     }, [isServerRunning, isInspectorOpen, inspectorBridgeScript]);
 
 // Cleanup and Auto-start
-    useEffect(() => {
+    useReactiveEffect(() => {
         const initPreview = async () => {
             if (import.meta.env.DEV) {
                 console.log('[WebPreview] initPreview check:', { 
@@ -153,7 +154,7 @@ export default function WebPreview() {
     }, [currentProject?.rootPath, projectProfile?.kind]); // Include project kind in dependencies
 
     // Fetch content via Bun to bypass CORS and inject inspector script
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (!previewUrl || !isServerRunning) {
             setSrcDoc(null);
             return;

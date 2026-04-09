@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect, ReactNode } from 'react';
+import { useState, useRef, ReactNode } from 'react';
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 
 interface MenuButtonProps {
     label: string;
@@ -82,7 +83,7 @@ export function useTitlebarMenu() {
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
     const menuRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => {
+    useReactiveEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
             if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
                 setActiveMenu(null);

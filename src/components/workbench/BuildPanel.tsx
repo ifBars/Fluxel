@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useRef, useState, useMemo } from 'react';
 import { X, Loader2, CheckCircle2, XCircle, Terminal, Copy, Check, Hammer, AlertCircle, AlertTriangle, ExternalLink } from 'lucide-react';
 import { useBuildPanelStore, useTerminalStore, useDiagnosticsStore, useProjectStore } from '@/stores';
 import TerminalTabs from './TerminalTabs';
@@ -8,6 +8,7 @@ import ProblemsView from './ProblemsView';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useProfiler } from '@/hooks/useProfiler';
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 
 type Tab = 'problems' | 'build' | 'terminal';
 
@@ -159,7 +160,7 @@ function BuildView() {
     const { trackInteraction, startSpan } = useProfiler('BuildView');
 
     // Auto-scroll to bottom when new output is added
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (outputRef.current) {
             outputRef.current.scrollTop = outputRef.current.scrollHeight;
         }
@@ -402,7 +403,7 @@ function TerminalView({ projectProfile }: { projectProfile: any }) {
     const initListeners = useTerminalStore(state => state.initListeners);
 
     // Initialize listeners and create first terminal if needed
-    useEffect(() => {
+    useReactiveEffect(() => {
         initListeners();
         if (terminals.length === 0) {
             createTerminal();
@@ -501,7 +502,7 @@ function SingleTerminalView({
     const { entries, history, historyIndex, isRunning, currentCommand } = terminal;
 
     // Auto-scroll logic
-    useEffect(() => {
+    useReactiveEffect(() => {
         if (scrollRef.current) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }

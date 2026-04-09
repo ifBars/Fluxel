@@ -1,9 +1,10 @@
-import { useEffect, useState, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { useAgentStore } from '@/stores/agent/useAgentStore';
 import { MessageList } from './MessageList';
 import { InputArea } from './InputArea';
 import { Plus, Settings, X, Sparkles } from 'lucide-react';
 import { useProfiler } from '@/hooks/useProfiler';
+import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 
 export function AgentPanel() {
     const { ProfilerWrapper } = useProfiler('AgentPanel');
@@ -17,7 +18,7 @@ export function AgentPanel() {
     const [panelWidth, setPanelWidth] = useState(500);
 
     // Observe container width changes
-    useEffect(() => {
+    useReactiveEffect(() => {
         const container = containerRef.current;
         if (!container) return;
 
