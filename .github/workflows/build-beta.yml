@@ -63,7 +63,8 @@ jobs:
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          # Keep CI on the same Bun major/minor we use to generate bun.lock.
+          bun-version: "1.3.5"
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
