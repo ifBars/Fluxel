@@ -1,10 +1,10 @@
-import { useState, useRef } from 'react';
+import { useRef, useState } from 'react';
+import { Loader2, Plus, Settings, Sparkles, X } from 'lucide-react';
 import { useAgentStore } from '@/stores/agent/useAgentStore';
-import { MessageList } from './MessageList';
-import { InputArea } from './InputArea';
-import { Plus, Settings, X, Sparkles } from 'lucide-react';
 import { useProfiler } from '@/hooks/useProfiler';
 import { useReactiveEffect } from "@/hooks/useReactiveEffect";
+import { InputArea } from './InputArea';
+import { MessageList } from './MessageList';
 
 export function AgentPanel() {
     const { ProfilerWrapper } = useProfiler('AgentPanel');
@@ -12,12 +12,15 @@ export function AgentPanel() {
     const togglePanel = useAgentStore(state => state.togglePanel);
     const createConversation = useAgentStore(state => state.createConversation);
     const toggleSettings = useAgentStore(state => state.toggleSettings);
+    const conversations = useAgentStore(state => state.conversations);
+    const activeConversationId = useAgentStore(state => state.activeConversationId);
+    const isGenerating = useAgentStore(state => state.isGenerating);
+    const model = useAgentStore(state => state.model);
 
-    // Responsive state
     const containerRef = useRef<HTMLDivElement>(null);
     const [panelWidth, setPanelWidth] = useState(500);
+    const activeConversation = conversations.find(c => c.id === activeConversationId);
 
-    // Observe container width changes
     useReactiveEffect(() => {
         const container = containerRef.current;
         if (!container) return;
@@ -39,53 +42,69 @@ export function AgentPanel() {
         <ProfilerWrapper>
             <div
                 ref={containerRef}
-                className="flex flex-col h-full bg-card border-l border-border relative"
+                className="relative flex h-full flex-col overflow-hidden border-l border-border bg-background"
             >
-                {/* Header */}
-                <div className="shrink-0 border-b border-border bg-muted/20">
-                    <div className="flex items-center justify-between px-3 py-2">
-                        {/* Left: Title/Icon */}
-                        <div className="flex items-center gap-2 text-sm font-medium text-foreground/80">
-                            <Sparkles className="w-4 h-4 text-primary" />
-                            <span>Agent</span>
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.12),transparent_65%)]" />
+
+                <div className="relative shrink-0 border-b border-border/80 bg-gradient-to-b from-muted/30 via-background/95 to-background/80 backdrop-blur">
+                    <div className="flex items-start justify-between gap-3 px-4 py-3">
+                        <div className="min-w-0">
+                            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground/80">
+                                <span className="flex h-6 w-6 items-center justify-center rounded-full border border-primary/20 bg-primary/10">
+                                    <Sparkles className="h-3.5 w-3.5 text-primary" />
+                                </span>
+                                Agent Workspace
+                                {isGenerating && (
+                                    <span className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                        Running
+                                    </span>
+                                )}
+                            </div>
+
+                            <div className="mt-2 flex items-center gap-2">
+                                <h2 className="truncate text-sm font-semibold text-foreground">
+                                    {activeConversation?.title || 'New conversation'}
+                                </h2>
+                                <span className="rounded-full border border-border/70 bg-background/70 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                                    {conversations.length} {conversations.length === 1 ? 'chat' : 'chats'}
+                                </span>
+                            </div>
+
+                            <p className="mt-1 truncate text-xs text-muted-foreground">
+                                {model || 'Select a model to start the conversation'}
+                            </p>
                         </div>
 
-                        {/* Right: Actions */}
-                        <div className="flex items-center gap-1">
-                            {/* New Conversation */}
+                        <div className="flex items-center gap-1.5 rounded-xl border border-border/70 bg-background/80 p-1 shadow-sm">
                             <button
                                 onClick={() => createConversation()}
-                                className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                                className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                                 title="New conversation"
                             >
-                                <Plus className="w-4 h-4" />
+                                <Plus className="h-4 w-4" />
                             </button>
 
-                            {/* Settings */}
                             <button
                                 onClick={() => toggleSettings('agent')}
-                                className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                                className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                                 title="Agent settings"
                             >
-                                <Settings className="w-4 h-4" />
+                                <Settings className="h-4 w-4" />
                             </button>
 
-                            {/* Close */}
                             <button
                                 onClick={() => togglePanel()}
-                                className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground ml-1"
+                                className="ml-1 rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                                 title="Close panel"
                             >
-                                <X className="w-4 h-4" />
+                                <X className="h-4 w-4" />
                             </button>
                         </div>
                     </div>
                 </div>
 
-                {/* Messages Area */}
                 <MessageList />
-
-                {/* Input Area */}
                 <InputArea panelWidth={panelWidth} />
             </div>
         </ProfilerWrapper>

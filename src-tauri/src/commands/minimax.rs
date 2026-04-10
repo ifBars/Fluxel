@@ -9,7 +9,7 @@ use tauri::Emitter;
 
 const DEFAULT_MINIMAX_BASE_URL: &str = "https://api.minimaxi.chat";
 const MINIMAX_CHAT_PATH: &str = "/v1/text/chatcompletion_v2";
-const DEFAULT_MODEL: &str = "MiniMax-M2.1";
+const DEFAULT_MODEL: &str = "MiniMax-M2.7";
 const DEFAULT_MAX_TOKENS: u32 = 4096;
 const MINIMAX_MAX_OUTPUT_TOKENS: u32 = 196_608;
 

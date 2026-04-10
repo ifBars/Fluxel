@@ -52,7 +52,7 @@ const generateId = () => Math.random().toString(36).substring(2, 11);
 // Default models per provider to fallback to
 const DEFAULT_MODELS: Record<string, string> = {
     ollama: 'qwen2.5-coder:1.5b',
-    minimax: 'MiniMax-M2.1',
+    minimax: 'MiniMax-M2.7',
 };
 
 export const useAgentStore = create<AgentState & AgentActions>()(

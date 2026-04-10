@@ -1,15 +1,13 @@
-import { useState, useRef, useCallback, KeyboardEvent } from 'react';
-import { Send, Paperclip, StopCircle, X } from 'lucide-react';
+import { useCallback, useRef, useState, type KeyboardEvent } from 'react';
+import { Paperclip, Send, StopCircle, X } from 'lucide-react';
 import { useAgentStore, useFileSystemStore } from '@/stores';
 import { getProvider, type ProviderMessage, type ProviderType } from '@/lib/agent/providers';
 import { SYSTEM_PROMPT } from '@/lib/agent/systemPrompt';
 import { tools } from '@/lib/agent/tools';
+import { cn } from '@/lib/utils';
 import { useProfiler } from '@/hooks/useProfiler';
 import { ModelSelector } from './ModelSelector';
 
-/**
- * Convert store messages to unified ProviderMessage format
- */
 function convertStoreMessages(
     messages: Array<{
         role: string;
@@ -30,13 +28,12 @@ function convertStoreMessages(
     }));
 }
 
-export function InputArea({ }: { panelWidth?: number }) {
+export function InputArea({ panelWidth }: { panelWidth?: number }) {
     const { startSpan, trackInteraction, ProfilerWrapper } = useProfiler('AgentInputArea');
     const [input, setInput] = useState('');
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
 
-    // Store selectors
     const isGenerating = useAgentStore(state => state.isGenerating);
     const attachedContext = useAgentStore(state => state.attachedContext);
     const model = useAgentStore(state => state.model);
@@ -46,7 +43,6 @@ export function InputArea({ }: { panelWidth?: number }) {
     const providerConfigs = useAgentStore(state => state.providerConfigs);
     const workspaceRoot = useFileSystemStore(state => state.rootPath);
 
-    // Store actions
     const addMessage = useAgentStore(state => state.addMessage);
     const setGenerating = useAgentStore(state => state.setGenerating);
     const appendStreamingContent = useAgentStore(state => state.appendStreamingContent);
@@ -55,9 +51,6 @@ export function InputArea({ }: { panelWidth?: number }) {
     const removeFile = useAgentStore(state => state.removeFile);
     const createConversation = useAgentStore(state => state.createConversation);
 
-    /**
-     * Main message handler - uses the provider abstraction
-     */
     const handleSendMessage = useCallback(async () => {
         if (!input.trim() || isGenerating) return;
 
@@ -68,21 +61,18 @@ export function InputArea({ }: { panelWidth?: number }) {
             length: userMessage.length.toString(),
             hasContext: (attachedContext.length > 0).toString(),
             model,
-            provider
+            provider,
         });
 
-        // Create conversation if needed
         if (!activeConversationId) {
             createConversation();
         }
 
-        // Add user message to UI
         addMessage({
             role: 'user',
             content: userMessage,
         });
 
-        // Add context if attached
         let finalUserContent = userMessage;
         if (attachedContext.length > 0) {
             const contextPrefix = attachedContext
@@ -100,20 +90,16 @@ export function InputArea({ }: { panelWidth?: number }) {
         const turnSpan = startSpan('process_turn', 'frontend_network');
 
         try {
-            // Get provider implementation
             const providerImpl = getProvider(provider);
 
-            // Get provider config
             const config = {
                 apiKey: providerConfigs?.[provider]?.apiKey,
                 apiBase: providerConfigs?.[provider]?.apiBase,
             };
 
-            // Get conversation history
             const currentConversationId = activeConversationId || useAgentStore.getState().activeConversationId!;
             const conversation = useAgentStore.getState().conversations.find(c => c.id === currentConversationId);
 
-            // Convert to provider message format
             const history = conversation?.messages.map(m => ({
                 role: m.role,
                 content: m.content,
@@ -125,27 +111,23 @@ export function InputArea({ }: { panelWidth?: number }) {
                 })),
             })) || [];
 
-            // Build messages (exclude the last one we just added, add the full user content)
             const historyMessages = convertStoreMessages(history.slice(0, -1));
             const currentMessages: ProviderMessage[] = [
                 ...historyMessages,
-                { role: 'user', content: finalUserContent }
+                { role: 'user', content: finalUserContent },
             ];
 
-            // Build system prompt with workspace context
             const workspaceContext = workspaceRoot
                 ? `\n\n## WORKSPACE CONTEXT\nThe current project workspace root is: ${workspaceRoot}\nALL file paths should be relative to this root or use this as the absolute base path.\nWhen using tools, ALWAYS use "${workspaceRoot}" as the base path.\n`
                 : '\n\n## WORKSPACE CONTEXT\nNo workspace is currently open. Ask the user to open a project folder first.\n';
 
             const fullSystemPrompt = SYSTEM_PROMPT + workspaceContext;
 
-            // Tool definitions
             const toolDefs = tools.map(t => ({
                 type: 'function' as const,
                 function: t.function,
             }));
 
-            // Agentic loop
             let keepGoing = true;
             let loopCount = 0;
             const MAX_LOOPS = 5;
@@ -154,7 +136,6 @@ export function InputArea({ }: { panelWidth?: number }) {
                 loopCount++;
                 const streamSpan = startSpan('llm_stream_response_loop', 'frontend_network');
 
-                // Stream response from provider
                 const result = await providerImpl.stream(
                     currentMessages,
                     fullSystemPrompt,
@@ -174,13 +155,12 @@ export function InputArea({ }: { panelWidth?: number }) {
                 await streamSpan.end({
                     contentLength: result.content.length.toString(),
                     toolCalls: result.toolCalls.length.toString(),
-                    hasThinking: (!!result.thinking).toString()
+                    hasThinking: (!!result.thinking).toString(),
                 });
 
                 const hasContent = result.content.length > 0;
                 const hasTools = result.toolCalls.length > 0;
 
-                // 1. Commit Assistant Message to UI
                 if (hasContent || result.thinking) {
                     addMessage({
                         role: 'assistant',
@@ -196,12 +176,10 @@ export function InputArea({ }: { panelWidth?: number }) {
                     clearStreaming();
                 }
 
-                // 2. Add assistant message to current turn
                 currentMessages.push(
                     providerImpl.formatAssistantMessage(result.content, result.toolCalls, result.thinking)
                 );
 
-                // 3. Handle Tools
                 if (hasTools) {
                     for (const call of result.toolCalls) {
                         const tool = tools.find(t => t.function.name === call.name);
@@ -225,14 +203,12 @@ export function InputArea({ }: { panelWidth?: number }) {
                             await toolSpan.end({ success: 'false', error: 'tool_not_found' });
                         }
 
-                        // Add to UI
                         addMessage({
                             role: 'tool',
                             content: `Tool ${call.name} output:\n\`\`\`\n${resultString}\n\`\`\``,
                             toolCallId: call.id,
                         });
 
-                        // Add tool result to current turn (properly formatted for API)
                         currentMessages.push(
                             providerImpl.formatToolResult({
                                 toolCallId: call.id,
@@ -248,13 +224,12 @@ export function InputArea({ }: { panelWidth?: number }) {
             await turnSpan.end({
                 loops: loopCount.toString(),
                 success: 'true',
-                provider
+                provider,
             });
-
         } catch (error) {
             await turnSpan.end({
                 success: 'false',
-                error: error instanceof Error ? error.message : String(error)
+                error: error instanceof Error ? error.message : String(error),
             });
 
             if (error instanceof Error && error.name !== 'AbortError') {
@@ -272,12 +247,12 @@ export function InputArea({ }: { panelWidth?: number }) {
     }, [
         input,
         isGenerating,
+        attachedContext,
         model,
         temperature,
+        activeConversationId,
         provider,
         providerConfigs,
-        activeConversationId,
-        attachedContext,
         workspaceRoot,
         addMessage,
         setGenerating,
@@ -304,77 +279,104 @@ export function InputArea({ }: { panelWidth?: number }) {
         }
     }, [setGenerating, clearStreaming]);
 
+    const composerHint = activeConversationId
+        ? 'Send a follow-up, ask for a refactor, or request a review.'
+        : 'Describe the task and Fluxel will start a fresh chat.';
+    const showFooterHint = (panelWidth ?? 0) > 420;
+
     return (
         <ProfilerWrapper>
-            <div className="border-t border-border bg-background/80 backdrop-blur-sm p-4">
-                {/* Attached Files */}
+            <div className="border-t border-border/80 bg-gradient-to-t from-background via-background/95 to-background/80 p-4 backdrop-blur-sm">
                 {attachedContext.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mb-3">
+                    <div className="mb-3 flex flex-wrap gap-2">
                         {attachedContext.map(ctx => (
                             <div
                                 key={ctx.path}
-                                className="flex items-center gap-1.5 px-2 py-1 bg-muted rounded-md text-xs"
+                                className="flex items-center gap-1.5 rounded-full border border-border/70 bg-background/80 px-2.5 py-1 text-xs shadow-sm"
                             >
-                                <Paperclip className="w-3 h-3 text-muted-foreground" />
-                                <span className="truncate max-w-[150px]">
+                                <Paperclip className="h-3 w-3 text-muted-foreground" />
+                                <span className="max-w-[150px] truncate">
                                     {ctx.path.split('/').pop()}
                                 </span>
                                 <button
                                     onClick={() => removeFile(ctx.path)}
-                                    className="text-muted-foreground hover:text-foreground transition-colors"
+                                    className="text-muted-foreground transition-colors hover:text-foreground"
                                 >
-                                    <X className="w-3 h-3" />
+                                    <X className="h-3 w-3" />
                                 </button>
                             </div>
                         ))}
                     </div>
                 )}
 
-                {/* Input Area */}
-                <div className="flex items-end gap-2">
-                    <div className="flex-1 relative">
+                <div className="overflow-hidden rounded-[1.5rem] border border-border/80 bg-card/95 shadow-sm">
+                    <div className="border-b border-border/60 px-4 py-2.5">
+                        <p className="text-xs text-muted-foreground">
+                            {composerHint}
+                        </p>
+                    </div>
+
+                    <div className="px-3 pt-2">
                         <textarea
                             ref={textareaRef}
                             value={input}
-                            onChange={(e) => setInput(e.target.value)}
+                            onChange={e => setInput(e.target.value)}
                             onKeyDown={handleKeyDown}
-                            placeholder="Ask anything..."
-                            className="w-full resize-none rounded-lg border border-border bg-background px-4 py-3 pr-12 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors min-h-[48px] max-h-[200px]"
+                            placeholder="Ask Fluxel to inspect, change, or explain something..."
+                            className="min-h-[72px] max-h-[220px] w-full resize-none bg-transparent px-1 py-2 text-sm leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/70"
                             style={{ height: 'auto' }}
-                            rows={1}
+                            rows={2}
                             disabled={isGenerating}
-                            onInput={(e) => {
+                            onInput={e => {
                                 const target = e.target as HTMLTextAreaElement;
                                 target.style.height = 'auto';
-                                target.style.height = `${Math.min(target.scrollHeight, 200)}px`;
+                                target.style.height = `${Math.min(target.scrollHeight, 220)}px`;
                             }}
                         />
                     </div>
 
-                    {isGenerating ? (
-                        <button
-                            onClick={handleStop}
-                            className="p-3 rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
-                            title="Stop generation"
-                        >
-                            <StopCircle className="w-5 h-5" />
-                        </button>
-                    ) : (
-                        <button
-                            onClick={handleSendMessage}
-                            disabled={!input.trim()}
-                            className="p-3 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            title="Send message"
-                        >
-                            <Send className="w-5 h-5" />
-                        </button>
-                    )}
-                </div>
+                    <div className="flex items-center justify-between gap-2 border-t border-border/60 px-3 py-2">
+                        <div className="flex min-w-0 items-center gap-2">
+                            <ModelSelector />
+                            <span className="rounded-full border border-border/70 bg-background/70 px-2 py-1 text-[11px] text-muted-foreground">
+                                {provider}
+                            </span>
+                            {attachedContext.length > 0 && (
+                                <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary">
+                                    {attachedContext.length} context {attachedContext.length === 1 ? 'file' : 'files'}
+                                </span>
+                            )}
+                        </div>
 
-                {/* Footer with Model Selector */}
-                <div className="flex items-center justify-between mt-3 text-xs text-muted-foreground">
-                    <ModelSelector />
-                    <span>Shift+Enter for new line</span>
+                        <div className="flex items-center gap-2">
+                            {showFooterHint && (
+                                <span className="hidden text-[11px] text-muted-foreground lg:inline">
+                                    Shift+Enter for new line
+                                </span>
+                            )}
+
+                            {isGenerating ? (
+                                <button
+                                    onClick={handleStop}
+                                    className="inline-flex items-center gap-1.5 rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive transition-colors hover:bg-destructive/20"
+                                    title="Stop generation"
+                                >
+                                    <StopCircle className="h-4 w-4" />
+                                    <span className={cn(!showFooterHint && 'sr-only')}>Stop</span>
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={handleSendMessage}
+                                    disabled={!input.trim()}
+                                    className="inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground/60"
+                                    title="Send message"
+                                >
+                                    <Send className="h-4 w-4" />
+                                    <span className={cn(!showFooterHint && 'sr-only')}>Send</span>
+                                </button>
+                            )}
+                        </div>
+                    </div>
                 </div>
             </div>
         </ProfilerWrapper>

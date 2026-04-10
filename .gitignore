@@ -28,7 +28,6 @@ dist-ssr
 .vscode/
 .claude/
 .cursor/
-bun.lock
 ideas.txt
 fluxel-reg-edits.ps1
 fluxel-reg-context.reg

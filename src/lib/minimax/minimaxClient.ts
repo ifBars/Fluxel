@@ -8,6 +8,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
 // Available MiniMax models
 export const MINIMAX_MODELS = [
+    'MiniMax-M2.7',
     'MiniMax-M2.5',
     'MiniMax-M2.1',
 ] as const;

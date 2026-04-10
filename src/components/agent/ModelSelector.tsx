@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react';
+import { useRef, useState } from 'react';
+import { Bot, Check, ChevronUp, Cloud, Settings } from 'lucide-react';
 import { useAgentStore } from '@/stores/agent/useAgentStore';
-import { Bot, Cloud, ChevronUp, Check, Settings } from 'lucide-react';
 import type { ModelConfig } from '@/stores/agent/types';
 import { useReactiveEffect } from "@/hooks/useReactiveEffect";
 
@@ -18,10 +18,8 @@ export function ModelSelector({ className = '' }: ModelSelectorProps) {
     const models = useAgentStore(state => state.models);
     const toggleSettings = useAgentStore(state => state.toggleSettings);
 
-    // Filter to only enabled models
     const enabledModels = models.filter((m: ModelConfig) => m.enabled);
 
-    // Close on click outside
     useReactiveEffect(() => {
         function handleClickOutside(event: MouseEvent) {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -50,17 +48,19 @@ export function ModelSelector({ className = '' }: ModelSelectorProps) {
         <div className={`relative ${className}`} ref={dropdownRef}>
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted/40 hover:bg-muted text-xs font-medium text-muted-foreground hover:text-foreground transition-colors border border-transparent hover:border-border"
+                className="flex items-center gap-2 rounded-xl border border-border/70 bg-background/80 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
                 title="Change model"
             >
-                <ProviderIcon className="w-3.5 h-3.5" />
+                <span className="flex h-5 w-5 items-center justify-center rounded-md bg-muted/70">
+                    <ProviderIcon className="h-3.5 w-3.5" />
+                </span>
                 <span className="max-w-[120px] truncate">{model}</span>
-                <ChevronUp className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                <ChevronUp className={`h-3 w-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
             </button>
 
             {isOpen && (
-                <div className="absolute bottom-full mb-2 left-0 w-64 bg-popover border border-border rounded-lg shadow-xl py-1 z-50 animate-in fade-in zoom-in-95 duration-100 slide-in-from-bottom-2">
-                    <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider bg-muted/20 border-b border-border mb-1">
+                <div className="absolute bottom-full left-0 z-50 mb-2 w-72 overflow-hidden rounded-2xl border border-border bg-popover/95 py-1 shadow-xl backdrop-blur animate-in slide-in-from-bottom-2 fade-in zoom-in-95 duration-100">
+                    <div className="mb-1 border-b border-border bg-muted/20 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                         Select Model
                     </div>
 
@@ -70,33 +70,42 @@ export function ModelSelector({ className = '' }: ModelSelectorProps) {
                                 <button
                                     key={m.id}
                                     onClick={() => handleModelSelect(m.id)}
-                                    className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-muted transition-colors ${model === m.id ? 'text-primary font-medium bg-primary/5' : 'text-foreground'
+                                    className={`w-full px-3 py-2 text-left text-xs transition-colors hover:bg-muted ${model === m.id ? 'bg-primary/5 text-primary' : 'text-foreground'
                                         }`}
                                 >
-                                    <span className="flex items-center gap-2">
-                                        {m.providerId === 'minimax' ? (
-                                            <Cloud className="w-3 h-3 text-muted-foreground" />
-                                        ) : (
-                                            <Bot className="w-3 h-3 text-muted-foreground" />
-                                        )}
-                                        <span className="truncate">{m.name}</span>
+                                    <span className="flex items-center justify-between gap-3">
+                                        <span className="flex min-w-0 items-center gap-2">
+                                            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-muted/70">
+                                                {m.providerId === 'minimax' ? (
+                                                    <Cloud className="h-3 w-3 text-muted-foreground" />
+                                                ) : (
+                                                    <Bot className="h-3 w-3 text-muted-foreground" />
+                                                )}
+                                            </span>
+                                            <span className="min-w-0">
+                                                <span className="block truncate font-medium">{m.name}</span>
+                                                <span className="block text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                                                    {m.providerId}
+                                                </span>
+                                            </span>
+                                        </span>
+                                        {model === m.id && <Check className="ml-2 h-3.5 w-3.5 shrink-0 text-primary" />}
                                     </span>
-                                    {model === m.id && <Check className="w-3 h-3 text-primary shrink-0 ml-2" />}
                                 </button>
                             ))
                         ) : (
-                            <div className="px-3 py-2 text-xs text-muted-foreground text-center italic">
+                            <div className="px-3 py-2 text-center text-xs italic text-muted-foreground">
                                 No models available. Configure providers in settings.
                             </div>
                         )}
                     </div>
 
-                    <div className="border-t border-border mt-1 pt-1">
+                    <div className="mt-1 border-t border-border pt-1">
                         <button
                             onClick={handleOpenSettings}
-                            className="w-full text-left px-3 py-2 text-xs flex items-center gap-2 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors rounded-b-lg"
+                            className="flex w-full items-center gap-2 rounded-b-2xl px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                         >
-                            <Settings className="w-3.5 h-3.5" />
+                            <Settings className="h-3.5 w-3.5" />
                             Configure Providers & Models...
                         </button>
                     </div>
